@@ -1,0 +1,64 @@
+# ===========================================================================
+# IVD 智慧实验室管理系统 — .gitignore
+# ===========================================================================
+
+# ---- IDE / Editor ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ---- OS ----
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# ---- Java / Spring Boot ----
+target/
+*.class
+*.jar
+*.war
+!gradle/wrapper/gradle-wrapper.jar
+build/
+out/
+.gradle/
+
+# ---- Maven ----
+pom.xml.versionsBackup
+
+# ---- Node / Frontend (if any) ----
+node_modules/
+dist/
+.cache/
+*.log
+
+# ---- Docker ----
+# Docker 数据卷内容不入库
+# (volumes are managed by docker compose at runtime)
+
+# ---- Environment ----
+.env
+.env.local
+.env.production
+
+# ---- Secrets & Certs ----
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+!deploy/nginx/certs/.gitkeep
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- Temp ----
+tmp/
+temp/
+*.tmp

@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IVD 智慧实验室管理系统 — 一期MVP效果图</title>
+<style>
+/* ============================================================
+   Design Tokens
+   ============================================================ */
+:root {
+  --c-brand: #059669; --c-brand-light: #10b981; --c-brand-bg: #ecfdf5; --c-brand-border: #a7f3d0;
+  --c-accent: #0d9488; --c-accent-bg: #f0fdfa;
+  --c-success: #10b981; --c-success-bg: #ecfdf5; --c-warning: #f59e0b; --c-warning-bg: #fffbeb;
+  --c-danger: #ef4444; --c-danger-bg: #fef2f2; --c-info: #3b82f6; --c-info-bg: #eff6ff;
+  --c-purple: #8b5cf6; --c-purple-bg: #f5f3ff;
+  --c-text: #0f172a; --c-text-secondary: #475569; --c-text-tertiary: #94a3b8;
+  --c-border: #e2e8f0; --c-bg: #f8fafc; --c-bg-card: #ffffff; --c-bg-hover: #f1f5f9;
+  --c-sidebar: #0f172a; --c-sidebar-hover: #1e293b; --c-sidebar-active: #059669;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow: 0 4px 6px -1px rgba(0,0,0,.05), 0 2px 4px -2px rgba(0,0,0,.04);
+  --shadow-md: 0 10px 15px -3px rgba(0,0,0,.06), 0 4px 6px -4px rgba(0,0,0,.04);
+  --shadow-lg: 0 20px 25px -5px rgba(0,0,0,.06), 0 8px 10px -6px rgba(0,0,0,.04);
+  --r-xs: 4px; --r-sm: 6px; --r: 8px; --r-lg: 12px; --r-xl: 16px;
+  --sidebar-w: 220px; --header-h: 56px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 13px; color: var(--c-text); background: #f1f5f9; line-height: 1.5; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: var(--sidebar-w); background: var(--c-sidebar); display: flex; flex-direction: column; flex-shrink: 0; user-select: none; }
+.sidebar-logo { padding: 16px 20px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.sidebar-logo .icon { width: 32px; height: 32px; background: var(--c-brand); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; font-weight: 700; }
+.sidebar-logo .title { color: #fff; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.sidebar-logo .sub { font-size: 10px; color: #64748b; }
+.sidebar-nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+.nav-section { margin-bottom: 8px; }
+.nav-section-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 1px; padding: 8px 12px 4px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r-sm); color: #94a3b8; cursor: pointer; transition: all .15s; font-size: 13px; position: relative; }
+.nav-item:hover { background: var(--c-sidebar-hover); color: #e2e8f0; }
+.nav-item.active { background: var(--c-sidebar-active); color: #fff; }
+.nav-item .badge { margin-left: auto; background: var(--c-danger); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+.nav-item .svgi { width: 18px; height: 18px; flex-shrink: 0; opacity: .7; }
+.nav-item.active .svgi { opacity: 1; }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.header { height: var(--header-h); background: #fff; border-bottom: 1px solid var(--c-border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; flex-shrink: 0; }
+.header-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--c-text-secondary); }
+.header-breadcrumb .sep { color: var(--c-text-tertiary); }
+.header-breadcrumb .current { color: var(--c-text); font-weight: 600; }
+.header-actions { display: flex; align-items: center; gap: 16px; }
+.header-actions .user { display: flex; align-items: center; gap: 8px; color: var(--c-text-secondary); }
+.header-actions .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--c-brand-bg); display: flex; align-items: center; justify-content: center; color: var(--c-brand); font-weight: 700; font-size: 13px; }
+.notif { width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; color: var(--c-text-secondary); }
+.notif:hover { background: var(--c-bg-hover); }
+.notif .dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; background: var(--c-danger); border-radius: 50%; }
+
+.content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+/* Cards */
+.card { background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--c-border); display: flex; align-items: center; justify-content: space-between; }
+.card-header h3 { font-size: 15px; font-weight: 600; }
+.card-body { padding: 20px; }
+.card-footer { padding: 12px 20px; border-top: 1px solid var(--c-border); background: var(--c-bg); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.stat-card { background: #fff; border-radius: var(--r-lg); padding: 20px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden; }
+.stat-card .stat-icon { width: 40px; height: 40px; border-radius: var(--r); display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 12px; }
+.stat-card .stat-label { font-size: 12px; color: var(--c-text-secondary); margin-bottom: 4px; }
+.stat-card .stat-value { font-size: 26px; font-weight: 700; }
+.stat-card .stat-change { font-size: 12px; margin-top: 4px; }
+.stat-card .stat-change.up { color: var(--c-success); }
+.stat-card .stat-change.down { color: var(--c-danger); }
+
+/* Table */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: var(--c-bg); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--c-text-secondary); border-bottom: 2px solid var(--c-border); white-space: nowrap; font-size: 12px; }
+tbody td { padding: 10px 14px; border-bottom: 1px solid var(--c-border-light); }
+tbody tr:hover { background: var(--c-bg); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.tag-success { background: var(--c-success-bg); color: #065f46; }
+.tag-warning { background: var(--c-warning-bg); color: #92400e; }
+.tag-danger { background: var(--c-danger-bg); color: #991b1b; }
+.tag-info { background: var(--c-info-bg); color: #1e40af; }
+.tag-purple { background: var(--c-purple-bg); color: #6d28d9; }
+.tag-default { background: #f1f5f9; color: #475569; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all .15s; white-space: nowrap; font-family: inherit; }
+.btn-primary { background: var(--c-brand); color: #fff; border-color: var(--c-brand); }
+.btn-primary:hover { background: #047857; }
+.btn-outline { background: #fff; color: var(--c-text); border-color: var(--c-border); }
+.btn-outline:hover { background: var(--c-bg-hover); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-danger { background: var(--c-danger); color: #fff; }
+.btn-danger:hover { opacity: .9; }
+
+input, select { padding: 7px 10px; border: 1px solid var(--c-border); border-radius: var(--r-sm); font-size: 13px; font-family: inherit; outline: none; transition: border .15s; }
+input:focus, select:focus { border-color: var(--c-brand); box-shadow: 0 0 0 3px var(--c-brand-bg); }
+input { min-width: 200px; }
+
+.flex-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.mb16 { margin-bottom: 16px; }
+.mb12 { margin-bottom: 12px; }
+.text-secondary { color: var(--c-text-secondary); font-size: 12px; }
+.text-danger { color: var(--c-danger); }
+.text-success { color: var(--c-success); }
+.text-right { text-align: right; }
+.mono { font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 12px; }
+
+/* Scan area */
+.scan-area { border: 2px dashed var(--c-border); border-radius: var(--r-lg); padding: 40px; text-align: center; cursor: pointer; transition: all .2s; background: var(--c-bg); }
+.scan-area:hover { border-color: var(--c-brand); background: var(--c-brand-bg); }
+.scan-area .scan-icon { font-size: 48px; margin-bottom: 12px; }
+.scan-area .scan-text { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.scan-result { background: var(--c-success-bg); border: 1px solid var(--c-success); border-radius: var(--r); padding: 12px 16px; margin-top: 12px; }
+.scan-result .row { display: flex; gap: 24px; flex-wrap: wrap; margin: 4px 0; }
+
+/* Audit queue */
+.audit-item { border: 1px solid var(--c-border); border-radius: var(--r); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 16px; transition: all .15s; }
+.audit-item:hover { border-color: var(--c-warning); background: #fffbeb; }
+.audit-item.hold { border-left: 3px solid var(--c-danger); }
+.audit-item.warn { border-left: 3px solid var(--c-warning); }
+.audit-decision { font-weight: 700; font-size: 12px; padding: 4px 10px; border-radius: 12px; white-space: nowrap; }
+.audit-decision.hold { background: var(--c-danger-bg); color: var(--c-danger); }
+.audit-decision.warn { background: var(--c-warning-bg); color: #92400e; }
+.audit-decision.pass { background: var(--c-success-bg); color: #065f46; }
+
+/* Progress bar */
+.progress-bar { height: 6px; background: var(--c-border); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; }
+.progress-fill.green { background: var(--c-success); }
+.progress-fill.red { background: var(--c-danger); }
+.progress-fill.yellow { background: var(--c-warning); }
+.progress-fill.blue { background: var(--c-info); }
+
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; background: #fff; padding: 12px 20px; border-radius: var(--r); box-shadow: var(--shadow-lg); z-index: 9999; display: none; animation: slideIn .3s; }
+.toast.show { display: block; }
+.toast.success { border-left: 3px solid var(--c-success); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Page visibility */
+.page { display: none; }
+.page.active { display: block; }
+
+/* Highlight value */
+.highlight { color: var(--c-danger); font-weight: 700; }
+
+/* Tooltip-like inline help */
+.help-tip { display: inline-block; width: 16px; height: 16px; border-radius: 50%; background: var(--c-border); text-align: center; line-height: 16px; font-size: 11px; color: var(--c-text-tertiary); cursor: help; margin-left: 4px; }
+
+/* KPI highlight card */
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.kpi-card { background: linear-gradient(135deg, #ecfdf5 0%, #f0fdfa 100%); border-radius: var(--r-lg); padding: 20px; border: 1px solid var(--c-brand-border); }
+.kpi-card.warn { background: linear-gradient(135deg, #fffbeb 0%, #fefce8 100%); border-color: #fde68a; }
+.kpi-card.danger { background: linear-gradient(135deg, #fef2f2 0%, #fff5f5 100%); border-color: #fecaca; }
+.kpi-label { font-size: 12px; color: var(--c-text-secondary); margin-bottom: 6px; }
+.kpi-value { font-size: 32px; font-weight: 700; }
+.kpi-desc { font-size: 11px; color: var(--c-text-tertiary); margin-top: 4px; }
+
+/* Tab switcher */
+.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--c-border); margin-bottom: 16px; }
+.tab-item { padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--c-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; }
+.tab-item:hover { color: var(--c-text); }
+.tab-item.active { color: var(--c-brand); border-bottom-color: var(--c-brand); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="icon">IVD</div>
+      <div><div class="title">智慧实验室</div><div class="sub">v1.0 MVP · 一期</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section"><div class="nav-section-label">工作台</div></div>
+      <div class="nav-item active" data-page="dashboard">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>首页看板</span>
+      </div>
+
+      <div class="nav-section"><div class="nav-section-label">进销存地基</div></div>
+      <div class="nav-item" data-page="catalog">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+        <span>试剂目录</span>
+      </div>
+      <div class="nav-item" data-page="inbound">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>扫码验收</span>
+      </div>
+      <div class="nav-item" data-page="warehouse">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>三级库管理</span>
+      </div>
+      <div class="nav-item" data-page="load">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>上机消耗</span>
+      </div>
+
+      <div class="nav-section"><div class="nav-section-label">★ 护城河特色</div></div>
+      <div class="nav-item" data-page="efficiency">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        <span>效益分析</span>
+        <span class="badge">★</span>
+      </div>
+      <div class="nav-item" data-page="rules">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>规则引擎</span>
+      </div>
+      <div class="nav-item" data-page="audit">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span>自动审核</span>
+        <span class="badge">3</span>
+      </div>
+
+      <div class="nav-section"><div class="nav-section-label">系统</div></div>
+      <div class="nav-item" data-page="daily">
+        <svg class="svgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>日清月结</span>
+      </div>
+    </nav>
+    <div style="padding:12px;border-top:1px solid rgba(255,255,255,.08);color:#64748b;font-size:11px;text-align:center;">
+      v1.0-MVP · 张三 · 检验科主任
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <header class="header" id="headerArea">
+      <div class="header-breadcrumb">
+        <span>首页</span>
+      </div>
+      <div class="header-actions">
+        <div class="notif" title="3条待处理审核">🔔<span class="dot"></span></div>
+        <div class="user">
+          <span style="font-size:12px;">张三 · 检验科主任</span>
+          <div class="avatar">张</div>
+        </div>
+      </div>
+    </header>
+    <div class="content">
+
+      <!-- ==================== 首页看板 ==================== -->
+      <div class="page active" id="page-dashboard">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#ecfdf5;color:#059669;">🧪</div>
+            <div class="stat-label">在库试剂量</div>
+            <div class="stat-value">3,847<span style="font-size:14px;font-weight:400;"> 盒</span></div>
+            <div class="stat-change up">↑ 12% 较上月</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#eff6ff;color:#3b82f6;">📊</div>
+            <div class="stat-label">今日消耗核销</div>
+            <div class="stat-value">186<span style="font-size:14px;font-weight:400;"> 盒</span></div>
+            <div class="stat-change up">↑ 8% 较昨日</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#fffbeb;color:#f59e0b;">⚠️</div>
+            <div class="stat-label">待审核结果</div>
+            <div class="stat-value">3<span style="font-size:14px;font-weight:400;"> 条</span></div>
+            <div class="stat-change down">需要立即处理</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#fef2f2;color:#ef4444;">📅</div>
+            <div class="stat-label">近效期30天批次</div>
+            <div class="stat-value">12<span style="font-size:14px;font-weight:400;"> 批</span></div>
+            <div class="stat-change down">↓ 需关注</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><h3>🕐 最近UDI操作流水</h3><span class="text-secondary">实时滚动</span></div>
+            <div class="card-body" style="padding:0;">
+              <table>
+                <thead><tr><th>时间</th><th>UDI码</th><th>试剂</th><th>操作</th><th>状态变更</th></tr></thead>
+                <tbody>
+                  <tr><td>09:15:30</td><td class="mono">(01)0693…1234</td><td>CK-MB</td><td>扫码上机</td><td>IN_STOCK → <span class="tag tag-info">IN_USE</span></td></tr>
+                  <tr><td>09:12:15</td><td class="mono">(01)0693…5678</td><td>ALT</td><td>消耗核销</td><td>IN_USE → <span class="tag tag-success">CONSUMED</span></td></tr>
+                  <tr><td>08:55:02</td><td class="mono">(01)0693…9012</td><td>肌酐</td><td>调拨确认</td><td>TRANSFERRED → <span class="tag tag-info">IN_STOCK</span></td></tr>
+                  <tr><td>08:30:47</td><td class="mono">(01)0693…3456</td><td>CEA</td><td>扫码验收</td><td>RECEIVED → <span class="tag tag-info">IN_STOCK</span></td></tr>
+                  <tr><td>08:05:22</td><td class="mono">(01)0693…7890</td><td>BUN</td><td>近效预警</td><td><span class="tag tag-warning">EXPIRY_ALERT</span> (剩25天)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>📈 今日审核概览</h3></div>
+            <div class="card-body">
+              <div style="margin-bottom:20px;">
+                <div class="flex-between mb12"><span>自动审核率</span><span style="font-weight:700;">72.4%</span></div>
+                <div class="progress-bar"><div class="progress-fill green" style="width:72.4%;"></div></div>
+              </div>
+              <div style="margin-bottom:20px;">
+                <div class="flex-between mb12"><span>拦截准确率</span><span style="font-weight:700;">94.1%</span></div>
+                <div class="progress-bar"><div class="progress-fill blue" style="width:94.1%;"></div></div>
+              </div>
+              <div style="margin-bottom:20px;">
+                <div class="flex-between mb12"><span>误拦截率</span><span style="font-weight:700;">5.9%</span></div>
+                <div class="progress-bar"><div class="progress-fill yellow" style="width:5.9%;"></div></div>
+              </div>
+              <div class="flex-row" style="margin-top:16px;">
+                <div style="flex:1;text-align:center;padding:12px;background:var(--c-success-bg);border-radius:8px;">
+                  <div style="font-size:24px;font-weight:700;color:#065f46;">178</div>
+                  <div style="font-size:11px;color:#047857;">自动放行</div>
+                </div>
+                <div style="flex:1;text-align:center;padding:12px;background:var(--c-warning-bg);border-radius:8px;">
+                  <div style="font-size:24px;font-weight:700;color:#92400e;">42</div>
+                  <div style="font-size:11px;color:#b45309;">警告放行</div>
+                </div>
+                <div style="flex:1;text-align:center;padding:12px;background:var(--c-danger-bg);border-radius:8px;">
+                  <div style="font-size:24px;font-weight:700;color:#991b1b;">26</div>
+                  <div style="font-size:11px;color:#dc2626;">转人工</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 试剂目录 ==================== -->
+      <div class="page" id="page-catalog">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">🧪 试剂目录管理</h2>
+          <div class="flex-row">
+            <input type="text" placeholder="搜索试剂名/UDI-DI/注册证号...">
+            <button class="btn btn-outline">🔍 搜索</button>
+            <button class="btn btn-primary">+ 新增试剂</button>
+            <button class="btn btn-outline">📥 批量导入</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>院内编码</th><th>试剂名称</th><th>厂家</th><th>注册证号</th><th>检测方法</th><th>组别</th><th>标称测试数</th><th>单价(元/盒)</th><th>储存</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="mono">IVD-IM-001</td><td><strong>肌酸激酶MB同工酶检测试剂盒</strong></td><td>九强生物</td><td>国械注准20153401234</td><td>免疫比浊法</td><td><span class="tag tag-purple">免疫</span></td><td>100</td><td>¥3,200</td><td>2-8°C</td>
+                </tr>
+                <tr>
+                  <td class="mono">IVD-BC-002</td><td><strong>丙氨酸氨基转移酶测定试剂盒</strong></td><td>迈瑞</td><td>粤械注准20162400567</td><td>速率法</td><td><span class="tag tag-info">生化</span></td><td>200</td><td>¥280</td><td>2-8°C</td>
+                </tr>
+                <tr>
+                  <td class="mono">IVD-IM-003</td><td><strong>癌胚抗原(CEA)检测试剂盒</strong></td><td>罗氏</td><td>国械注进20183408901</td><td>化学发光法</td><td><span class="tag tag-purple">免疫</span></td><td>100</td><td>¥5,800</td><td>2-8°C</td>
+                </tr>
+                <tr>
+                  <td class="mono">IVD-CL-004</td><td><strong>凝血酶原时间测定试剂盒</strong></td><td>希森美康</td><td>国械注进20172401234</td><td>凝固法</td><td><span class="tag tag-warning">临检</span></td><td>150</td><td>¥1,650</td><td>2-8°C</td>
+                </tr>
+                <tr>
+                  <td class="mono">IVD-BC-005</td><td><strong>肌酐测定试剂盒(酶法)</strong></td><td>贝克曼</td><td>国械注进20182405678</td><td>酶法</td><td><span class="tag tag-info">生化</span></td><td>200</td><td>¥450</td><td>2-8°C</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer"><span class="text-secondary">共 48 条记录 · 每页 10 条 · 第 1/5 页</span></div>
+        </div>
+
+        <!-- 五码映射 (行内展开) -->
+        <div class="card" style="margin-top:16px;">
+          <div class="card-header"><h3>🔗 五码映射 — IVD-IM-001 肌酸激酶MB同工酶</h3></div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>UDI-DI</th><th>GTIN</th><th>医保编码 (27位)</th><th>NMPA注册证编号</th><th>院内HIS编码</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">(01)06936553901234</td><td class="mono">06936553901234</td><td class="mono">C1234567890123456789012345</td><td>国械注准20153401234</td><td class="mono">IVD-IM-001</td><td><span class="tag tag-success">已映射</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== UDI扫码验收 ==================== -->
+      <div class="page" id="page-inbound">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">📦 UDI扫码验收</h2>
+          <span class="text-secondary">采购单号: PO-20260618-0015 · 供应商: 九州通医药</span>
+        </div>
+        <div class="grid-2">
+          <div>
+            <div class="scan-area" id="scanArea" onclick="simulateScan()">
+              <div class="scan-icon">📷</div>
+              <div class="scan-text">点击模拟扫码 / 使用扫码枪扫描 UDI 码</div>
+              <div class="text-secondary">支持 GS1 DataMatrix · Code128 · HIBC</div>
+            </div>
+            <div class="scan-result" id="scanResult" style="display:none;">
+              <div class="flex-between" style="margin-bottom:8px;"><strong>✅ 识别成功</strong><span class="tag tag-success">GS1 DataMatrix</span></div>
+              <div class="row"><span style="color:var(--c-text-secondary);width:60px;">UDI-DI:</span><span class="mono" id="scanDI">(01)06936553901234</span></div>
+              <div class="row"><span style="color:var(--c-text-secondary);width:60px;">批号:</span><span class="mono" id="scanLot">BATCH-20250618A</span></div>
+              <div class="row"><span style="color:var(--c-text-secondary);width:60px;">效期:</span><span class="mono" id="scanExp">2027-06-18</span></div>
+              <div class="row"><span style="color:var(--c-text-secondary);width:60px;">试剂:</span><strong id="scanName">CK-MB</strong><span class="tag tag-success" style="margin-left:12px;">与采购订单匹配</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>📋 本次验收清单</h3><span id="scanCount" class="text-secondary">0 盒已扫</span></div>
+            <div class="card-body" style="padding:0;max-height:300px;overflow-y:auto;">
+              <table>
+                <thead><tr><th>#</th><th>UDI码</th><th>批号</th><th>效期</th><th>状态</th></tr></thead>
+                <tbody id="scanList"><tr><td colspan="5" style="text-align:center;color:var(--c-text-tertiary);padding:40px;">等待扫码...</td></tr></tbody>
+              </table>
+            </div>
+            <div class="card-footer"><button class="btn btn-primary" id="confirmBtn" disabled>✅ 确认入库 (0盒)</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 三级库管理 ==================== -->
+      <div class="page" id="page-warehouse">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">🏗️ 三级库管理</h2>
+          <div class="flex-row">
+            <select><option>全部库房</option><option>一级-中心库</option><option>二级-检验科库</option></select>
+            <button class="btn btn-outline">📊 库存报表</button>
+            <button class="btn btn-primary">🔄 新建调拨</button>
+          </div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-label">一级库 · 中心药库</div><div class="kpi-value">2,140<span style="font-size:14px;font-weight:400;"> 盒</span></div><div class="kpi-desc">32种试剂 · 正常</div></div>
+          <div class="kpi-card"><div class="kpi-label">二级库 · 检验科</div><div class="kpi-value">1,207<span style="font-size:14px;font-weight:400;"> 盒</span></div><div class="kpi-desc">28种试剂 · 正常</div></div>
+          <div class="kpi-card warn"><div class="kpi-label">三级库 · 免疫组</div><div class="kpi-value">186<span style="font-size:14px;font-weight:400;"> 盒</span></div><div class="kpi-desc" style="color:#92400e;">⚠ CK-MB 低于安全库存</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>免疫组三级库 — FEFO出库推荐</h3><div><span class="tag tag-warning">FEFO模式</span></div></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>FEFO优先级</th><th>试剂</th><th>批号</th><th>效期</th><th>剩余天数</th><th>库存量</th><th>库位</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="tag tag-danger">#1 (最优先)</span></td><td>CK-MB</td><td class="mono">BATCH-202506A</td><td>2026-08-15</td><td><span class="highlight">58天</span></td><td>3盒</td><td>A-03-02</td>
+                  <td><button class="btn btn-sm btn-outline">出库</button></td>
+                </tr>
+                <tr>
+                  <td><span class="tag tag-warning">#2</span></td><td>CEA</td><td class="mono">LOT-CEA-2409</td><td>2026-09-30</td><td>104天</td><td>8盒</td><td>A-04-01</td>
+                  <td><button class="btn btn-sm btn-outline">出库</button></td>
+                </tr>
+                <tr>
+                  <td><span class="tag tag-default">#3</span></td><td>肌酐(酶法)</td><td class="mono">20260512B</td><td>2026-11-01</td><td>136天</td><td>15盒</td><td>B-01-03</td>
+                  <td><button class="btn btn-sm btn-outline">出库</button></td>
+                </tr>
+                <tr>
+                  <td><span class="tag tag-default">#4</span></td><td>ALT</td><td class="mono">MR-ALT-2605</td><td>2027-02-20</td><td>247天</td><td>20盒</td><td>B-02-01</td>
+                  <td><button class="btn btn-sm btn-outline">出库</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 上机消耗 ==================== -->
+      <div class="page" id="page-load">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">🖥️ 上机与消耗管理</h2>
+          <button class="btn btn-primary">+ 扫码上机</button>
+        </div>
+
+        <!-- 活跃上机表 -->
+        <div class="card mb16">
+          <div class="card-header"><h3>📡 当前活跃上机（Redis 批次关联缓存）</h3><span style="font-size:11px;color:var(--c-text-tertiary);">数据枢纽 → 自动审核输入</span></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>设备</th><th>加载批次</th><th>试剂</th><th>上机时间</th><th>预计退机</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>AU5800-01</strong> <span class="text-secondary">贝克曼</span></td>
+                  <td class="mono">BATCH-20250618A</td><td>CK-MB</td><td>09:15</td><td>17:00</td><td><span class="tag tag-info">IN_USE</span></td>
+                  <td><button class="btn btn-sm btn-outline" style="margin-right:4px;">📝 手动核销</button><button class="btn btn-sm btn-outline">⬇️ 退机</button></td>
+                </tr>
+                <tr>
+                  <td><strong>AU5800-01</strong> <span class="text-secondary">贝克曼</span></td>
+                  <td class="mono">20260512B</td><td>肌酐(酶法)</td><td>08:00</td><td>12:00</td><td><span class="tag tag-warning">即将退机</span></td>
+                  <td><button class="btn btn-sm btn-outline" style="margin-right:4px;">📝 手动核销</button><button class="btn btn-sm btn-danger">⬇️ 退机</button></td>
+                </tr>
+                <tr>
+                  <td><strong>Cobas e801</strong> <span class="text-secondary">罗氏</span></td><td class="mono">LOT-CEA-2409</td><td>CEA</td><td>07:30</td><td>15:30</td><td><span class="tag tag-success">CONSUMED</span></td>
+                  <td><span class="text-secondary">已于10:45核销32个测试</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 批量核销弹窗模拟 -->
+        <div class="card">
+          <div class="card-header"><h3>📋 今日消耗核销记录</h3></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>时间</th><th>设备</th><th>试样</th><th>批次</th><th>核销方式</th><th>消耗量</th><th>关联患者</th></tr></thead>
+              <tbody>
+                <tr><td>10:45</td><td>Cobas e801</td><td>CEA</td><td class="mono">LOT-CEA-2409</td><td><span class="tag tag-info">手动</span></td><td>32 Test</td><td class="mono">P-20260618-032</td></tr>
+                <tr><td>09:30</td><td>AU5800-01</td><td>CK-MB</td><td class="mono">BATCH-202506A</td><td><span class="tag tag-info">手动</span></td><td>15 Test</td><td class="mono">P-20260618-018</td></tr>
+                <tr><td>08:00</td><td>AU5800-01</td><td>肌酐</td><td class="mono">20260512B</td><td><span class="tag tag-purple">批量</span></td><td>48 Test</td><td class="mono">P-20260618-001~048</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== ★ 效益分析 ==================== -->
+      <div class="page" id="page-efficiency">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">💰 效益分析 <span style="font-size:12px;color:var(--c-brand);">★ 核心差异化 · 成交器</span></h2>
+          <div class="flex-row">
+            <select><option>2026年6月</option><option>2026年5月</option></select>
+            <select><option>全部组别</option><option>免疫组</option><option>生化组</option></select>
+            <button class="btn btn-outline">📥 导出报表</button>
+          </div>
+        </div>
+
+        <!-- KPI -->
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-label">试剂年采购额</div><div class="kpi-value">¥5,200<span style="font-size:14px;font-weight:400;"> 万</span></div></div>
+          <div class="kpi-card warn"><div class="kpi-label">年度隐性浪费（估算）</div><div class="kpi-value">¥104<span style="font-size:14px;font-weight:400;"> 万</span></div><div class="kpi-desc">浪费率 ~20% · 可优化比例 ~40%</div></div>
+          <div class="kpi-card danger"><div class="kpi-label">年化可节省金额</div><div class="kpi-value">¥41.6<span style="font-size:14px;font-weight:400;"> 万</span></div><div class="kpi-desc" style="color:#991b1b;">系统费半年回本</div></div>
+        </div>
+
+        <!-- 三张报表 Tab -->
+        <div class="tabs" id="effTabs">
+          <div class="tab-item active" data-tab="report1">📋 报表一：单测试实际成本表</div>
+          <div class="tab-item" data-tab="report2">📊 报表二：品牌成本对比表</div>
+          <div class="tab-item" data-tab="report3">🎯 报表三：浪费点 Top10</div>
+        </div>
+
+        <!-- 报表一 -->
+        <div class="card" id="eff-report1">
+          <div class="card-header"><h3>📋 报表一：单测试实际成本表（按试剂 × 批次）</h3><span class="text-secondary">公式：C_actual = (采购成本 + W_exp + W_open + W_retest + W_qc) / N_eff</span></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>试剂</th><th>批次</th><th>采购成本</th><th>过期W_exp</th><th>开瓶W_open</th><th>复测W_retest</th><th>有效次数</th><th>C_actual</th><th>C_nominal</th><th>偏离度</th><th>建议</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>CK-MB</strong></td><td class="mono">BATCH-202506A</td><td>¥3,200</td><td>¥0</td><td class="highlight">¥640</td><td>¥320</td><td>75</td><td class="highlight">¥55.7/test</td><td>¥32.0/test</td><td><span class="tag tag-danger">174%</span></td>
+                  <td><span class="text-danger">换小包装</span></td>
+                </tr>
+                <tr>
+                  <td>ALT</td><td class="mono">MR-ALT-2605</td><td>¥280</td><td class="highlight">¥84</td><td>¥0</td><td>¥28</td><td>170</td><td>¥2.3/test</td><td>¥1.4/test</td><td><span class="tag tag-warning">164%</span></td><td><span class="text-secondary">降采购频次</span></td>
+                </tr>
+                <tr>
+                  <td>肌酐(酶法)</td><td class="mono">20260512B</td><td>¥450</td><td>¥0</td><td>¥0</td><td>¥90</td><td>192</td><td>¥2.8/test</td><td>¥2.3/test</td><td><span class="tag tag-default">124%</span></td><td><span class="text-secondary">排查复测率</span></td>
+                </tr>
+                <tr>
+                  <td>CEA</td><td class="mono">LOT-CEA-2409</td><td>¥5,800</td><td>¥0</td><td>¥0</td><td>¥0</td><td>98</td><td>¥59.2/test</td><td>¥58.0/test</td><td><span class="tag tag-success">102%</span></td><td>正常</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer">
+            <span class="text-secondary">⚠ 数据口径：标称测试数来自试剂目录，复测数据来自LIS（一期若LIS无retest_flag，该列置0并标注"未含复测"）</span>
+          </div>
+        </div>
+
+        <!-- 报表二 -->
+        <div class="card" id="eff-report2" style="display:none;">
+          <div class="card-header"><h3>📊 报表二：品牌成本对比表（按项目 × 品牌）</h3></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>项目</th><th>品牌</th><th>C_actual</th><th>C_nominal</th><th>月消耗金额</th><th>市占率</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>肌酐</td><td>A牌</td><td>¥2.8</td><td>¥2.3</td><td>¥12,600</td><td>70%<div class="progress-bar" style="margin-top:4px;"><div class="progress-fill blue" style="width:70%;"></div></div></td><td><span class="tag tag-success">维持</span></td></tr>
+                <tr><td>肌酐</td><td>B牌</td><td class="highlight">¥3.6</td><td>¥2.5</td><td>¥5,400</td><td>30%<div class="progress-bar" style="margin-top:4px;"><div class="progress-fill yellow" style="width:30%;"></div></div></td><td><span class="tag tag-danger">⚠ B牌成本高44%，建议提A牌占比</span></td></tr>
+                <tr><td>CK-MB</td><td>A牌</td><td class="highlight">¥55.7</td><td>¥32.0</td><td>¥28,500</td><td>100%</td><td><span class="tag tag-danger">⚠ 浪费率74%，建议换小包装</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 报表三 -->
+        <div class="card" id="eff-report3" style="display:none;">
+          <div class="card-header"><h3>🎯 报表三：浪费点 Top10（按金额排序 + 规则建议）</h3></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>#</th><th>试剂</th><th>浪费类型</th><th>浪费金额</th><th>占浪费总额</th><th>根因分析</th><th>系统建议</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="tag tag-danger">1</span></td><td>CK-MB</td><td><span class="tag tag-warning">开瓶损耗</span></td><td class="highlight">¥5,120</td><td>20%</td><td>100T包装，开瓶后30天稳定期，日均仅2-3个测试</td><td><strong>换小包装（50T），预计年省¥4,000+</strong></td>
+                </tr>
+                <tr>
+                  <td><span class="tag tag-danger">2</span></td><td>ALT</td><td><span class="tag tag-danger">过期</span></td><td class="highlight">¥3,360</td><td>13%</td><td>采购频次低，单次采购量大</td><td><strong>降低单次采购量，提采购频次至每2周</strong></td>
+                </tr>
+                <tr>
+                  <td><span class="tag tag-warning">3</span></td><td>肌酐(酶法)</td><td>复测浪费</td><td>¥2,880</td><td>11%</td><td>复测率偏高（8.5%），可能设备状态或质控流程问题</td><td>排查AU5800设备状态，检查质控记录</td>
+                </tr>
+                <tr>
+                  <td>4</td><td>凝血酶原时间</td><td>开瓶损耗</td><td>¥1,980</td><td>8%</td><td>—</td><td>换小包装</td>
+                </tr>
+                <tr>
+                  <td>5</td><td>GLU</td><td>过期</td><td>¥1,560</td><td>6%</td><td>—</td><td>降采购量</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer">
+            <div style="padding:8px 12px;background:var(--c-info-bg);border-radius:6px;font-size:12px;">
+              💡 <strong>规则引擎自动生成建议</strong>（基于5.4浪费点定位算法）：W_exp>30%→采购过量 / W_open>20%→换小包装 / W_retest>15%→排查设备质控 / C偏离度>1.5→全面复盘
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 规则引擎 ==================== -->
+      <div class="page" id="page-rules">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">⚙️ 统一规则引擎 <span style="font-size:12px;color:var(--c-brand);">★ 大脑</span></h2>
+          <button class="btn btn-primary">+ 新建规则</button>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>一期内置规则库（9条规则，L1+L2+L3三层架构）</h3></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>规则ID</th><th>层级</th><th>规则名称</th><th>触发条件</th><th>动作</th><th>优先级</th><th>范围</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">R-RST-001</td><td><span class="tag tag-info">L1-结果</span></td><td>超参考范围×1.5</td><td>value 超 ref_range ×1.5</td><td><span class="tag tag-warning">WARN_RELEASE</span></td><td>2</td><td>全项目</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr><td class="mono">R-RST-002</td><td><span class="tag tag-info">L1-结果</span></td><td>危急值检测</td><td>value 触及 critical_range</td><td><span class="tag tag-danger">HOLD_REVIEW</span></td><td>3</td><td>全项目</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr><td class="mono">R-RST-003</td><td><span class="tag tag-info">L1-结果</span></td><td>Delta Check</td><td>与上次结果差值 >50%</td><td><span class="tag tag-danger">HOLD_REVIEW</span></td><td>3</td><td>全项目</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#fefce8;"><td class="mono">R-BATCH-001</td><td><span class="tag tag-warning">L2-批次★</span></td><td>近效期拦截</td><td>试剂效期 <7 天</td><td><span class="tag tag-warning">WARN_RELEASE</span></td><td>2</td><td>全组别</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#fefce8;"><td class="mono">R-BATCH-002</td><td><span class="tag tag-warning">L2-批次★</span></td><td>开瓶超稳定期</td><td>开瓶天数 > stability_days_after_open</td><td><span class="tag tag-danger">HOLD_REVIEW</span></td><td>3</td><td>全组别</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#fefce8;"><td class="mono">R-BATCH-003</td><td><span class="tag tag-warning">L2-批次★</span></td><td>批次人工标记异常</td><td>批次状态 = MANUAL_HOLD</td><td><span class="tag tag-danger">HOLD_REVIEW</span></td><td>3</td><td>指定批次</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#fefce8;"><td class="mono">R-BATCH-004</td><td><span class="tag tag-warning">L2-批次★</span></td><td>设备距校准<7天</td><td>设备下次校准 < now+7天</td><td><span class="tag tag-warning">WARN_RELEASE</span></td><td>2</td><td>全设备</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#f5f3ff;"><td class="mono">R-LNK-001</td><td><span class="tag tag-purple">L3-联动★</span></td><td>证照过期拦截</td><td>试剂证照已过期</td><td><span class="tag tag-danger">REJECT_RETEST</span></td><td>4</td><td>关联试剂</td><td><span class="tag tag-success">启用</span></td></tr>
+                <tr style="background:#f5f3ff;"><td class="mono">R-LNK-002</td><td><span class="tag tag-purple">L3-联动★</span></td><td>库存冻结拦截</td><td>批次库存标记为冻结</td><td><span class="tag tag-danger">HOLD_REVIEW</span></td><td>3</td><td>指定批次</td><td><span class="tag tag-default">待启用</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== ★ 自动审核队列 ==================== -->
+      <div class="page" id="page-audit">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">✅ 批次感知自动审核 <span style="font-size:12px;color:var(--c-brand);">★ 护城河 · 钩子</span></h2>
+          <div class="flex-row">
+            <span class="text-secondary">今日: 自动放行 178 · 警告 42 · </span><span style="color:var(--c-danger);font-weight:600;">转人工 26</span>
+          </div>
+        </div>
+
+        <!-- 审核决策流水线可视化 -->
+        <div class="card mb16">
+          <div class="card-header"><h3>🔬 审核决策流水线</h3><span class="text-secondary">LIS结果推送 → 批次关联 → 规则匹配 → 决策汇总 → 回写LIS</span></div>
+          <div class="card-body">
+            <div class="flex-row" style="justify-content:center;gap:8px;">
+              <div style="padding:10px 16px;background:var(--c-info-bg);border-radius:8px;text-align:center;min-width:80px;">📨<br><small>LIS推送</small></div>
+              <span style="font-size:20px;color:var(--c-text-tertiary);">→</span>
+              <div style="padding:10px 16px;background:var(--c-warning-bg);border-radius:8px;text-align:center;min-width:80px;">🔗<br><small>批次关联<br>(Redis)</small></div>
+              <span style="font-size:20px;color:var(--c-text-tertiary);">→</span>
+              <div style="padding:10px 16px;background:var(--c-purple-bg);border-radius:8px;text-align:center;min-width:80px;">📐<br><small>规则匹配<br>(L1→L2→L3)</small></div>
+              <span style="font-size:20px;color:var(--c-text-tertiary);">→</span>
+              <div style="padding:10px 16px;background:var(--c-success-bg);border-radius:8px;text-align:center;min-width:80px;">✅<br><small>决策汇总</small></div>
+              <span style="font-size:20px;color:var(--c-text-tertiary);">→</span>
+              <div style="padding:10px 16px;background:var(--c-info-bg);border-radius:8px;text-align:center;min-width:80px;">↩️<br><small>回写LIS</small></div>
+            </div>
+            <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--c-text-tertiary);">P95延迟 < 500ms · 审核服务不可用时 → 默认 AUTO_RELEASE（兜底）</div>
+          </div>
+        </div>
+
+        <!-- 待审核队列 -->
+        <div class="card">
+          <div class="card-header"><h3>⏳ 待人工审核队列 (3条)</h3><button class="btn btn-sm btn-outline">📋 查看全部</button></div>
+          <div class="card-body">
+
+            <!-- 审核项1：开瓶超稳定期 -->
+            <div class="audit-item hold">
+              <div style="flex:1;">
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <strong style="font-size:14px;">OBS-20260618-0018</strong>
+                  <span class="audit-decision hold">HOLD_REVIEW</span>
+                  <span class="tag tag-warning">L2-批次规则</span>
+                </div>
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <span>肌酐 (CRE)</span>
+                  <span class="highlight" style="font-size:14px;font-weight:700;">350.5 μmol/L</span>
+                  <span class="text-secondary">参考范围: 44-133</span>
+                </div>
+                <div class="flex-row text-secondary" style="font-size:11px;">
+                  <span>设备: AU5800-01</span>
+                  <span>批次: BATCH-202506A</span>
+                  <span>测试时间: 09:15</span>
+                </div>
+                <div style="margin-top:6px;padding:6px 10px;background:#fef2f2;border-radius:4px;font-size:12px;">
+                  ⚠️ <strong>触发规则 R-BATCH-002</strong>：试剂批次 BATCH-202506A 开瓶超稳定期（已开瓶32天，稳定期30天），结果需人工复核。系统建议复测。
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <button class="btn btn-sm btn-primary">✅ 放行</button>
+                <button class="btn btn-sm btn-outline">📝 查看详情</button>
+                <button class="btn btn-sm btn-danger">🔄 要求复测</button>
+              </div>
+            </div>
+
+            <!-- 审核项2：Delta Check -->
+            <div class="audit-item hold">
+              <div style="flex:1;">
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <strong style="font-size:14px;">OBS-20260618-0025</strong>
+                  <span class="audit-decision hold">HOLD_REVIEW</span>
+                  <span class="tag tag-info">L1-结果规则</span>
+                </div>
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <span>ALT</span>
+                  <span class="highlight" style="font-size:14px;font-weight:700;">245 U/L</span>
+                  <span class="text-secondary">前次值: 38 U/L (3天前)</span>
+                  <span class="text-danger">变化 +545%</span>
+                </div>
+                <div class="flex-row text-secondary" style="font-size:11px;">
+                  <span>设备: AU5800-01</span>
+                  <span>批次: MR-ALT-2605</span>
+                  <span>测试时间: 10:02</span>
+                </div>
+                <div style="margin-top:6px;padding:6px 10px;background:#fef2f2;border-radius:4px;font-size:12px;">
+                  ⚠️ <strong>触发规则 R-RST-003 (Delta Check)</strong>：与上次结果(2026-06-15, 38 U/L)差值 >50%，请排除样本问题或确认临床急变。
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <button class="btn btn-sm btn-primary">✅ 放行</button>
+                <button class="btn btn-sm btn-outline">📝 查看详情</button>
+                <button class="btn btn-sm btn-danger">🔄 要求复测</button>
+              </div>
+            </div>
+
+            <!-- 审核项3：批次人工标记异常 -->
+            <div class="audit-item hold">
+              <div style="flex:1;">
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <strong style="font-size:14px;">OBS-20260618-0031</strong>
+                  <span class="audit-decision hold">HOLD_REVIEW</span>
+                  <span class="tag tag-warning">L2-批次规则★</span>
+                </div>
+                <div class="flex-row" style="margin-bottom:4px;">
+                  <span>CK-MB</span>
+                  <span class="highlight" style="font-size:14px;font-weight:700;">85.2 ng/mL</span>
+                  <span class="text-secondary">参考范围: 0-5</span>
+                </div>
+                <div class="flex-row text-secondary" style="font-size:11px;">
+                  <span>设备: Cobas e801</span>
+                  <span>批次: BATCH-202506A</span>
+                  <span>测试时间: 10:15</span>
+                </div>
+                <div style="margin-top:6px;padding:6px 10px;background:#fef2f2;border-radius:4px;font-size:12px;">
+                  ⚠️ <strong>触发规则 R-BATCH-003</strong>：批次 BATCH-202506A 被质控管理员人工标记为"异常批次（QC超标）"，所有该批次结果强制人工审核。
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <button class="btn btn-sm btn-primary">✅ 放行</button>
+                <button class="btn btn-sm btn-outline">📝 查看详情</button>
+                <button class="btn btn-sm btn-danger">🔄 要求复测</button>
+              </div>
+            </div>
+
+          </div>
+          <div class="card-footer flex-between">
+            <span class="text-secondary">审核决策延迟：P50=120ms  P95=280ms  P99=450ms（目标 <500ms ✅）</span>
+            <span class="text-secondary">误拦截率: 5.9%（上线2周数据）<span class="help-tip" title="系统拦截但人工放行的比例">?</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== 日清月结 ==================== -->
+      <div class="page" id="page-daily">
+        <div class="flex-between mb16">
+          <h2 style="font-size:18px;">📅 日清月结</h2>
+          <span class="text-secondary">结算日期: 2026-06-18 · 状态: 待日结</span>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-label">期初库存</div><div class="kpi-value">3,912<span style="font-size:14px;font-weight:400;"> 盒</span></div></div>
+          <div class="kpi-card"><div class="kpi-label">本日入库</div><div class="kpi-value">+128<span style="font-size:14px;font-weight:400;"> 盒</span></div></div>
+          <div class="kpi-card warn"><div class="kpi-label">本日消耗+调拨出</div><div class="kpi-value">-193<span style="font-size:14px;font-weight:400;"> 盒</span></div><div class="kpi-desc">差异: -7盒 (0.18%) <span class="tag tag-warning">可解释</span></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>📊 进销存平衡表 (2026-06-18)</h3></div>
+          <div class="card-body" style="padding:0;">
+            <table>
+              <thead><tr><th>试剂</th><th>期初</th><th>入库</th><th>消耗</th><th>调拨出</th><th>报损</th><th>理论期末</th><th>实际期末</th><th>差异</th><th>差异率</th></tr></thead>
+              <tbody>
+                <tr><td>CK-MB</td><td>28</td><td>+10</td><td>-15</td><td>0</td><td>0</td><td>23</td><td>22</td><td class="text-danger">-1</td><td>4.3% ⚠</td></tr>
+                <tr><td>ALT</td><td>105</td><td>+30</td><td>-42</td><td>0</td><td>0</td><td>93</td><td>93</td><td>0</td><td><span class="text-success">0%</span></td></tr>
+                <tr><td>肌酐(酶法)</td><td>62</td><td>+20</td><td>-48</td><td>0</td><td>0</td><td>34</td><td>34</td><td>0</td><td><span class="text-success">0%</span></td></tr>
+                <tr><td>CEA</td><td>45</td><td>+8</td><td>-32</td><td>0</td><td>0</td><td>21</td><td>21</td><td>0</td><td><span class="text-success">0%</span></td></tr>
+                <tr><td>凝血酶原时间</td><td>38</td><td>0</td><td>-12</td><td>-5</td><td>0</td><td>21</td><td>21</td><td>0</td><td><span class="text-success">0%</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer">
+            <div style="padding:8px 12px;background:var(--c-warning-bg);border-radius:6px;font-size:12px;">
+              ⚠️ CK-MB差异4.3%（-1盒）：差异可追踪至09:30手动核销记录，已确认系多核销1盒，待修正。其余4项差异率0%。
+              <br><span style="color:var(--c-text-tertiary);">一期验收标准：连续10工作日差异可追溯+有原因说明（放宽自原PRD"<0.1%冻结"→"<1%预警可解释"）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+    </div><!-- .content -->
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// Navigation
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', function() {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    this.classList.add('active');
+    const pageId = this.dataset.page;
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + pageId).classList.add('active');
+    // Update breadcrumb
+    const label = this.querySelector('span:last-child')?.textContent?.trim() || this.innerText.trim();
+    document.getElementById('headerArea').querySelector('.header-breadcrumb').innerHTML = '<span>首页</span><span class="sep">›</span><span class="current">'+label+'</span>';
+  });
+});
+
+// Toast
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + (type||'');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// Simulated scan counter
+let scanCount = 0;
+const scanItems = [
+  {di:'(01)06936553901234', lot:'BATCH-20250618A', exp:'2027-06-18', name:'CK-MB (肌酸激酶MB同工酶)'},
+  {di:'(01)06936553905678', lot:'BATCH-20250618B', exp:'2027-08-01', name:'ALT (丙氨酸氨基转移酶)'},
+  {di:'(01)06936553909012', lot:'20260512B', exp:'2026-11-01', name:'肌酐测定试剂盒(酶法)'},
+  {di:'(01)06936553903456', lot:'MR-ALT-2605', exp:'2027-02-20', name:'ALT (丙氨酸氨基转移酶)'},
+  {di:'(01)06936553907890', lot:'LOT-CEA-2409', exp:'2026-09-30', name:'CEA (癌胚抗原)'},
+];
+
+function simulateScan() {
+  if (scanCount >= scanItems.length) { showToast('所有试剂已扫描完毕','success'); return; }
+  const item = scanItems[scanCount];
+  document.getElementById('scanResult').style.display = 'block';
+  document.getElementById('scanDI').textContent = item.di;
+  document.getElementById('scanLot').textContent = item.lot;
+  document.getElementById('scanExp').textContent = item.exp;
+  document.getElementById('scanName').textContent = item.name;
+  scanCount++;
+  document.getElementById('scanCount').textContent = scanCount + ' 盒已扫';
+  const tbody = document.getElementById('scanList');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>'+scanCount+'</td><td class="mono">'+item.di.substring(0,18)+'...</td><td class="mono">'+item.lot+'</td><td>'+item.exp+'</td><td><span class="tag tag-success">已识别</span></td>';
+  tbody.appendChild(tr);
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('confirmBtn').textContent = '✅ 确认入库 ('+scanCount+'盒)';
+  showToast('✅ UDI码识别成功 — ' + item.name, 'success');
+}
+
+// Efficiency report tab switching
+document.querySelectorAll('#effTabs .tab-item').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('#effTabs .tab-item').forEach(t => t.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('eff-report1').style.display = 'none';
+    document.getElementById('eff-report2').style.display = 'none';
+    document.getElementById('eff-report3').style.display = 'none';
+    document.getElementById('eff-' + this.dataset.tab).style.display = '';
+  });
+});
+
+// Confirm inbound button
+document.getElementById('confirmBtn').addEventListener('click', function() {
+  if (scanCount === 0) return;
+  showToast('✅ 入库确认成功！' + scanCount + '盒试剂已入库，UDI状态: RECEIVED→IN_STOCK', 'success');
+  // Reset
+  scanCount = 0;
+  document.getElementById('scanResult').style.display = 'none';
+  document.getElementById('scanCount').textContent = '0 盒已扫';
+  document.getElementById('scanList').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--c-text-tertiary);padding:40px;">等待扫码...</td></tr>';
+  this.disabled = true; this.textContent = '✅ 确认入库 (0盒)';
+});
+</script>
+</body>
+</html>
