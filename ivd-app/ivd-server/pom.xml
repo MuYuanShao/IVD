@@ -23,6 +23,7 @@
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-audit</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-udi</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-integration</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-system</artifactId></dependency>
 
         <!-- Spring Boot -->
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>

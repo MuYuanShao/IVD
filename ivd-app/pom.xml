@@ -26,6 +26,7 @@
         <module>ivd-audit</module>
         <module>ivd-udi</module>
         <module>ivd-integration</module>
+        <module>ivd-system</module>
         <module>ivd-server</module>
     </modules>
 
@@ -130,6 +131,11 @@
             <dependency>
                 <groupId>com.zlth.ivd</groupId>
                 <artifactId>ivd-integration</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zlth.ivd</groupId>
+                <artifactId>ivd-system</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

@@ -106,6 +106,21 @@
           <em v-if="!isCollapse && badgeCounts.audit" class="menu-badge">{{ badgeCounts.audit }}</em>
         </el-menu-item>
 
+        <!-- 系统管理 -->
+        <div class="menu-group-label" v-show="!isCollapse">系统管理</div>
+        <el-menu-item index="/system/users">
+          <el-icon><UserFilled /></el-icon>
+          <span style="flex:1">用户管理</span>
+        </el-menu-item>
+        <el-menu-item index="/system/depts">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span style="flex:1">科室管理</span>
+        </el-menu-item>
+        <el-menu-item index="/system/warehouses">
+          <el-icon><Storage /></el-icon>
+          <span style="flex:1">库房管理</span>
+        </el-menu-item>
+
         <!-- 系统 -->
         <div class="menu-group-label" v-show="!isCollapse">系统</div>
         <el-menu-item index="/finance">
@@ -217,6 +232,9 @@ const breadcrumbParent = computed(() => {
     '/audit': '★ 护城河特色',
     '/finance': '系统',
     '/settlement': '系统',
+    '/system/users': '系统管理',
+    '/system/depts': '系统管理',
+    '/system/warehouses': '系统管理',
   }
   return parents[route.path] || ''
 })
@@ -240,6 +258,9 @@ function doGlobalSearch() {
   else if (/效益|成本|浪费|analytics/.test(q)) router.push('/analytics')
   else if (/审核|audit/.test(q)) router.push('/audit')
   else if (/日结|月结|结算|财务|finance/.test(q)) router.push('/finance')
+  else if (/用户|账号|user/.test(q)) router.push('/system/users')
+  else if (/科室|dept/.test(q)) router.push('/system/depts')
+  else if (/库房|仓库|warehouse/.test(q)) router.push('/system/warehouses')
   else if (/证照|license/.test(q)) router.push('/license')
   else if (/看板|dashboard/.test(q)) router.push('/dashboard')
   else ElMessage.info('全局搜索: ' + searchText.value + ' — 未匹配特定页面，请尝试其他关键词')

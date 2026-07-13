@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 /**
  * IVD 一期 MVP 路由配置
  * 模块映射：
+ *   M00 系统管理 — /system
  *   M01 试剂目录 — /catalog
  *   M03 证照管理 — /license
  *   M04 采购管理 — /procurement
@@ -49,7 +50,11 @@ const routes = [
       { path: 'analytics', name: 'Analytics', component: () => import('@/views/analytics/AnalyticsView.vue'), meta: { title: '效益分析' } },
       { path: 'audit', name: 'Audit', component: () => import('@/views/audit/AuditView.vue'), meta: { title: '自动审核' } },
       { path: 'rules', name: 'Rules', component: () => import('@/views/rules/RulesView.vue'), meta: { title: '规则引擎' } },
-      { path: 'trace', name: 'Trace', component: () => import('@/views/trace/TraceView.vue'), meta: { title: 'UDI追溯' } }
+      { path: 'trace', name: 'Trace', component: () => import('@/views/trace/TraceView.vue'), meta: { title: 'UDI追溯' } },
+      // ── 系统管理 · 基础数据（3 子页）──
+      { path: 'system/users', name: 'UserManagement', component: () => import('@/views/system/UserManagement.vue'), meta: { title: '用户管理', group: '系统管理' } },
+      { path: 'system/depts', name: 'DeptManagement', component: () => import('@/views/system/DeptManagement.vue'), meta: { title: '科室管理', group: '系统管理' } },
+      { path: 'system/warehouses', name: 'WarehouseManagement', component: () => import('@/views/system/WarehouseManagement.vue'), meta: { title: '库房管理', group: '系统管理' } }
     ]
   }
 ]
