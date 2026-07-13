@@ -144,10 +144,14 @@ async function loadTree() {
 function handleNodeClick(data) { filterKeyword.value = data.name; fetchData() }
 
 // ── level-linked parent options ──
-function onLevelChange(level) {
-  form.value.parentId = null
+function filterParentOptions(level) {
   const filtered = store.whTree.filter(w => w.level === level - 1)
   parentWhOpts.value = buildTree(filtered)
+}
+
+function onLevelChange(level) {
+  form.value.parentId = null  // clear parent when user explicitly changes level
+  filterParentOptions(level)
 }
 
 // ── data ──
@@ -162,8 +166,9 @@ async function openDialog(row) {
   try { await Promise.all([loadTree(), loadDeptOpts()]) } catch (e) { /* pre-load optional */ }
   if (row) {
     formId.value = row.id
+    // filter parent options BEFORE setting form values, so parentId survives
+    if (row.level > 1) filterParentOptions(row.level)
     form.value = { name: row.name, code: row.code, level: row.level, parentId: row.parentId, deptId: row.deptId, location: row.location, contactPerson: row.contactPerson, contactPhone: row.contactPhone, sortOrder: row.sortOrder ?? 99 }
-    if (row.level > 1) onLevelChange(row.level)
   } else {
     formId.value = null
     resetForm()
