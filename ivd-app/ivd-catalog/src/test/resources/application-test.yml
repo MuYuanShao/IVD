@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ivd_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+  flyway:
+    enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  type-enums-package: com.zlth.ivd.**.enums
+
+ivd:
+  jwt:
+    secret: test-jwt-secret-key-for-unit-tests-min-256-bits-length
+    expiration: 3600000
+    refresh-expiration: 86400000
+
+logging:
+  level:
+    com.zlth.ivd: DEBUG

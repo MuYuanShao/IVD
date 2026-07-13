@@ -1,0 +1,167 @@
+# =============================================================================
+# IVD 智慧实验室管理系统 — 一期 MVP 主配置
+# 对应 PRD §9.3 技术栈 §9.5 数据库约定 §9.6 部署拓扑
+# =============================================================================
+
+server:
+  port: ${APP_PORT:8080}
+
+spring:
+  application:
+    name: ivd-app
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  # 路由未匹配时抛出 NoHandlerFoundException，交由 GlobalExceptionHandler 统一返回 404 JSON（而非静态资源404页）
+  mvc:
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+  # ---- 数据库 ----
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/ivd?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456789}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+  # ---- Redis (一期暂未启用，保留配置以备后续) ----
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:Redis@123456}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 32
+          max-idle: 8
+          min-idle: 4
+          max-wait: 3000ms
+
+  # ---- Flyway 数据库迁移 ----
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    encoding: UTF-8
+    table: flyway_schema_history
+    baseline-on-migrate: true
+    baseline-version: 1
+    # 信创兼容：不执行 MySQL 私有 SQL
+    # placeholders 用于区分环境
+
+  # ---- Jackson ----
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  # ---- 文件上传 ----
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 50MB
+
+# ---- MyBatis-Plus ----
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.zlth.ivd.**.entity
+  type-enums-package: com.zlth.ivd.**.enums
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  type-handlers-package: com.zlth.ivd.common.config
+
+# ---- MinIO ----
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:ivdadmin}
+  secret-key: ${MINIO_SECRET_KEY:Minio@123456}
+  bucket-cert: ${MINIO_BUCKET_CERT:ivd-cert}
+  bucket-report: ${MINIO_BUCKET_REPORT:ivd-report}
+
+# ---- XXL-Job ----
+xxl:
+  job:
+    admin:
+      addresses: ${XXL_JOB_ADMIN_ADDRESSES:http://localhost:8081/xxl-job-admin}
+    accessToken: ${XXL_JOB_ACCESS_TOKEN:xxl-job-token-ivd}
+    executor:
+      appname: ivd-job-executor
+      address: ''
+      ip: ''
+      port: 9999
+      logpath: /app/logs/xxl-job
+      logretentiondays: 30
+
+# ---- IVD 应用自定义 ----
+ivd:
+  audit:
+    # 审核服务异常时默认放行（PRD §8.6 兜底安全）
+    fallback-release: ${IVD_AUDIT_FALLBACK_RELEASE:true}
+  # JWT 配置
+  jwt:
+    # ⚠️ 生产环境务必通过 JWT_SECRET 环境变量覆盖此随机默认值
+    secret: ${JWT_SECRET:28841e0c5d11def36aa972a5bc0298fd940a13fc3d67fdda32a2d1a0280814b9f67335c14fbd97d3944f2b6068cd4b67}
+    expiration: 7200000  # 2h
+    refresh-expiration: 604800000  # 7d
+
+# ---- 日志 ----
+logging:
+  level:
+    root: INFO
+    com.zlth.ivd: DEBUG
+    org.springframework.security: INFO
+    com.baomidou.mybatisplus: DEBUG
+  file:
+    path: /app/logs
+    name: /app/logs/ivd-app.log
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# ---- Actuator ----
+management:
+  server:
+    port: 8080
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# ---- Knife4j / Swagger ----
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

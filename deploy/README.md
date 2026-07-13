@@ -1,6 +1,6 @@
 # IVD 智慧实验室管理系统 — 一期部署包
 
-> 对应 PRD：《IVD 智慧实验室管理系统_一期MVP_PRD》第 9.6 节
+> 对应 PRD：《IVD 智慧实验室管理系统_一期MVP_PRD》第 9.6~9.8 节（部署拓扑 / 资产对照 / 加固建议）
 > 组件：MySQL 8.0 · Redis 7 · MinIO · XXL-Job Admin · ivd-app · Nginx
 
 ---
@@ -159,7 +159,7 @@ docker stats
 | 9.3 技术栈 | docker-compose.yml 全部组件版本对齐 |
 | 9.4 信创适配 | README §5.4 信创切换路径 |
 | 9.5 数据库约定 | my.cnf（utf8mb4/binlog/慢查询）、01-init-databases.sql |
-| 9.6 部署拓扑 | docker-compose.yml 服务编排 |
+| 9.6~9.8 部署拓扑 / 资产对照 / 加固建议 | docker-compose.yml 服务编排 + 备份/监控/资源限制 |
 | 8.6 审核兜底 | ivd-app 环境变量 IVD_AUDIT_FALLBACK_RELEASE |
 | 10.1 定时任务 | README §5.2 XXL-Job 任务清单 |
 

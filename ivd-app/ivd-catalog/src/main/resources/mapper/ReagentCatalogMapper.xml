@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.zlth.ivd.catalog.mapper.ReagentCatalogMapper">
+
+    <!--
+        自定义分页查询：支持多条件组合查询
+        注意：自定义 XML 不走 @TableLogic 自动追加，需显式过滤 is_deleted = 0
+    -->
+    <select id="pageList" resultType="com.zlth.ivd.catalog.entity.ReagentCatalog">
+        SELECT * FROM reagent_catalog
+        WHERE is_deleted = 0
+        <if test="query.hisCode != null and query.hisCode != ''">
+            AND his_code LIKE CONCAT('%', #{query.hisCode}, '%')
+        </if>
+        <if test="query.genericName != null and query.genericName != ''">
+            AND generic_name LIKE CONCAT('%', #{query.genericName}, '%')
+        </if>
+        <if test="query.udiDi != null and query.udiDi != ''">
+            AND udi_di LIKE CONCAT('%', #{query.udiDi}, '%')
+        </if>
+        <if test="query.registrationCertNo != null and query.registrationCertNo != ''">
+            AND registration_cert_no LIKE CONCAT('%', #{query.registrationCertNo}, '%')
+        </if>
+        <if test="query.manufacturer != null and query.manufacturer != ''">
+            AND manufacturer LIKE CONCAT('%', #{query.manufacturer}, '%')
+        </if>
+        <if test="query.distributor != null and query.distributor != ''">
+            AND distributor LIKE CONCAT('%', #{query.distributor}, '%')
+        </if>
+        <if test="query.materialType != null and query.materialType != ''">
+            AND material_type = #{query.materialType}
+        </if>
+        <if test="query.approvalStatus != null and query.approvalStatus != ''">
+            AND approval_status = #{query.approvalStatus}
+        </if>
+        <if test="query.testGroups != null and query.testGroups != ''">
+            AND test_groups LIKE CONCAT('%', #{query.testGroups}, '%')
+        </if>
+        ORDER BY updated_at DESC
+    </select>
+
+</mapper>

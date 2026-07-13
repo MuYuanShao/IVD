@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent><groupId>com.zlth.ivd</groupId><artifactId>ivd-app</artifactId><version>1.0.0-mvp</version></parent>
+    <artifactId>ivd-server</artifactId>
+    <name>IVD Server — 启动入口</name>
+    <description>Spring Boot 启动模块，聚合所有业务模块</description>
+
+    <dependencies>
+        <!-- 聚合所有业务模块 -->
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-common</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-catalog</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-license</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-procurement</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-inventory</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-consumption</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-settlement</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-finance</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-analytics</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-rules</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-audit</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-udi</artifactId></dependency>
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-integration</artifactId></dependency>
+
+        <!-- Spring Boot -->
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+
+        <!-- Flyway -->
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
+        <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-mysql</artifactId></dependency>
+        <dependency><groupId>com.mysql</groupId><artifactId>mysql-connector-j</artifactId></dependency>
+
+        <!-- MyBatis-Plus -->
+        <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>
+
+        <!-- XXL-Job -->
+        <dependency><groupId>com.xuxueli</groupId><artifactId>xxl-job-core</artifactId></dependency>
+
+        <!-- MinIO -->
+        <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId></dependency>
+
+        <!-- JWT -->
+        <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId></dependency>
+        <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId></dependency>
+        <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId></dependency>
+
+        <!-- Knife4j -->
+        <dependency><groupId>com.github.xiaoymin</groupId><artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId></dependency>
+
+        <!-- Actuator + Micrometer -->
+        <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals><goal>repackage</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

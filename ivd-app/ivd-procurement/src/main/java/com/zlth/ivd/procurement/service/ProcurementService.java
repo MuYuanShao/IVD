@@ -1,0 +1,48 @@
+package com.zlth.ivd.procurement.service;
+
+import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.procurement.dto.ReceiveItemRequest;
+import com.zlth.ivd.procurement.entity.*;
+import com.zlth.ivd.procurement.vo.PurchaseOrderVO;
+import com.zlth.ivd.procurement.vo.PurchaseRequisitionVO;
+import com.zlth.ivd.procurement.vo.ShortageOrderVO;
+import java.util.Map;
+
+/**
+ * 采购管理服务接口 — 统一管理申领/缺货/采购订单/验收
+ *
+ * @author IVD Team
+ * @since 2026-07-06
+ */
+public interface ProcurementService {
+
+    // ── 申领单 ──
+    PageVO<PurchaseRequisitionVO> listRequisitions(int page, int pageSize, String status, String keyword);
+    PurchaseRequisition createRequisition(PurchaseRequisition req);
+    PurchaseRequisition getRequisitionDetail(Long id);
+
+    // ── 缺货单 ──
+    PageVO<ShortageOrderVO> listShortages(int page, int pageSize, String status, String keyword);
+    ShortageOrder getShortageDetail(Long id);
+    ShortageOrder createShortageFromRequisition(Long reqId);
+
+    // ── 采购订单 ──
+    PageVO<PurchaseOrderVO> listOrders(int page, int pageSize, String status, String keyword);
+    PurchaseOrder getOrderDetail(Long id);
+    PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String paymentTerms, String remark);
+    PurchaseOrder createManualOrder(PurchaseOrder order);
+
+    // ── 验收 ──
+    void receiveOrder(ReceiveItemRequest request);
+
+    // ── 统计 ──
+    Map<String, Long> getRequisitionStats();
+    Map<String, Long> getShortageStats();
+    Map<String, Long> getOrderStats();
+
+    // ── 科室库请领记录 ──
+    PageVO<Map<String, Object>> listDeptRequisitions(int page, int pageSize, Long deptId);
+
+    // ── 智能补货建议 ──
+    java.util.List<Map<String, Object>> getSmartReplenishSuggestions(int days);
+}

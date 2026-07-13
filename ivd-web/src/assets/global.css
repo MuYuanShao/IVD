@@ -1,0 +1,213 @@
+/* ============================================================
+   IVD 智慧实验室管理系统 — 全局样式（效果图绿色主题）
+   配色来源: 一期MVP效果图_v2.html §4 设计Token
+   ============================================================ */
+
+:root {
+  /* === 品牌色（绿色系） === */
+  --ivd-primary: #059669;
+  --ivd-primary-light: #10b981;
+  --ivd-primary-dark: #047857;
+  --ivd-primary-bg: #ecfdf5;
+  --ivd-primary-border: #a7f3d0;
+
+  /* === 语义色 === */
+  --ivd-success: #10b981;
+  --ivd-success-bg: #ecfdf5;
+  --ivd-success-deep: #065f46;
+
+  --ivd-warning: #f59e0b;
+  --ivd-warning-bg: #fffbeb;
+  --ivd-warning-deep: #92400e;
+
+  --ivd-danger: #ef4444;
+  --ivd-danger-bg: #fef2f2;
+  --ivd-danger-deep: #991b1b;
+
+  --ivd-info: #3b82f6;
+  --ivd-info-bg: #eff6ff;
+  --ivd-info-deep: #1e40af;
+
+  --ivd-purple: #8b5cf6;
+  --ivd-purple-bg: #f5f3ff;
+  --ivd-purple-deep: #6d28d9;
+
+  /* === 文字层级 === */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-quaternary: #cbd5e1;
+
+  /* === 表面/背景 === */
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-zebra: #fafbfc;
+
+  /* === 侧边栏（深色） === */
+  --sidebar-bg: #0b1220;
+  --sidebar-bg-end: #131c30;
+  --sidebar-hover: #1c2741;
+  --sidebar-active: #10b981;
+
+  /* === 阴影系统 === */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.10);
+  --shadow-brand: 0 4px 14px rgba(5, 150, 105, 0.25);
+
+  /* === 圆角 === */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* === 图表配色 === */
+  --chart-green: #10b981;
+  --chart-blue: #3b82f6;
+  --chart-yellow: #f59e0b;
+  --chart-red: #ef4444;
+  --chart-cyan: #06b6d4;
+  --chart-purple: #8b5cf6;
+
+  /* === 状态颜色（保持兼容） === */
+  --status-approved: #10b981;
+  --status-pending: #f59e0b;
+  --status-draft: #94a3b8;
+  --status-rejected: #ef4444;
+
+  /* === 库存颜色 === */
+  --stock-normal: #10b981;
+  --stock-low: #f59e0b;
+  --stock-zero: #ef4444;
+}
+
+/* ============================================================
+   动画
+   ============================================================ */
+
+/* 脉动动画 — 待审批状态 */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 扫描线动画 */
+@keyframes scanLine {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+/* 渐入 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   通用状态指示器
+   ============================================================ */
+
+.status-pending-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--status-pending);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+/* ============================================================
+   页面布局通用类
+   ============================================================ */
+
+.page-container {
+  padding: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.toolbar-card {
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.stat-cards {
+  margin-bottom: 16px;
+}
+
+.stat-cards .el-statistic__number {
+  font-weight: 700;
+}
+
+/* ============================================================
+   表格行颜色标记
+   ============================================================ */
+
+.row-warn {
+  background-color: var(--ivd-warning-bg) !important;
+}
+
+.row-danger {
+  background-color: var(--ivd-danger-bg) !important;
+}
+
+.row-highlight {
+  background-color: #fefce8 !important;
+}
+
+/* ============================================================
+   vxe-table 覆盖
+   ============================================================ */
+
+.vxe-table .vxe-body--row.row-pending {
+  background-color: var(--ivd-warning-bg);
+}
+
+.vxe-table .vxe-body--row.row-rejected {
+  background-color: var(--ivd-danger-bg);
+}
+
+/* ============================================================
+   Element Plus 主题覆盖
+   ============================================================ */
+
+/* 主按钮绿色 */
+.el-button--primary {
+  --el-button-bg-color: var(--ivd-primary);
+  --el-button-border-color: var(--ivd-primary);
+  --el-button-hover-bg-color: var(--ivd-primary-light);
+  --el-button-hover-border-color: var(--ivd-primary-light);
+  --el-button-active-bg-color: var(--ivd-primary-dark);
+}
+
+/* 选中/高亮 */
+.el-menu-item.is-active {
+  color: var(--ivd-primary) !important;
+}
+
+.el-tabs__active-bar {
+  background-color: var(--ivd-primary) !important;
+}
+
+.el-tabs__item.is-active {
+  color: var(--ivd-primary) !important;
+}
+
+/* 分页 */
+.el-pagination .el-pager li.is-active {
+  background-color: var(--ivd-primary) !important;
+}
