@@ -20,6 +20,10 @@ public class ReagentBatchVO {
     private String batchNo;
     private Long reagentId;
     private String reagentName;
+    private String hisCode;
+    private String distributor;
+    private String manufacturer;
+    private String registrationCertNo;
     private MaterialTypeEnum materialType;
     private String udiDi;
     private String udiPi;

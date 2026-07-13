@@ -32,11 +32,18 @@
 
     <!-- 工具栏：搜索 -->
     <el-card shadow="never" style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <el-input v-model="search" placeholder="搜索批号/UDI/试剂名称" :prefix-icon="SearchIcon" clearable style="width:280px" @keyup.enter="fetchData" />
-        <el-select v-model="warehouseFilter" placeholder="全部库房" clearable style="width:160px" @change="fetchData">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <el-input v-model="search" placeholder="搜索批号/UDI" :prefix-icon="SearchIcon" clearable style="width:180px" @keyup.enter="fetchData" />
+        <el-input v-model="filterHisCode" placeholder="商品编码" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterReagentName" placeholder="商品名称" clearable style="width:150px" @keyup.enter="fetchData" />
+        <el-input v-model="filterDistributor" placeholder="配送商" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="fetchData" />
+        <el-select v-model="warehouseFilter" placeholder="全部库房" clearable style="width:150px" @change="fetchData">
           <el-option v-for="w in store.warehouses" :key="w.id" :label="w.name || w.warehouseName" :value="w.id" />
         </el-select>
+        <el-button type="primary" @click="fetchData">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
       </div>
     </el-card>
 
@@ -102,8 +109,34 @@ import TransferDialog from '@/components/TransferDialog.vue'
 const store = useInventoryStore()
 const page = ref(1), pageSize = ref(10)
 const search = ref(''), warehouseFilter = ref(null)
+const filterHisCode = ref(''), filterReagentName = ref('')
+const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
 
-function fetchData() { store.fetchBatches({ page: page.value, pageSize: pageSize.value, keyword: search.value || undefined, warehouseId: warehouseFilter.value || undefined }); store.fetchStats(); store.fetchWarehouses({ pageSize: 50 }) }
+function fetchData() {
+  store.fetchBatches({
+    page: page.value, pageSize: pageSize.value,
+    keyword: search.value || undefined,
+    warehouseId: warehouseFilter.value || undefined,
+    hisCode: filterHisCode.value || undefined,
+    reagentName: filterReagentName.value || undefined,
+    distributor: filterDistributor.value || undefined,
+    manufacturer: filterManufacturer.value || undefined,
+    registrationCertNo: filterRegistrationCert.value || undefined
+  })
+  store.fetchStats()
+  store.fetchWarehouses({ pageSize: 50 })
+}
+
+function resetFilters() {
+  search.value = ''
+  warehouseFilter.value = null
+  filterHisCode.value = ''
+  filterReagentName.value = ''
+  filterDistributor.value = ''
+  filterManufacturer.value = ''
+  filterRegistrationCert.value = ''
+  fetchData()
+}
 
 onMounted(() => { fetchData(); initCharts() })
 

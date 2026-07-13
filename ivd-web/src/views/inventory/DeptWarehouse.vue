@@ -34,11 +34,18 @@
     </el-row>
 
     <el-card shadow="never" style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
-        <el-input v-model="search" placeholder="搜索试剂/批号" :prefix-icon="SearchIcon" clearable style="width:240px" @keyup.enter="fetchData" />
+      <template #header><span class="card-title">📋 检验科库存清单</span></template>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <el-input v-model="search" placeholder="搜索试剂/批号" :prefix-icon="SearchIcon" clearable style="width:180px" @keyup.enter="fetchData" />
+        <el-input v-model="filterHisCode" placeholder="商品编码" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterReagentName" placeholder="商品名称" clearable style="width:150px" @keyup.enter="fetchData" />
+        <el-input v-model="filterDistributor" placeholder="配送商" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="fetchData" />
+        <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="fetchData" />
+        <el-button type="primary" size="small" @click="fetchData">查询</el-button>
+        <el-button size="small" @click="resetFilters">重置</el-button>
         <el-button type="danger" size="small" @click="handleUrgentReq">🚨 紧急请领</el-button>
       </div>
-      <template #header><span class="card-title">📋 检验科库存清单</span></template>
       <el-table :data="store.deptBatches" stripe v-loading="store.deptLoading" style="width:100%">
         <el-table-column prop="reagentName" label="试剂" width="140" />
         <el-table-column prop="batchNo" label="批号" width="120" />
@@ -108,11 +115,31 @@ const router = useRouter()
 const store = useInventoryStore()
 const reqPage = ref(1), reqPageSize = ref(10)
 const search = ref('')
+const filterHisCode = ref(''), filterReagentName = ref('')
+const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
 const lowStockAlert = ref(null)
 
 function fetchData() {
-  store.fetchDeptInventory({ page: 1, pageSize: 50, keyword: search.value || undefined })
+  store.fetchDeptInventory({
+    page: 1, pageSize: 50,
+    keyword: search.value || undefined,
+    hisCode: filterHisCode.value || undefined,
+    reagentName: filterReagentName.value || undefined,
+    distributor: filterDistributor.value || undefined,
+    manufacturer: filterManufacturer.value || undefined,
+    registrationCertNo: filterRegistrationCert.value || undefined
+  })
   store.fetchStats()
+}
+
+function resetFilters() {
+  search.value = ''
+  filterHisCode.value = ''
+  filterReagentName.value = ''
+  filterDistributor.value = ''
+  filterManufacturer.value = ''
+  filterRegistrationCert.value = ''
+  fetchData()
 }
 
 function handleUrgentReq() { router.push('/requisition?urgency=URGENT') }

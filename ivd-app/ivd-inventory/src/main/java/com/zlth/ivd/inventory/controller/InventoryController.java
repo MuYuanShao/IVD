@@ -30,8 +30,12 @@ public class InventoryController {
     public Result<PageVO<ReagentBatchVO>> listBatches(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String keyword, @RequestParam(required = false) String status,
-            @RequestParam(required = false) Long warehouseId) {
-        return Result.success(inventoryService.listBatches(page, pageSize, keyword, status, warehouseId));
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) String hisCode, @RequestParam(required = false) String reagentName,
+            @RequestParam(required = false) String distributor, @RequestParam(required = false) String manufacturer,
+            @RequestParam(required = false) String registrationCertNo) {
+        return Result.success(inventoryService.listBatches(page, pageSize, keyword, status, warehouseId,
+                hisCode, reagentName, distributor, manufacturer, registrationCertNo));
     }
 
     @GetMapping("/warehouses")
@@ -77,8 +81,12 @@ public class InventoryController {
     @GetMapping("/dept")
     public Result<PageVO<Map<String, Object>>> listDeptInventory(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize,
-            @RequestParam(required = false) Long deptId, @RequestParam(required = false) String keyword) {
-        return Result.success(inventoryService.listDeptInventory(page, pageSize, deptId, keyword));
+            @RequestParam(required = false) Long deptId, @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String hisCode, @RequestParam(required = false) String reagentName,
+            @RequestParam(required = false) String distributor, @RequestParam(required = false) String manufacturer,
+            @RequestParam(required = false) String registrationCertNo) {
+        return Result.success(inventoryService.listDeptInventory(page, pageSize, deptId, keyword,
+                hisCode, reagentName, distributor, manufacturer, registrationCertNo));
     }
 
     /** 科室库请领记录（一期占位，后续接入科室二级库） */
@@ -99,7 +107,7 @@ public class InventoryController {
     public void export(@RequestParam(defaultValue = "xlsx") String format,
                        @RequestParam(required = false) Long warehouseId,
                        HttpServletResponse response) {
-        PageVO<ReagentBatchVO> result = inventoryService.listBatches(1, 10000, null, null, warehouseId);
+        PageVO<ReagentBatchVO> result = inventoryService.listBatches(1, 10000, null, null, warehouseId, null, null, null, null, null);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ReagentBatchVO batch : result.getRecords()) {
             Map<String, Object> row = new LinkedHashMap<>();

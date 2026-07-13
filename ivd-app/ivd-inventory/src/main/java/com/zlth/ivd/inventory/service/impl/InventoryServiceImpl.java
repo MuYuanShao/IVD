@@ -39,14 +39,36 @@ public class InventoryServiceImpl implements InventoryService {
     private final ReagentCatalogMapper catalogMapper;
 
     @Override
-    public PageVO<ReagentBatchVO> listBatches(int page, int pageSize, String keyword, String status, Long warehouseId) {
+    public PageVO<ReagentBatchVO> listBatches(int page, int pageSize, String keyword, String status, Long warehouseId,
+                                               String hisCode, String reagentName, String distributor, String manufacturer, String registrationCertNo) {
+        // 1. 如果提供了试剂目录级筛选条件，先查出匹配的 reagentId 集合
+        Set<Long> catalogFilteredIds = null;
+        boolean hasCatalogFilter = hisCode != null || reagentName != null || distributor != null
+                || manufacturer != null || registrationCertNo != null;
+        if (hasCatalogFilter) {
+            LambdaQueryWrapper<ReagentCatalog> cqw = new LambdaQueryWrapper<>();
+            if (hisCode != null) cqw.like(ReagentCatalog::getHisCode, hisCode);
+            if (reagentName != null) cqw.like(ReagentCatalog::getGenericName, reagentName);
+            if (distributor != null) cqw.like(ReagentCatalog::getDistributor, distributor);
+            if (manufacturer != null) cqw.like(ReagentCatalog::getManufacturer, manufacturer);
+            if (registrationCertNo != null) cqw.like(ReagentCatalog::getRegistrationCertNo, registrationCertNo);
+            List<ReagentCatalog> matchedCatalogs = catalogMapper.selectList(cqw);
+            catalogFilteredIds = matchedCatalogs.stream().map(ReagentCatalog::getId).collect(Collectors.toSet());
+            if (catalogFilteredIds.isEmpty()) {
+                return PageVO.empty(page, pageSize);
+            }
+        }
+
+        // 2. 构建批次查询
         LambdaQueryWrapper<ReagentBatch> qw = new LambdaQueryWrapper<>();
         if (status != null) qw.eq(ReagentBatch::getUdiStatus, UdiStatusEnum.valueOf(status));
         if (warehouseId != null) qw.eq(ReagentBatch::getWarehouseId, warehouseId);
+        if (catalogFilteredIds != null) qw.in(ReagentBatch::getReagentId, catalogFilteredIds);
         if (keyword != null) qw.and(w -> w.like(ReagentBatch::getBatchNo, keyword).or().like(ReagentBatch::getUdiDi, keyword));
         qw.orderByAsc(ReagentBatch::getExpiryDate);
         Page<ReagentBatch> p = batchMapper.selectPage(new Page<>(page, pageSize), qw);
 
+        // 3. 批量加载试剂目录信息
         Set<Long> reagentIds = p.getRecords().stream().map(ReagentBatch::getReagentId).collect(Collectors.toSet());
         Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
         if (!reagentIds.isEmpty()) {
@@ -54,6 +76,7 @@ public class InventoryServiceImpl implements InventoryService {
             for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
         }
 
+        // 4. 组装 VO
         List<ReagentBatchVO> records = new ArrayList<>();
         for (ReagentBatch batch : p.getRecords()) {
             ReagentBatchVO vo = new ReagentBatchVO();
@@ -61,6 +84,10 @@ public class InventoryServiceImpl implements InventoryService {
             vo.setId(batch.getId()); vo.setBatchNo(batch.getBatchNo());
             vo.setReagentId(batch.getReagentId());
             vo.setReagentName(cat != null ? cat.getGenericName() : "试剂#" + batch.getReagentId());
+            vo.setHisCode(cat != null ? cat.getHisCode() : null);
+            vo.setDistributor(cat != null ? cat.getDistributor() : null);
+            vo.setManufacturer(cat != null ? cat.getManufacturer() : null);
+            vo.setRegistrationCertNo(cat != null ? cat.getRegistrationCertNo() : null);
             vo.setMaterialType(batch.getMaterialType());
             vo.setUdiDi(batch.getUdiDi()); vo.setUdiPi(batch.getUdiPi());
             vo.setManufactureDate(batch.getManufactureDate());
@@ -235,7 +262,26 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public PageVO<Map<String, Object>> listDeptInventory(int page, int pageSize, Long deptId, String keyword) {
+    public PageVO<Map<String, Object>> listDeptInventory(int page, int pageSize, Long deptId, String keyword,
+                                                          String hisCode, String reagentName, String distributor, String manufacturer, String registrationCertNo) {
+        // 0. 如果提供了试剂目录级筛选条件，先查出匹配的 reagentId 集合
+        Set<Long> catalogFilteredIds = null;
+        boolean hasCatalogFilter = hisCode != null || reagentName != null || distributor != null
+                || manufacturer != null || registrationCertNo != null;
+        if (hasCatalogFilter) {
+            LambdaQueryWrapper<ReagentCatalog> cqw = new LambdaQueryWrapper<>();
+            if (hisCode != null) cqw.like(ReagentCatalog::getHisCode, hisCode);
+            if (reagentName != null) cqw.like(ReagentCatalog::getGenericName, reagentName);
+            if (distributor != null) cqw.like(ReagentCatalog::getDistributor, distributor);
+            if (manufacturer != null) cqw.like(ReagentCatalog::getManufacturer, manufacturer);
+            if (registrationCertNo != null) cqw.like(ReagentCatalog::getRegistrationCertNo, registrationCertNo);
+            List<ReagentCatalog> matchedCatalogs = catalogMapper.selectList(cqw);
+            catalogFilteredIds = matchedCatalogs.stream().map(ReagentCatalog::getId).collect(Collectors.toSet());
+            if (catalogFilteredIds.isEmpty()) {
+                return PageVO.empty(page, pageSize);
+            }
+        }
+
         // 1. 找出科室级仓库（level=2）及下属组库（level=3）
         List<Long> deptWarehouseIds = new ArrayList<>();
         List<Warehouse> allWarehouses = warehouseMapper.selectList(null);
@@ -270,6 +316,7 @@ public class InventoryServiceImpl implements InventoryService {
         LambdaQueryWrapper<ReagentBatch> qw = new LambdaQueryWrapper<>();
         qw.in(ReagentBatch::getWarehouseId, deptWarehouseIds);
         qw.gt(ReagentBatch::getStock, BigDecimal.ZERO);
+        if (catalogFilteredIds != null) qw.in(ReagentBatch::getReagentId, catalogFilteredIds);
         if (keyword != null && !keyword.isBlank()) {
             qw.and(w -> w.like(ReagentBatch::getBatchNo, keyword).or().like(ReagentBatch::getUdiDi, keyword));
         }
@@ -296,6 +343,10 @@ public class InventoryServiceImpl implements InventoryService {
             row.put("id", batch.getId());
             row.put("reagentId", batch.getReagentId());
             row.put("reagentName", catalog != null ? catalog.getGenericName() : "试剂#" + batch.getReagentId());
+            row.put("hisCode", catalog != null ? catalog.getHisCode() : null);
+            row.put("distributor", catalog != null ? catalog.getDistributor() : null);
+            row.put("manufacturer", catalog != null ? catalog.getManufacturer() : null);
+            row.put("registrationCertNo", catalog != null ? catalog.getRegistrationCertNo() : null);
             row.put("batchNo", batch.getBatchNo());
             row.put("udiDi", batch.getUdiDi());
             row.put("expiryDate", batch.getExpiryDate() != null ? batch.getExpiryDate().toString() : null);

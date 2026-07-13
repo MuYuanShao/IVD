@@ -55,7 +55,16 @@
     <!-- 组库库存明细 -->
     <el-card shadow="never">
       <template #header><span class="card-title">📦 {{ groups.find(g=>g.value===selectedGroup)?.label || '组库' }} 库存明细</span></template>
-      <el-table :data="fefoDetailList" stripe style="width:100%">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <el-input v-model="filterHisCode" placeholder="商品编码" clearable style="width:130px" @keyup.enter="applyFilter" />
+        <el-input v-model="filterReagentName" placeholder="商品名称" clearable style="width:150px" @keyup.enter="applyFilter" />
+        <el-input v-model="filterDistributor" placeholder="配送商" clearable style="width:130px" @keyup.enter="applyFilter" />
+        <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="applyFilter" />
+        <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="applyFilter" />
+        <el-button type="primary" size="small" @click="applyFilter">查询</el-button>
+        <el-button size="small" @click="resetFilters">重置</el-button>
+      </div>
+      <el-table :data="filteredDetailList" stripe style="width:100%">
         <el-table-column prop="code" label="编码" width="100" />
         <el-table-column prop="name" label="名称" width="140" />
         <el-table-column prop="spec" label="规格" width="90" />
@@ -71,7 +80,7 @@
         <el-table-column prop="batchNo" label="批号" width="110" />
       </el-table>
       <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);background:#f0fdf4;padding:8px 16px;border-radius:8px;">
-        共 <strong>{{ fefoDetailList.length }}</strong> 种试剂 · <strong>116</strong> 盒 · 库存金额 <strong>¥284,900</strong>
+        共 <strong>{{ filteredDetailList.length }}</strong> 种试剂 · <strong>116</strong> 盒 · 库存金额 <strong>¥284,900</strong>
       </div>
     </el-card>
 
@@ -97,6 +106,10 @@ const groups = [
 
 const currentGroupLeader = computed(() => groups.find(g => g.value === selectedGroup.value)?.leader || '—')
 
+// ── 搜索过滤 ──
+const filterHisCode = ref(''), filterReagentName = ref('')
+const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
+
 const fefoDetailList = ref([
   { code: '051266', name: 'CK-MB检测试剂盒', spec: '100T', model: 'R1:20ml×2, R2:10ml×2', unitPrice: 1200, unit: '盒', qty: 32, amount: 38400, manufacturer: '九强生物', supplier: '国药控股', productionDate: '2026-04-12', expiryDate: '2027-04-12', batchNo: '250612' },
   { code: '051267', name: 'ALT测定试剂盒', spec: '200T', model: 'R1:50ml×2, R2:25ml×2', unitPrice: 850, unit: '盒', qty: 25, amount: 21250, manufacturer: '美康生物', supplier: '九州通医药', productionDate: '2026-05-08', expiryDate: '2027-05-08', batchNo: '250608' },
@@ -113,6 +126,31 @@ function fetchData() { store.fetchFefo(null, selectedGroup.value) }
 function handleGroupChange() { fetchData() }
 
 onMounted(() => { fetchData() })
+
+// ── 客户端过滤（对接后端后可由 API 参数替代）──
+const filteredDetailList = computed(() => {
+  let list = fefoDetailList.value
+  const hc = filterHisCode.value?.trim().toLowerCase()
+  const rn = filterReagentName.value?.trim().toLowerCase()
+  const db = filterDistributor.value?.trim().toLowerCase()
+  const mf = filterManufacturer.value?.trim().toLowerCase()
+  const rc = filterRegistrationCert.value?.trim().toLowerCase()
+  if (hc) list = list.filter(r => (r.code || '').toLowerCase().includes(hc))
+  if (rn) list = list.filter(r => (r.name || '').toLowerCase().includes(rn))
+  if (db) list = list.filter(r => (r.supplier || '').toLowerCase().includes(db))
+  if (mf) list = list.filter(r => (r.manufacturer || '').toLowerCase().includes(mf))
+  if (rc) list = list.filter(r => (r.registrationCertNo || '').toLowerCase().includes(rc))
+  return list
+})
+
+function applyFilter() { /* computed 自动更新，占位用于后续 API 对接 */ }
+function resetFilters() {
+  filterHisCode.value = ''
+  filterReagentName.value = ''
+  filterDistributor.value = ''
+  filterManufacturer.value = ''
+  filterRegistrationCert.value = ''
+}
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
