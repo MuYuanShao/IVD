@@ -1,20 +1,16 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+// 命令式组件样式（ElMessage / ElMessageBox — template 中使用的组件由 unplugin-vue-components 按需注入）
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
 
 import App from './App.vue'
 import router from './router'
 import './assets/global.css'
 
 const app = createApp(App)
-
-// 全局注册 Element Plus 图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
 
 app.use(createPinia())
 app.use(router)

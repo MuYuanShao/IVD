@@ -1,5 +1,7 @@
 package com.zlth.ivd.common.utils;
 
+import com.zlth.ivd.common.exception.BizException;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,7 +32,7 @@ public final class PhiUtils {
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm not available", e);
+            throw new BizException(50005, "SHA-256 算法不可用", e);
         }
     }
 

@@ -1,6 +1,11 @@
 # =============================================================================
 # IVD 智慧实验室管理系统 — 一期 MVP 主配置
 # 对应 PRD §9.3 技术栈 §9.5 数据库约定 §9.6 部署拓扑
+#
+# ⚠️  安全警告：本文件包含本地开发的默认凭据，仅供开发环境使用。
+#     生产部署时必须通过环境变量覆盖所有密码/密钥/Token：
+#       SPRING_DATASOURCE_PASSWORD  JWT_SECRET  MINIO_ACCESS_KEY  MINIO_SECRET_KEY
+#       XXL_JOB_ACCESS_TOKEN        SPRING_DATA_REDIS_PASSWORD
 # =============================================================================
 
 server:
@@ -22,11 +27,11 @@ spring:
     resources:
       add-mappings: false
 
-  # ---- 数据库 ----
+  # ---- 数据库 (生产环境务必通过 SPRING_DATASOURCE_PASSWORD 覆盖默认密码) ----
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/ivd?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
     username: ${SPRING_DATASOURCE_USERNAME:root}
-    password: ${SPRING_DATASOURCE_PASSWORD:123456789}
+    password: ${SPRING_DATASOURCE_PASSWORD:123456789}  # ⚠️ 仅用于本地开发
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20
@@ -120,10 +125,13 @@ ivd:
     fallback-release: ${IVD_AUDIT_FALLBACK_RELEASE:true}
   # JWT 配置
   jwt:
-    # ⚠️ 生产环境务必通过 JWT_SECRET 环境变量覆盖此随机默认值
+    # ⚠️ 生产环境务必通过 JWT_SECRET 环境变量覆盖！此默认值已公开在代码仓库中
     secret: ${JWT_SECRET:28841e0c5d11def36aa972a5bc0298fd940a13fc3d67fdda32a2d1a0280814b9f67335c14fbd97d3944f2b6068cd4b67}
     expiration: 7200000  # 2h
     refresh-expiration: 604800000  # 7d
+  # 文件上传路径（生产环境通过 IVD_UPLOAD_PATH 环境变量覆盖）
+  upload:
+    path: ${IVD_UPLOAD_PATH:data/uploads}
 
 # ---- 日志 ----
 logging:

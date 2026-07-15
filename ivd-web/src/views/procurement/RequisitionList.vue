@@ -133,12 +133,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus, Download, Delete } from '@element-plus/icons-vue'
 import { useProcurementStore } from '@/stores/procurement'
 import { getReqStatusType } from '@/utils/procurement'
+import { getDeptOptions } from '@/api/system'
+import { getCatalogList } from '@/api/catalog'
 import RequisitionDetailDialog from '@/components/RequisitionDetailDialog.vue'
 import ReagentPicker from '@/components/ReagentPicker.vue'
 
@@ -154,13 +156,34 @@ onMounted(() => {
     newReqForm.urgency = 'URGENT'
   }
   fetchData()
+  loadOptions()
 })
+
+// ── 搜索防抖 ──
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; fetchData() }, 300)
+})
+
+onBeforeUnmount(() => { clearTimeout(searchTimer) })
+
+async function loadOptions() {
+  try {
+    const depts = await getDeptOptions()
+    if (depts && depts.length) deptOptions.value = depts.map(d => ({ value: d.id, label: d.name }))
+  } catch (e) { console.error('加载科室列表失败:', e) }
+  try {
+    const list = await getCatalogList({ page: 1, pageSize: 200 })
+    if (list && list.records) reagentOptions.value = list.records
+  } catch (e) { console.error('加载试剂列表失败:', e) }
+}
 
 // ── 申领明细 ──
 const showReqDetailDialog = ref(false), reqDetail = ref(null)
 async function viewDetail(id) {
   showReqDetailDialog.value = true; reqDetail.value = null
-  try { reqDetail.value = await store.fetchRequisitionDetail(id) } catch {}
+  try { reqDetail.value = await store.fetchRequisitionDetail(id) } catch (e) { console.error('获取申领明细失败:', e) }
 }
 
 // ── 审核 ──
@@ -169,7 +192,7 @@ async function doReview(id) {
     await ElMessageBox.confirm('确认通过该申领单？', '审核确认', { confirmButtonText: '通过', type: 'warning' })
     ElMessage.success('申领单已审核通过')
     fetchData()
-  } catch {}
+  } catch (e) { /* 用户取消确认，无需处理 */ }
 }
 
 // ── 导出 ──
@@ -189,17 +212,8 @@ const batchSelected = ref([])
 const batchConfirmedItems = ref([])
 const newReqForm = reactive({ deptId: null, urgency: 'NORMAL', remark: '', items: [{ reagentId: null, qty: 1 }] })
 const newReqRules = { deptId: [{ required: true, message: '请选择申领科室', trigger: 'change' }] }
-const deptOptions = [
-  { value: 1, label: '检验科·免疫组' }, { value: 2, label: '检验科·生化组' },
-  { value: 3, label: '检验科·临检组' }, { value: 4, label: '检验科·微生物组' }, { value: 5, label: '检验科·分子组' }
-]
-const reagentOptions = ref([
-  { id: 1, name: 'CK-MB检测试剂盒', spec: '100T/盒', testGroup: '免疫' },
-  { id: 2, name: 'ALT测定试剂盒', spec: '200T/盒', testGroup: '生化' },
-  { id: 3, name: '肌酐测定试剂盒(酶法)', spec: '200T/盒', testGroup: '生化' },
-  { id: 4, name: 'CEA检测试剂盒', spec: '100T/盒', testGroup: '免疫' },
-  { id: 5, name: '凝血酶原时间测定试剂盒', spec: '150T/盒', testGroup: '临检' }
-])
+const deptOptions = ref([])
+const reagentOptions = ref([])
 
 const reagentPickerItems = computed(() =>
   reagentOptions.value.map(r => ({ ...r, genericName: r.name, reagentName: r.name, supplierName: '—' }))
@@ -244,17 +258,3 @@ function resetNewReq() {
 }
 </script>
 
-<style scoped>
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; cursor: pointer; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--danger { border-top: 3px solid var(--ivd-danger); }
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; }
-.stat-cards { margin-bottom: 16px; }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

@@ -10,7 +10,12 @@ export const useInventoryStore = defineStore('inventory', () => {
   const batches = ref([])
   const total = ref(0)
   const warehouses = ref([])
-  const stats = ref({ total: 0, expiring30: 0, expiring90: 0 })
+  const stats = ref({
+    total: 0, expiring30: 0, expiring90: 0,
+    todayInbound: 0, todayOutbound: 0,
+    deptTotal: 0, deptDispatched: 0,
+    lowStock: 0, pendingRequisitions: 0
+  })
   const expiryAlerts = ref([])
   const fefoList = ref([])
   const traceResult = ref(null)

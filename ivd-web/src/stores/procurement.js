@@ -49,7 +49,7 @@ export const useProcurementStore = defineStore('procurement', () => {
   }
 
   async function fetchRequisitionStats() {
-    try { const s = await getRequisitionStats(); if (s) Object.assign(reqStats.value, s) } catch { /* keep defaults */ }
+    try { const s = await getRequisitionStats(); if (s) Object.assign(reqStats.value, s) } catch (e) { console.error('获取申领统计失败:', e) }
   }
 
   async function fetchRequisitionDetail(id) {
@@ -73,7 +73,7 @@ export const useProcurementStore = defineStore('procurement', () => {
   }
 
   async function fetchShortageStats() {
-    try { const s = await getShortageStats(); if (s) Object.assign(shStats.value, s) } catch {}
+    try { const s = await getShortageStats(); if (s) Object.assign(shStats.value, s) } catch (e) { console.error('获取缺货统计失败:', e) }
   }
 
   async function doCreateOrderFromShortage(data) {
@@ -97,7 +97,7 @@ export const useProcurementStore = defineStore('procurement', () => {
   }
 
   async function fetchOrderStats() {
-    try { const s = await getOrderStats(); if (s) Object.assign(poStats.value, s) } catch {}
+    try { const s = await getOrderStats(); if (s) Object.assign(poStats.value, s) } catch (e) { console.error('获取订单统计失败:', e) }
   }
 
   async function fetchOrderDetail(id) {
@@ -154,7 +154,8 @@ export const useProcurementStore = defineStore('procurement', () => {
           warehouseId: item.warehouseId || 1
         })
         successCount++
-      } catch {
+      } catch (e) {
+        console.error('验收请求失败:', e)
         failCount++
       }
     }

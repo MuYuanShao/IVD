@@ -68,7 +68,7 @@
           <span style="flex:1">UDI追溯</span>
         </el-menu-item>
         <el-menu-item index="/central">
-          <el-icon><Storage /></el-icon>
+          <el-icon><Collection /></el-icon>
           <span style="flex:1">中心库 (一级)</span>
         </el-menu-item>
         <el-menu-item index="/dept">
@@ -117,7 +117,7 @@
           <span style="flex:1">科室管理</span>
         </el-menu-item>
         <el-menu-item index="/system/warehouses">
-          <el-icon><Storage /></el-icon>
+          <el-icon><Collection /></el-icon>
           <span style="flex:1">库房管理</span>
         </el-menu-item>
 
@@ -157,7 +157,7 @@
           <div class="global-search">
             <el-input v-model="searchText" placeholder="搜索试剂/批号/供应商..." :prefix-icon="Search" size="small" style="width:240px" clearable @keyup.enter="doGlobalSearch" />
           </div>
-          <el-badge :value="3" class="notice-badge">
+          <el-badge :value="notificationCount" class="notice-badge" :hidden="!notificationCount">
             <el-icon :size="20"><Bell /></el-icon>
           </el-badge>
           <!-- ★ P1修复：帮助按钮（对照效果图 line 688） -->
@@ -191,24 +191,60 @@ import { ElMessage } from 'element-plus'
 import { ref, computed, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Search } from '@element-plus/icons-vue'
+import { useProcurementStore } from '@/stores/procurement'
+import { useInventoryStore } from '@/stores/inventory'
+import { useLicenseStore } from '@/stores/license'
+import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const procurementStore = useProcurementStore()
+const inventoryStore = useInventoryStore()
+const licenseStore = useLicenseStore()
 
 const isCollapse = ref(false)
 const activeMenu = computed(() => route.path)
 const searchText = ref('')
+// TODO: notificationCount — 暂无 notification API 端点，保持为 0
+const notificationCount = ref(0)
 
-// ── 菜单 Badge 数量（实际业务数据，后端联调后会自动填充） ──
+// ── 菜单 Badge 数量（由后端 API 填充，初始为 0）──
 const badgeCounts = reactive({
-  license: 2,     // 即将到期证照
-  requisition: 3, // 待处理申领单
-  shortage: 2,    // 活跃缺货单
-  purchase: 5,    // 待确认采购订单
-  expiry: 5,      // 近效期批次
-  audit: 3,       // 待人工审核结果
+  license: 0,     // 即将到期证照
+  requisition: 0, // 待处理申领单
+  shortage: 0,    // 活跃缺货单
+  purchase: 0,    // 待确认采购订单
+  expiry: 0,      // 近效期批次
+  audit: 0,       // TODO: 待人工审核结果 — 暂无 audit stats API
+})
+
+// ── 从各 Store API 拉取 Badge 数量 ──
+async function fetchBadgeCounts() {
+  try {
+    await procurementStore.fetchRequisitionStats()
+    badgeCounts.requisition = procurementStore.reqStats.pending
+  } catch { /* 静默 */ }
+  try {
+    await procurementStore.fetchShortageStats()
+    badgeCounts.shortage = procurementStore.shStats.total
+  } catch { /* 静默 */ }
+  try {
+    await procurementStore.fetchOrderStats()
+    badgeCounts.purchase = procurementStore.poStats.pending
+  } catch { /* 静默 */ }
+  try {
+    await licenseStore.fetchStats()
+    badgeCounts.license = licenseStore.stats.expiring
+  } catch { /* 静默 */ }
+  try {
+    await inventoryStore.fetchStats()
+    badgeCounts.expiry = inventoryStore.stats.expiring30
+  } catch { /* 静默 */ }
+}
+
+onMounted(() => {
+  fetchBadgeCounts()
 })
 
 // ── 面包屑父级 ──

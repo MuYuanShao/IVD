@@ -21,8 +21,8 @@
     <el-row :gutter="16" class="stat-cards">
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--danger"><el-statistic title="紧急 ≤30天" :value="store.stats.expiring30 || 0" suffix="项" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="关注 ≤90天" :value="store.stats.expiring90 || 0" suffix="项" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="安全 >90天" :value="156" suffix="项" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="涉险库存金额" value="18.6" suffix="万" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="安全 >90天" :value="store.stats.safe || 0" suffix="项" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="涉险库存金额" :value="store.stats.riskAmount || 0" suffix="万" /></el-card></el-col>
     </el-row>
 
     <el-row :gutter="16" style="margin-bottom:16px">
@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useInventoryStore } from '@/stores/inventory'
 import { useECharts } from '@/composables/useECharts'
@@ -89,40 +89,50 @@ function getSuggestion(row) { return getExpirySuggestion(row) }
 
 function fetchData() { store.fetchExpiryAlerts(levelFilter.value === 'urgent' ? 30 : 90, warehouseFilter.value || undefined); store.fetchStats(); store.fetchWarehouses({ pageSize: 50 }) }
 
-onMounted(() => { fetchData(); initCharts() })
-
 // ── ECharts ──
 const pieRef = ref(null), timelineRef = ref(null)
+const expiryPieData = ref([])
+const timelineDates = ref([])
+const timelineBatches = ref([])
+const timelineAmounts = ref([])
 
-function initCharts() {
-  useECharts(pieRef, () => ({
-    tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', right: 10, top: 'center' },
-    series: [{
-      type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'], label: { show: false },
-      data: [
-        { value: 2, name: '≤30天(紧急)', itemStyle: { color: '#ef4444' } },
-        { value: 3, name: '31-90天(关注)', itemStyle: { color: '#f59e0b' } },
-        { value: 156, name: '>90天(安全)', itemStyle: { color: '#10b981' } }
-      ]
-    }]
-  }))
+const pieChart = useECharts(pieRef, () => ({
+  tooltip: { trigger: 'item' },
+  legend: { orient: 'vertical', right: 10, top: 'center' },
+  series: [{
+    type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'], label: { show: false },
+    data: expiryPieData.value
+  }]
+}))
 
-  useECharts(timelineRef, () => ({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['到期批次', '累计涉险金额(万)'], bottom: 0 },
-    grid: { left: 12, right: 12, top: 12, bottom: 28 },
-    xAxis: { type: 'category', data: ['7月', '8月', '9月', '10月', '11月', '12月'] },
-    yAxis: [
-      { type: 'value', name: '批次' },
-      { type: 'value', name: '万' }
-    ],
-    series: [
-      { name: '到期批次', type: 'bar', data: [2, 3, 5, 4, 8, 12], barWidth: 12, itemStyle: { color: '#f59e0b' } },
-      { name: '累计涉险金额(万)', type: 'line', yAxisIndex: 1, data: [3.2, 8.5, 15.8, 22.1, 35.6, 52.0], lineStyle: { color: '#ef4444' }, itemStyle: { color: '#ef4444' } }
-    ]
-  }))
+const timelineChart = useECharts(timelineRef, () => ({
+  tooltip: { trigger: 'axis' },
+  legend: { data: ['到期批次', '累计涉险金额(万)'], bottom: 0 },
+  grid: { left: 12, right: 12, top: 12, bottom: 28 },
+  xAxis: { type: 'category', data: timelineDates.value },
+  yAxis: [
+    { type: 'value', name: '批次' },
+    { type: 'value', name: '万' }
+  ],
+  series: [
+    { name: '到期批次', type: 'bar', data: timelineBatches.value, barWidth: 12, itemStyle: { color: '#f59e0b' } },
+    { name: '累计涉险金额(万)', type: 'line', yAxisIndex: 1, data: timelineAmounts.value, lineStyle: { color: '#ef4444' }, itemStyle: { color: '#ef4444' } }
+  ]
+}))
+
+function populateChartData() {
+  expiryPieData.value = [
+    { name: '≤30天紧急', value: Math.floor(Math.random() * 20) + 5 },
+    { name: '31-90天关注', value: Math.floor(Math.random() * 40) + 15 },
+    { name: '>90天安全', value: Math.floor(Math.random() * 200) + 80 }
+  ]
+  timelineDates.value = ['7月', '8月', '9月', '10月', '11月', '12月']
+  timelineBatches.value = [12, 18, 15, 22, 20, 25]
+  let cum = 0
+  timelineAmounts.value = [8, 12, 10, 15, 18, 22].map(v => { cum += v; return cum })
 }
+
+onMounted(() => { fetchData(); populateChartData(); nextTick(() => { pieChart.refresh?.(); timelineChart.refresh?.() }) })
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
@@ -139,24 +149,9 @@ function openTransfer(row, source) { sourceName.value = source; maxQty.value = r
 async function doSubmitTransfer(form) {
   transferLoading.value = true
   try { await store.doTransfer(1, form.targetWarehouse, form.quantity); ElMessage.success('处理成功'); showTransferDialog.value = false; fetchData() }
-  catch {} finally { transferLoading.value = false }
+  catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 
 function handleExport() { ElMessage.success('效期预警清单导出中，即将下载...') }
 </script>
 
-<style scoped>
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; margin-left: 8px; }
-.header-right { display: flex; gap: 8px; }
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--danger { border-top: 3px solid var(--ivd-danger); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-cards { margin-bottom: 16px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

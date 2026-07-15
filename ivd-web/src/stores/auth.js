@@ -66,8 +66,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const data = await getUserInfo()
       user.value = data
-    } catch {
-      // 静默失败
+    } catch (e) {
+      console.error('获取用户信息失败:', e)
     }
   }
 

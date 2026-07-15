@@ -43,6 +43,9 @@ public interface LicenseService {
     /** 上传附件到 MinIO */
     String uploadAttachment(Long licenseId, MultipartFile file, Long operatorId);
 
+    /** 下载/预览附件 */
+    void downloadAttachment(Long licenseId, String objectKey, jakarta.servlet.http.HttpServletResponse response);
+
     /** 处理证照过期（XXL-Job） */
     void processExpiryCheck();
 

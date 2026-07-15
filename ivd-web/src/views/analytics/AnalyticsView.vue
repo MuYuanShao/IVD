@@ -211,7 +211,7 @@ const wasteData = ref([]), wasteLoading = ref(false)
 const costBarRef = ref(null), wastePieRef = ref(null)
 let costChart = null, wasteChart = null
 
-onMounted(() => { fetchAll(); nextTick(initCharts) })
+onMounted(() => { fetchAll() })
 onBeforeUnmount(() => { costChart?.dispose(); wasteChart?.dispose() })
 
 watch(activeTab, () => nextTick(renderCharts))

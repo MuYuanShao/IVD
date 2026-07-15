@@ -274,7 +274,7 @@
           </el-col>
         </el-row>
         <el-form-item label="证照附件">
-          <el-upload drag :auto-upload="false" :limit="3" accept=".pdf,.jpg,.jpeg,.png">
+          <el-upload ref="uploadFilesRef" drag :auto-upload="false" :limit="3" accept=".pdf,.jpg,.jpeg,.png">
             <el-icon :size="40" color="#059669"><UploadFilled /></el-icon>
             <div style="font-size:13px;color:#475569;margin-top:8px">拖拽文件到此处，或点击上传</div>
             <template #tip><div style="font-size:12px;color:#94a3b8;margin-top:4px">支持 PDF / JPG / PNG，单文件不超过 20MB</div></template>
@@ -288,13 +288,20 @@
     </el-dialog>
 
     <!-- 附件预览弹窗 -->
-    <el-dialog v-model="showPreviewDialog" title="附件预览" width="800px" top="5vh">
+    <el-dialog v-model="showPreviewDialog" title="附件预览" width="800px" top="5vh" @closed="revokePreviewUrl()">
       <div v-if="previewItem" class="preview-container">
-        <img v-if="previewItem.type !== 'pdf'" :src="previewUrl" alt="预览" style="max-width:100%" />
+        <div v-if="previewLoading" style="text-align:center;padding:60px">
+          <el-icon :size="48" class="is-loading"><Loading /></el-icon>
+          <p style="margin-top:12px;color:#94a3b8">加载中...</p>
+        </div>
+        <template v-else-if="previewItem.type !== 'pdf'">
+          <img v-if="previewUrl" :src="previewUrl" alt="预览" style="max-width:100%" />
+          <el-empty v-else description="加载失败，请重试" :image-size="80" />
+        </template>
         <div v-else style="text-align:center;padding:40px">
           <el-icon :size="64" color="#ef4444"><Document /></el-icon>
           <p style="color:#475569;margin-top:12px">{{ previewItem.name }}</p>
-          <el-button type="primary" style="margin-top:16px">下载查看</el-button>
+          <el-button type="primary" style="margin-top:16px" @click="downloadAttachment">下载查看</el-button>
         </div>
       </div>
     </el-dialog>
@@ -306,10 +313,11 @@ import { ref, reactive, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Search, Upload, Download, View, Edit, Stamp, OfficeBuilding, Document, Medal, Checked,
-  Paperclip, Document as DocIcon, PictureFilled, UploadFilled, InfoFilled, ArrowDown
+  Paperclip, Document as DocIcon, PictureFilled, UploadFilled, InfoFilled, ArrowDown, Loading
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { useLicenseStore } from '@/stores/license'
+import { getSuppliers } from '@/api/license'
 import request from '@/utils/request'
 
 const licenseStore = useLicenseStore()
@@ -334,10 +342,19 @@ const detailData = ref(null)
 const showUploadDialog = ref(false)
 const uploading = ref(false)
 const uploadFormRef = ref(null)
+const uploadFilesRef = ref(null)
 const editingLicenseId = ref(null)
-const suppliers = ref([
-  { id: 1, name: '迈瑞医疗' }, { id: 2, name: '罗氏诊断' }, { id: 3, name: '贝克曼库尔特' }
-])
+const suppliers = ref([])
+
+async function loadSuppliers() {
+  try {
+    const res = await getSuppliers()
+    suppliers.value = res || []
+  } catch {
+    // keep empty array on failure
+  }
+}
+
 const uploadForm = reactive({
   supplierId: null, licenseType: '', certNo: '', issuingAuthority: '', issueDate: null, expireDate: null
 })
@@ -351,6 +368,7 @@ const uploadRules = {
 
 // 预览弹窗
 const showPreviewDialog = ref(false)
+const previewLoading = ref(false)
 const previewItem = ref(null)
 const previewUrl = ref('')
 
@@ -359,7 +377,7 @@ watch(searchText, () => { clearTimeout(searchTimer); searchTimer = setTimeout(()
 watch([filterType, filterStatus], () => { page.value = 1; fetchData() })
 
 onMounted(() => {
-  fetchData(); licenseStore.fetchStats(); licenseStore.fetchExpiryAlerts()
+  fetchData(); licenseStore.fetchStats(); licenseStore.fetchExpiryAlerts(); loadSuppliers()
   nextTick(() => initCharts())
 })
 onBeforeUnmount(() => { pieChart?.dispose(); barChart?.dispose() })
@@ -424,13 +442,28 @@ async function handleUpload() {
   if (!valid) return
   uploading.value = true
   try {
-    if (editingLicenseId.value) {
-      await licenseStore.update(editingLicenseId.value, { ...uploadForm, operatorId: 1, operatorName: '管理员' })
-      ElMessage.success('证照更新成功')
+    // 1. 创建/更新证照元数据
+    let licenseId = editingLicenseId.value
+    if (licenseId) {
+      await licenseStore.update(licenseId, { ...uploadForm, operatorId: 1, operatorName: '管理员' })
     } else {
-      await licenseStore.create({ ...uploadForm, operatorId: 1, operatorName: '管理员' })
-      ElMessage.success('证照上传成功')
+      const created = await licenseStore.create({ ...uploadForm, operatorId: 1, operatorName: '管理员' })
+      licenseId = created?.id
     }
+
+    // 2. 上传选中的附件
+    const files = uploadFilesRef.value?.uploadFiles || []
+    for (const f of files) {
+      if (f.raw) {
+        const formData = new FormData()
+        formData.append('file', f.raw)
+        try {
+          await request.post(`/license/${licenseId}/upload`, formData)
+        } catch { /* 单个文件上传失败不中断流程 */ }
+      }
+    }
+
+    ElMessage.success(editingLicenseId.value ? '证照更新成功' : '证照上传成功')
     showUploadDialog.value = false
     fetchData(); licenseStore.fetchStats()
   } catch { /* handled */ } finally { uploading.value = false }
@@ -439,6 +472,7 @@ async function handleUpload() {
 function resetUploadForm() {
   editingLicenseId.value = null
   uploadFormRef.value?.resetFields()
+  uploadFilesRef.value?.clearFiles()
   Object.assign(uploadForm, { supplierId: null, licenseType: '', certNo: '', issuingAuthority: '', issueDate: null, expireDate: null })
 }
 
@@ -459,8 +493,7 @@ async function handleImportFile(e) {
   formData.append('operatorName', '管理员')
   try {
     const res = await request({
-      url: '/license/import', method: 'post', data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' }
+      url: '/license/import', method: 'post', data: formData
     })
     ElMessage.success(`证照导入完成：成功 ${res.success} 条，跳过 ${res.skipped} 条`)
     fetchData(); licenseStore.fetchStats()
@@ -491,7 +524,75 @@ async function handleExport(format) {
   }
 }
 
-function previewAttachment(att) { previewItem.value = att; previewUrl.value = ''; showPreviewDialog.value = true }
+async function previewAttachment(att) {
+  // 释放旧 blob URL，防止内存泄漏
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+  previewItem.value = att
+  previewLoading.value = true
+  showPreviewDialog.value = true
+
+  if (!detailData.value?.id || !att.objectKey) {
+    previewLoading.value = false
+    return
+  }
+
+  try {
+    const blob = await request.get(
+      `/license/${detailData.value.id}/file/${encodeURIComponent(att.objectKey)}`,
+      { responseType: 'blob' }
+    )
+    // 检测错误响应：后端异常会返回 200 OK JSON 而非实际图片
+    if (blob.type === 'application/json' || blob.type === '') {
+      const text = await blob.text()
+      try {
+        const err = JSON.parse(text)
+        throw new Error(err.message || '服务器返回错误')
+      } catch (parseErr) {
+        if (parseErr.message !== '服务器返回错误') {
+          throw new Error('服务器返回了非预期的响应格式')
+        }
+        throw parseErr
+      }
+    }
+    previewUrl.value = URL.createObjectURL(blob)
+  } catch (e) {
+    console.error('附件预览失败:', e)
+    ElMessage.error('附件预览失败: ' + (e.message || '未知错误'))
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function downloadAttachment() {
+  if (!detailData.value?.id || !previewItem.value?.objectKey) return
+  try {
+    const blob = await request.get(
+      `/license/${detailData.value.id}/file/${encodeURIComponent(previewItem.value.objectKey)}`,
+      { responseType: 'blob' }
+    )
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = previewItem.value.name || 'attachment'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) {
+    console.error('下载附件失败:', e)
+  }
+}
+
+function revokePreviewUrl() {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+  previewLoading.value = false
+}
 
 function formatFileSize(bytes) {
   if (!bytes) return '0 B'
@@ -505,8 +606,8 @@ function statusTagType(s) {
 }
 
 function licenseTypeIcon(type) {
-  const icons = { PRODUCT_REG: 'Stamp', PRODUCTION: 'Medal', OPERATION: 'Stamp', GMP: 'Checked', GSP: 'Checked', OTHER: 'InfoFilled' }
-  return icons[type] || 'Document'
+  const icons = { PRODUCT_REG: Stamp, PRODUCTION: Medal, OPERATION: Stamp, GMP: Checked, GSP: Checked, OTHER: InfoFilled }
+  return icons[type] || Document
 }</script>
 
 <style scoped>
@@ -515,7 +616,6 @@ function licenseTypeIcon(type) {
 .stat-card--success { border-top: 3px solid var(--ivd-success); }
 .stat-card--warning { border-top: 3px solid var(--ivd-warning); }
 .stat-card--info { border-top: 3px solid var(--ivd-info); }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .text-danger { color: var(--ivd-danger); font-weight: 500; }
 
 .attachment-list { display: flex; flex-direction: column; gap: 8px; }

@@ -19,16 +19,16 @@ public interface ProcurementService {
     // ── 申领单 ──
     PageVO<PurchaseRequisitionVO> listRequisitions(int page, int pageSize, String status, String keyword);
     PurchaseRequisition createRequisition(PurchaseRequisition req);
-    PurchaseRequisition getRequisitionDetail(Long id);
+    PurchaseRequisitionVO getRequisitionDetail(Long id);
 
     // ── 缺货单 ──
     PageVO<ShortageOrderVO> listShortages(int page, int pageSize, String status, String keyword);
-    ShortageOrder getShortageDetail(Long id);
+    ShortageOrderVO getShortageDetail(Long id);
     ShortageOrder createShortageFromRequisition(Long reqId);
 
     // ── 采购订单 ──
     PageVO<PurchaseOrderVO> listOrders(int page, int pageSize, String status, String keyword);
-    PurchaseOrder getOrderDetail(Long id);
+    PurchaseOrderVO getOrderDetail(Long id);
     PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String paymentTerms, String remark);
     PurchaseOrder createManualOrder(PurchaseOrder order);
 

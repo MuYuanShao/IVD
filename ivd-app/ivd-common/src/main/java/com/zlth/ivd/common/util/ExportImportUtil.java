@@ -5,6 +5,7 @@ import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
 import cn.hutool.poi.excel.ExcelWriter;
 import cn.hutool.poi.excel.StyleSet;
+import com.zlth.ivd.common.exception.BizException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -68,7 +69,7 @@ public final class ExportImportUtil {
             writer.flush(response.getOutputStream(), true);
         } catch (IOException e) {
             log.error("导出 Excel 失败: {}", fileName, e);
-            throw new RuntimeException("导出 Excel 失败", e);
+            throw new BizException(50001, "导出 Excel 失败: " + fileName, e);
         }
     }
 
@@ -107,7 +108,7 @@ public final class ExportImportUtil {
             bos.flush();
         } catch (IOException e) {
             log.error("导出 CSV 失败: {}", fileName, e);
-            throw new RuntimeException("导出 CSV 失败", e);
+            throw new BizException(50002, "导出 CSV 失败: " + fileName, e);
         }
     }
 
@@ -123,7 +124,7 @@ public final class ExportImportUtil {
     public static List<Map<String, Object>> importFromFile(MultipartFile file, List<String> headers) {
         String filename = file.getOriginalFilename();
         if (filename == null || filename.isBlank()) {
-            throw new IllegalArgumentException("文件名不能为空");
+            throw new BizException(40001, "文件名不能为空");
         }
 
         String ext = filename.toLowerCase();
@@ -132,7 +133,7 @@ public final class ExportImportUtil {
         } else if (ext.endsWith(".xlsx") || ext.endsWith(".xls")) {
             return importExcel(file, headers);
         } else {
-            throw new IllegalArgumentException("不支持的文件格式: " + filename + "（仅支持 .xlsx / .xls / .csv）");
+            throw new BizException(40001, "不支持的文件格式: " + filename + "（仅支持 .xlsx / .xls / .csv）");
         }
     }
 
@@ -159,7 +160,7 @@ public final class ExportImportUtil {
             return result;
         } catch (IOException e) {
             log.error("导入 Excel 失败", e);
-            throw new RuntimeException("导入 Excel 失败: " + e.getMessage(), e);
+            throw new BizException(50003, "导入 Excel 失败", e);
         }
     }
 
@@ -194,7 +195,7 @@ public final class ExportImportUtil {
             return result;
         } catch (IOException e) {
             log.error("导入 CSV 失败", e);
-            throw new RuntimeException("导入 CSV 失败: " + e.getMessage(), e);
+            throw new BizException(50004, "导入 CSV 失败", e);
         }
     }
 

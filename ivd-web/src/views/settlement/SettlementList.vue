@@ -79,18 +79,9 @@ async function doSettle() {
 async function doReverse(row) {
   try {
     const { value } = await ElMessageBox.prompt('请输入冲销原因', '冲销结算', { confirmButtonText: '确认冲销', type: 'warning' })
-    await reverseSettlement(row.id, 1, value || '')
+    await reverseSettlement(row.id, value || '')
     fetchRecords(); fetchStats()
   } catch {}
 }
 </script>
 
-<style scoped>
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; }
-</style>

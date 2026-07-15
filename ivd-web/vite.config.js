@@ -14,7 +14,7 @@ export default defineConfig({
       imports: ['vue', 'vue-router', 'pinia']
     }),
     Components({
-      resolvers: [ElementPlusResolver()]
+      resolvers: [ElementPlusResolver({ importStyle: 'css' })]
     })
   ],
   resolve: {
@@ -43,9 +43,6 @@ export default defineConfig({
           }
           if (id.includes('node_modules/echarts')) {
             return 'echarts'
-          }
-          if (id.includes('node_modules/vxe')) {
-            return 'vxe-table'
           }
         }
       }

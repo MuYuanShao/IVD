@@ -3,14 +3,23 @@ package com.zlth.ivd.consumption.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zlth.ivd.catalog.entity.ReagentCatalog;
+import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.common.enums.ConsumptionPurposeEnum;
+import com.zlth.ivd.common.enums.ConsumptionRecordTypeEnum;
 import com.zlth.ivd.common.enums.UdiStatusEnum;
 import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.consumption.entity.ConsumptionRecord;
 import com.zlth.ivd.consumption.mapper.ConsumptionRecordMapper;
 import com.zlth.ivd.consumption.service.ConsumptionService;
+import com.zlth.ivd.consumption.vo.ConsumptionRecordVO;
+import com.zlth.ivd.inventory.entity.Device;
+import com.zlth.ivd.inventory.entity.DeviceBatchLoad;
 import com.zlth.ivd.inventory.entity.ReagentBatch;
+import com.zlth.ivd.inventory.mapper.DeviceBatchLoadMapper;
+import com.zlth.ivd.inventory.mapper.DeviceMapper;
 import com.zlth.ivd.inventory.mapper.ReagentBatchMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,16 +39,60 @@ public class ConsumptionServiceImpl implements ConsumptionService {
 
     private final ConsumptionRecordMapper recordMapper;
     private final ReagentBatchMapper batchMapper;
+    private final DeviceMapper deviceMapper;
+    private final DeviceBatchLoadMapper loadMapper;
+    private final ReagentCatalogMapper catalogMapper;
 
     @Override
-    public PageVO<ConsumptionRecord> listRecords(int page, int pageSize, String recordType, Long deviceId, Long reagentId) {
+    public PageVO<ConsumptionRecordVO> listRecords(int page, int pageSize, String recordType, Long deviceId, Long reagentId) {
         LambdaQueryWrapper<ConsumptionRecord> qw = new LambdaQueryWrapper<>();
         if (recordType != null) qw.eq(ConsumptionRecord::getRecordType, recordType);
         if (deviceId != null) qw.eq(ConsumptionRecord::getDeviceId, deviceId);
         if (reagentId != null) qw.eq(ConsumptionRecord::getReagentId, reagentId);
         qw.orderByDesc(ConsumptionRecord::getOccurredAt);
         Page<ConsumptionRecord> p = recordMapper.selectPage(new Page<>(page, pageSize), qw);
-        return new PageVO<>(p.getTotal(), page, pageSize, p.getRecords());
+
+        // Batch fetch device names
+        Set<Long> deviceIds = p.getRecords().stream().map(ConsumptionRecord::getDeviceId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> deviceNameMap = new HashMap<>();
+        if (!deviceIds.isEmpty()) {
+            List<Device> devices = deviceMapper.selectBatchIds(deviceIds);
+            for (Device d : devices) deviceNameMap.put(d.getId(), d.getName());
+        }
+
+        // Batch fetch reagent names
+        Set<Long> reagentIds = p.getRecords().stream().map(ConsumptionRecord::getReagentId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> reagentNameMap = new HashMap<>();
+        if (!reagentIds.isEmpty()) {
+            List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(reagentIds);
+            for (ReagentCatalog c : catalogs) reagentNameMap.put(c.getId(), c.getGenericName());
+        }
+
+        // Build VOs
+        List<ConsumptionRecordVO> records = new ArrayList<>();
+        for (ConsumptionRecord r : p.getRecords()) {
+            ConsumptionRecordVO vo = new ConsumptionRecordVO();
+            vo.setId(r.getId());
+            vo.setRecordType(r.getRecordType());
+            vo.setBatchNo(r.getBatchNo());
+            vo.setReagentId(r.getReagentId());
+            vo.setReagentName(r.getReagentId() != null ? reagentNameMap.getOrDefault(r.getReagentId(), "试剂#" + r.getReagentId()) : null);
+            vo.setMaterialType(r.getMaterialType());
+            vo.setDeviceId(r.getDeviceId());
+            vo.setDeviceName(r.getDeviceId() != null ? deviceNameMap.getOrDefault(r.getDeviceId(), "设备#" + r.getDeviceId()) : null);
+            vo.setQuantity(r.getQuantity());
+            vo.setUnit(r.getUnit());
+            vo.setUnitPrice(r.getUnitPrice());
+            vo.setAmount(r.getAmount());
+            vo.setPurpose(r.getPurpose());
+            vo.setWarehouseId(r.getWarehouseId());
+            vo.setOperatorId(r.getOperatorId());
+            vo.setRemark(r.getRemark());
+            vo.setOccurredAt(r.getOccurredAt());
+            vo.setCreatedAt(r.getCreatedAt());
+            records.add(vo);
+        }
+        return new PageVO<>(p.getTotal(), page, pageSize, records);
     }
 
     @Override
@@ -50,14 +103,14 @@ public class ConsumptionServiceImpl implements ConsumptionService {
 
         // 写入消耗记录
         ConsumptionRecord record = new ConsumptionRecord();
-        record.setRecordType("CONSUME");
+        record.setRecordType(ConsumptionRecordTypeEnum.CONSUME.getCode());
         record.setBatchNo(batch.getBatchNo());
         record.setReagentId(batch.getReagentId());
         record.setDeviceId(deviceId);
         record.setQuantity(qty);
         record.setUnitPrice(batch.getUnitPrice());
         record.setAmount(batch.getUnitPrice() != null ? batch.getUnitPrice().multiply(qty) : null);
-        record.setPurpose(purpose != null ? purpose : "ROUTINE");
+        record.setPurpose(purpose != null ? purpose : ConsumptionPurposeEnum.ROUTINE.getCode());
         record.setOperatorId(operatorId);
         record.setRemark(remark);
         record.setOccurredAt(LocalDateTime.now());
@@ -100,7 +153,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         ReagentBatch batch = inboundBatchStock(batchId, qty, warehouseId);
 
         ConsumptionRecord record = new ConsumptionRecord();
-        record.setRecordType("INBOUND");
+        record.setRecordType(ConsumptionRecordTypeEnum.INBOUND.getCode());
         record.setBatchNo(batch.getBatchNo());
         record.setReagentId(batch.getReagentId());
         record.setQuantity(qty);
@@ -142,7 +195,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
             new LambdaQueryWrapper<ReagentBatch>().eq(ReagentBatch::getBatchNo, batchNo)
         );
         if (batch == null) throw new BizException(40400, "批次不存在: " + batchNo);
-        recordConsumption(batch.getId(), deviceId, qty, "BATCH_TEST", "批量核销");
+        recordConsumption(batch.getId(), deviceId, qty, ConsumptionPurposeEnum.BATCH_TEST.getCode(), "批量核销");
     }
 
     @Override
@@ -153,9 +206,22 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         stats.put("totalRecords", recordMapper.selectCount(qw));
         stats.put("todayConsume", recordMapper.selectCount(
             new LambdaQueryWrapper<ConsumptionRecord>()
-                .eq(ConsumptionRecord::getRecordType, "CONSUME")
+                .eq(ConsumptionRecord::getRecordType, ConsumptionRecordTypeEnum.CONSUME.getCode())
                 .ge(ConsumptionRecord::getOccurredAt, LocalDateTime.now().toLocalDate().atStartOfDay())
         ));
+
+        // activeDevices: count of devices where isActive = true
+        try {
+            stats.put("activeDevices", deviceMapper.selectCount(
+                new LambdaQueryWrapper<Device>().eq(Device::getIsActive, true)));
+        } catch (Exception e) { stats.put("activeDevices", 0L); }
+
+        // pendingWriteoff: count of device_batch_load records where unloadedAt IS NULL (batch still loaded)
+        try {
+            stats.put("pendingWriteoff", loadMapper.selectCount(
+                new LambdaQueryWrapper<DeviceBatchLoad>().isNull(DeviceBatchLoad::getUnloadedAt)));
+        } catch (Exception e) { stats.put("pendingWriteoff", 0L); }
+
         return stats;
     }
 }

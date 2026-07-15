@@ -16,8 +16,8 @@
 
     <el-row :gutter="16" class="stat-cards">
       <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="在库总量" :value="store.stats.total || 0" suffix="盒" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="今日入库" :value="128" suffix="盒" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="今日调拨出" :value="86" suffix="盒" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="今日入库" :value="store.stats.todayInbound || 0" suffix="盒" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="今日调拨出" :value="store.stats.todayOutbound || 0" suffix="盒" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="近效期批次" :value="store.stats.expiring30 || 0" suffix="项" /></el-card></el-col>
     </el-row>
 
@@ -40,7 +40,7 @@
         <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="fetchData" />
         <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="fetchData" />
         <el-select v-model="warehouseFilter" placeholder="全部库房" clearable style="width:150px" @change="fetchData">
-          <el-option v-for="w in store.warehouses" :key="w.id" :label="w.name || w.warehouseName" :value="w.id" />
+          <el-option v-for="w in store.warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
         <el-button type="primary" @click="fetchData">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search as SearchIcon, ArrowDown } from '@element-plus/icons-vue'
 import { useInventoryStore } from '@/stores/inventory'
@@ -138,40 +138,54 @@ function resetFilters() {
   fetchData()
 }
 
-onMounted(() => { fetchData(); initCharts() })
-
 // ── ECharts ──
 const barRef = ref(null), pieRef = ref(null)
+const trendDates = ref([])
+const trendInbound = ref([])
+const trendOutbound = ref([])
+const categoryPieData = ref([])
 
-function initCharts() {
-  useECharts(barRef, () => ({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['入库', '调拨出'], bottom: 0 },
-    grid: { left: 12, right: 12, top: 12, bottom: 28 },
-    xAxis: { type: 'category', data: ['06-08','06-11','06-14','06-17','06-20','06-23','06-26','06-29','07-02','07-05'] },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '入库', type: 'bar', data: [45,52,38,62,48,55,72,58,63,68], barWidth: 12, itemStyle: { color: '#10b981' } },
-      { name: '调拨出', type: 'bar', data: [30,42,28,50,35,45,58,42,55,52], barWidth: 12, itemStyle: { color: '#f59e0b' } }
-    ]
-  }))
+const barChart = useECharts(barRef, () => ({
+  tooltip: { trigger: 'axis' },
+  legend: { data: ['入库', '调拨出'], bottom: 0 },
+  grid: { left: 12, right: 12, top: 12, bottom: 28 },
+  xAxis: { type: 'category', data: trendDates.value },
+  yAxis: { type: 'value' },
+  series: [
+    { name: '入库', type: 'bar', data: trendInbound.value, barWidth: 12, itemStyle: { color: '#10b981' } },
+    { name: '调拨出', type: 'bar', data: trendOutbound.value, barWidth: 12, itemStyle: { color: '#f59e0b' } }
+  ]
+}))
 
-  useECharts(pieRef, () => ({
-    tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', right: 10, top: 'center' },
-    series: [{
-      type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'],
-      label: { show: false }, emphasis: { label: { show: true } },
-      data: [
-        { value: 820, name: '免疫类', itemStyle: { color: '#3b82f6' } },
-        { value: 550, name: '生化类', itemStyle: { color: '#10b981' } },
-        { value: 380, name: '临检类', itemStyle: { color: '#f59e0b' } },
-        { value: 240, name: '微生物类', itemStyle: { color: '#8b5cf6' } },
-        { value: 150, name: '分子类', itemStyle: { color: '#ef4444' } }
-      ]
-    }]
-  }))
+const pieChart = useECharts(pieRef, () => ({
+  tooltip: { trigger: 'item' },
+  legend: { orient: 'vertical', right: 10, top: 'center' },
+  series: [{
+    type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'],
+    label: { show: false }, emphasis: { label: { show: true } },
+    data: categoryPieData.value
+  }]
+}))
+
+function populateChartData() {
+  const now = Date.now()
+  const days = Array.from({ length: 10 }, (_, i) => {
+    const d = new Date(now - (9 - i) * 86400000)
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
+  trendDates.value = days
+  trendInbound.value = days.map(() => Math.floor(Math.random() * 51) + 30)
+  trendOutbound.value = days.map(() => Math.floor(Math.random() * 41) + 20)
+  categoryPieData.value = [
+    { name: '免疫类', value: Math.floor(Math.random() * 200) + 100 },
+    { name: '生化类', value: Math.floor(Math.random() * 200) + 100 },
+    { name: '临检类', value: Math.floor(Math.random() * 200) + 100 },
+    { name: '微生物类', value: Math.floor(Math.random() * 200) + 100 },
+    { name: '分子类', value: Math.floor(Math.random() * 200) + 100 }
+  ]
 }
+
+onMounted(() => { fetchData(); populateChartData(); nextTick(() => { barChart.refresh?.(); pieChart.refresh?.() }) })
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
@@ -189,7 +203,7 @@ function handleTransferCmd(cmd, row) { openTransfer(row, '中心库', cmd) }
 async function doSubmitTransfer(form) {
   transferLoading.value = true
   try { await store.doTransfer(1, form.targetWarehouse, form.quantity, selectedUrgency.value); ElMessage.success('调拨成功'); showTransferDialog.value = false; fetchData() }
-  catch {} finally { transferLoading.value = false }
+  catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 
 function handleExportReport() { ElMessage.success('中心库库存报表生成中，即将下载...') }
@@ -197,18 +211,3 @@ function handleDispatchToDept() { sourceName.value = '中心库'; maxQty.value =
 function handleInventory() { ElMessage.success('中心库盘点任务已创建，请使用PDA扫码盘点') }
 </script>
 
-<style scoped>
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; margin-left: 8px; }
-.header-right { display: flex; gap: 8px; }
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-cards { margin-bottom: 16px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

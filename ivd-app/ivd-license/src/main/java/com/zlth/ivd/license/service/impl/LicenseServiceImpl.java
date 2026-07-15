@@ -3,10 +3,13 @@ package com.zlth.ivd.license.service.impl;
 import cn.hutool.core.util.IdUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.enums.LicenseStatusEnum;
 import com.zlth.ivd.common.enums.LicenseTypeEnum;
 import com.zlth.ivd.common.exception.BizException;
+import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.license.dto.CreateLicenseRequest;
 import com.zlth.ivd.license.dto.LicenseQuery;
 import com.zlth.ivd.license.dto.UpdateLicenseRequest;
@@ -18,14 +21,28 @@ import com.zlth.ivd.license.mapper.SupplierMapper;
 import com.zlth.ivd.license.service.LicenseService;
 import com.zlth.ivd.license.vo.LicenseDetailVO;
 import com.zlth.ivd.license.vo.LicenseVO;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -45,6 +62,11 @@ public class LicenseServiceImpl implements LicenseService {
     private final SupplierLicenseMapper licenseMapper;
     private final SupplierMapper supplierMapper;
     private final LicenseChangeLogMapper changeLogMapper;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Value("${ivd.upload.path:data/uploads}")
+    private String uploadBasePath;
 
     @Override
     public PageVO<LicenseVO> listLicenses(LicenseQuery query) {
@@ -215,9 +237,59 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public String uploadAttachment(Long licenseId, MultipartFile file, Long operatorId) {
-        // TODO: MinIO 上传实现
-        log.info("证照附件上传: licenseId={}, fileName={}, size={}", licenseId, file.getOriginalFilename(), file.getSize());
-        return "mock-object-key-" + IdUtil.getSnowflakeNextId();
+        SupplierLicense license = licenseMapper.selectById(licenseId);
+        if (license == null) {
+            throw new BizException(40400, "证照不存在");
+        }
+
+        // 本地存储路径: {ivd.upload.path}/license/{licenseId}/
+        String uploadDir = uploadBasePath + File.separator + "license" + File.separator + licenseId;
+        File dir = new File(uploadDir);
+        if (!dir.isAbsolute()) {
+            dir = new File(System.getProperty("user.dir"), uploadDir);
+        }
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        // 生成唯一文件名（防冲突），并清理路径穿越字符
+        String originalName = file.getOriginalFilename();
+        String safeName = sanitizeFilename(originalName != null ? originalName : "file");
+        String objectKey = System.currentTimeMillis() + "_" + safeName;
+
+        try {
+            File dest = new File(dir, objectKey);
+            file.transferTo(dest);
+        } catch (IOException e) {
+            log.error("附件保存失败: licenseId={}, fileName={}", licenseId, originalName, e);
+            throw new BizException(50000, "附件保存失败: " + e.getMessage());
+        }
+
+        // 构建附件条目
+        String username = SecurityUtils.getCurrentUsername();
+        LicenseDetailVO.AttachmentItem item = LicenseDetailVO.AttachmentItem.builder()
+                .name(originalName != null ? originalName : "file")
+                .objectKey(objectKey)
+                .size(file.getSize())
+                .type(getFileExtension(originalName))
+                .uploadedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .uploadedBy(username != null ? username : "管理员")
+                .build();
+
+        // 更新 supplier_license.attachments JSON 字段
+        List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
+        attachments.add(item);
+
+        try {
+            license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+        } catch (Exception e) {
+            log.error("附件JSON序列化失败", e);
+            throw new BizException(50000, "附件信息保存失败");
+        }
+        licenseMapper.updateById(license);
+
+        log.info("证照附件上传成功: licenseId={}, objectKey={}, fileName={}", licenseId, objectKey, originalName);
+        return objectKey;
     }
 
     @Override
@@ -300,10 +372,99 @@ public class LicenseServiceImpl implements LicenseService {
         changeLogMapper.insert(log);
     }
 
-    @SuppressWarnings("unchecked")
     private List<LicenseDetailVO.AttachmentItem> parseAttachments(String json) {
-        // TODO: 使用 Jackson 解析 JSON
-        return Collections.emptyList();
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(json, new TypeReference<List<LicenseDetailVO.AttachmentItem>>() {});
+        } catch (Exception e) {
+            log.error("解析附件JSON失败，附件数据可能已损坏: {}", e.getMessage());
+            throw new BizException(50000, "附件数据解析失败，请联系管理员修复");
+        }
+    }
+
+    @Override
+    public void downloadAttachment(Long licenseId, String objectKey, HttpServletResponse response) {
+        // 防止路径穿越攻击
+        String safeKey = sanitizeFilename(objectKey);
+        String relativePath = uploadBasePath + File.separator + "license" + File.separator + licenseId + File.separator + safeKey;
+        Path path = Paths.get(relativePath);
+        if (!path.isAbsolute()) {
+            path = Paths.get(System.getProperty("user.dir"), relativePath);
+        }
+        // 二次校验：确保规范化后的路径仍在预期的上传目录内
+        Path uploadDir = Paths.get(uploadBasePath).toAbsolutePath().normalize();
+        if (!path.toAbsolutePath().normalize().startsWith(uploadDir)) {
+            log.warn("路径穿越攻击检测: licenseId={}, objectKey={}", licenseId, objectKey);
+            throw new BizException(40400, "附件文件不存在");
+        }
+        if (!Files.exists(path)) {
+            throw new BizException(40400, "附件文件不存在");
+        }
+
+        // 从附件记录中获取原始文件名
+        SupplierLicense license = licenseMapper.selectById(licenseId);
+        String originalName = objectKey;
+        if (license != null && StringUtils.hasText(license.getAttachments())) {
+            List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
+            for (LicenseDetailVO.AttachmentItem att : attachments) {
+                if (objectKey.equals(att.getObjectKey())) {
+                    originalName = att.getName();
+                    break;
+                }
+            }
+        }
+
+        String contentType = guessContentType(originalName);
+        response.setContentType(contentType);
+        response.setHeader("Content-Disposition",
+                "inline; filename=\"" + URLEncoder.encode(originalName, StandardCharsets.UTF_8) + "\"");
+        response.setHeader("Cache-Control", "max-age=86400");
+
+        try (FileInputStream fis = new FileInputStream(path.toFile());
+             OutputStream os = response.getOutputStream()) {
+            StreamUtils.copy(fis, os);
+            os.flush();
+        } catch (IOException e) {
+            log.error("下载附件失败: {}", relativePath, e);
+            throw new BizException(50000, "附件读取失败");
+        }
+    }
+
+    private String getFileExtension(String filename) {
+        if (filename == null) return "unknown";
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".pdf")) return "pdf";
+        if (lower.endsWith(".png")) return "png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpg";
+        if (lower.endsWith(".gif")) return "gif";
+        if (lower.endsWith(".bmp")) return "bmp";
+        return "unknown";
+    }
+
+    /**
+     * 清理文件名中的路径穿越字符，防止目录遍历攻击
+     */
+    private String sanitizeFilename(String filename) {
+        if (filename == null) return "file";
+        // 移除路径分隔符和路径穿越序列
+        return filename.replaceAll("[/\\\\]+", "_")
+                .replaceAll("\\.\\.", "_")
+                .replaceAll("\\p{Cntrl}", "")  // 移除控制字符
+                .replaceAll("^[.\\s]+", "")     // 去除前导点和空白
+                .trim();
+    }
+
+    private String guessContentType(String filename) {
+        if (filename == null) return "application/octet-stream";
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".bmp")) return "image/bmp";
+        return "application/octet-stream";
     }
 
     private String changeTypeLabel(String type) {

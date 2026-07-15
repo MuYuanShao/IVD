@@ -16,6 +16,11 @@ export function useECharts(chartRef, optionsFn) {
 
   function initChart() {
     if (!chartRef.value) return
+    // 移除旧监听器，防止多次调用 initChart 导致 handler 累积泄漏
+    if (resizeHandler) {
+      window.removeEventListener('resize', resizeHandler)
+      resizeHandler = null
+    }
     if (chartInstance.value) {
       chartInstance.value.dispose()
     }

@@ -205,12 +205,6 @@ onMounted(() => { fetchDecisions().then(() => initPieChart()) })
 
 
 <style scoped>
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--danger { border-top: 3px solid var(--ivd-danger); }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .audit-tile { text-align: center; padding: 16px 8px; border-radius: var(--radius-md); background: var(--bg-page); }
 .tile--warn { background: #fffbeb; }
 .tile--hold { background: #fef2f2; }

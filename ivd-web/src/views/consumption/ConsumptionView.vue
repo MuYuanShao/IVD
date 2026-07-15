@@ -16,8 +16,8 @@
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-cards">
       <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="今日消耗记录" :value="stats.todayConsume || 0" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="活跃设备数" :value="stats.activeDevices || 8" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="待核销批次" value="3" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="活跃设备数" :value="stats.activeDevices ?? 0" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="待核销批次" :value="stats.pendingWriteoff || 0" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="总消耗记录" :value="stats.totalRecords || 0" /></el-card></el-col>
     </el-row>
 
@@ -63,18 +63,22 @@
         <el-table-column prop="occurredAt" label="时间" width="100">
           <template #default="{row}">{{ formatTime(row.occurredAt) }}</template>
         </el-table-column>
-        <el-table-column prop="deviceName" label="设备" width="120" />
-        <el-table-column prop="reagentName" label="试样" width="100" />
+        <el-table-column label="设备" width="120">
+          <template #default="{row}">{{ row.deviceName || (row.deviceId ? '设备 #' + row.deviceId : '—') }}</template>
+        </el-table-column>
+        <el-table-column label="试样" width="100">
+          <template #default="{row}">{{ row.reagentName || (row.reagentId ? '试剂 #' + row.reagentId : '—') }}</template>
+        </el-table-column>
         <el-table-column prop="batchNo" label="批次" width="150" />
         <el-table-column label="核销方式" width="100">
           <template #default="{row}">
-            <el-tag :type="row.consumeMethod === 'BATCH' ? '' : 'info'" size="small">{{ row.consumeMethod === 'BATCH' ? '批量' : '手动' }}</el-tag>
+            <el-tag :type="row.recordType === 'BATCH_TEST' ? '' : 'info'" size="small">{{ recordTypeLabel(row.recordType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="消耗量" width="90">
           <template #default="{row}">{{ row.quantity || 0 }} Test</template>
         </el-table-column>
-        <el-table-column prop="patientRef" label="关联患者" width="160" show-overflow-tooltip />
+        <el-table-column prop="remark" label="备注" width="160" show-overflow-tooltip />
       </el-table>
       <el-pagination
         v-model:current-page="page" v-model:page-size="pageSize" :total="total"
@@ -133,12 +137,47 @@ const page = ref(1), pageSize = ref(10)
 const records = ref([]), loading = ref(false), total = ref(0)
 const stats = ref({})
 
-// Active devices matching effect diagram
-const devices = ref([
-  { deviceId: 1, deviceCode: 'AU5800-01', deviceName: 'AU5800-01', manufacturer: '贝克曼', loadedBatch: 'BATCH-20250618A', reagentName: 'CK-MB', loadedAt: '09:15', estimatedUnload: '17:00', status: 'IN_USE' },
-  { deviceId: 2, deviceCode: 'AU5800-01', deviceName: 'AU5800-01', manufacturer: '贝克曼', loadedBatch: '20260512B', reagentName: '肌酐(酶法)', loadedAt: '08:00', estimatedUnload: '12:00', status: 'PENDING_UNLOAD' },
-  { deviceId: 3, deviceCode: 'Cobas e801', deviceName: 'Cobas e801', manufacturer: '罗氏', loadedBatch: 'LOT-CEA-2409', reagentName: 'CEA', loadedAt: '07:30', estimatedUnload: '15:30', status: 'CONSUMED' },
-])
+// 活跃设备列表 — 当前使用 mock 数据作为桥接，待后端 API 就绪后替换为真实接口
+// TODO: GET /api/consumption/devices?status=ACTIVE 返回活跃上机设备列表（目前 loadDevices() 提供 mock 数据；后端接口就绪后改为由 fetchData 统一加载）
+const devices = ref([])
+
+function loadDevices() {
+  devices.value = [
+    {
+      deviceId: 1,
+      deviceCode: 'DEV-001',
+      deviceName: '全自动生化分析仪 BS-800',
+      manufacturer: '迈瑞',
+      loadedBatch: 'B20260714001',
+      reagentName: 'ALT丙氨酸氨基转移酶',
+      loadedAt: '2026-07-14 08:15',
+      estimatedUnload: '2026-07-14 18:00',
+      status: 'IN_USE'
+    },
+    {
+      deviceId: 2,
+      deviceCode: 'DEV-002',
+      deviceName: '全自动化学发光仪 CL-6000i',
+      manufacturer: '迈瑞',
+      loadedBatch: 'B20260713005',
+      reagentName: 'TSH促甲状腺激素',
+      loadedAt: '2026-07-13 14:30',
+      estimatedUnload: '2026-07-15 14:30',
+      status: 'PENDING_UNLOAD'
+    },
+    {
+      deviceId: 3,
+      deviceCode: 'DEV-003',
+      deviceName: '全自动血液分析仪 BC-6800',
+      manufacturer: '迈瑞',
+      loadedBatch: 'B20260712003',
+      reagentName: '血常规溶血剂',
+      loadedAt: '2026-07-12 09:00',
+      estimatedUnload: '2026-07-12 17:00',
+      status: 'CONSUMED'
+    }
+  ]
+}
 
 // Scan/Consume dialog
 const showConsumeDialog = ref(false), consumeLoading = ref(false)
@@ -153,28 +192,19 @@ const consumeRules = {
   qty: [{ required: true, message: '请输入数量' }]
 }
 
-onMounted(() => { fetchRecords(); fetchStats() })
+onMounted(() => { loadDevices(); fetchRecords(); fetchStats() })
 
 async function fetchRecords() {
   loading.value = true
   try {
     const d = await getConsumptionList({ page: page.value, pageSize: pageSize.value })
     const items = (d && d.records) ? d.records : []
-    if (items.length === 0) {
-      records.value = [
-        { occurredAt: '2026-07-06 10:45', deviceName: 'Cobas e801', reagentName: 'CEA', batchNo: 'LOT-CEA-2409', consumeMethod: 'MANUAL', quantity: 32, patientRef: 'P-20260618-032' },
-        { occurredAt: '2026-07-06 09:30', deviceName: 'AU5800-01', reagentName: 'CK-MB', batchNo: 'BATCH-202506A', consumeMethod: 'MANUAL', quantity: 15, patientRef: 'P-20260618-018' },
-        { occurredAt: '2026-07-06 08:00', deviceName: 'AU5800-01', reagentName: '肌酐', batchNo: '20260512B', consumeMethod: 'BATCH', quantity: 48, patientRef: 'P-20260618-001~048' },
-      ]
-      total.value = records.value.length
-    } else {
-      records.value = items
-      total.value = d.total || items.length
-    }
-  } catch {} finally { loading.value = false }
+    records.value = items
+    total.value = d.total || items.length
+  } catch (e) { console.error('获取消耗记录失败:', e) } finally { loading.value = false }
 }
 
-async function fetchStats() { try { stats.value = await getConsumptionStats() || {} } catch {} }
+async function fetchStats() { try { stats.value = await getConsumptionStats() || {} } catch (e) { console.error('获取消耗统计失败:', e) } }
 
 function openManualConsume(row) {
   consumeForm.mode = 'manual'
@@ -198,7 +228,7 @@ async function doConsume() {
   if (!valid) return
   consumeLoading.value = true
   try {
-    await batchConsume(consumeForm.batchNo, consumeForm.deviceId, consumeForm.qty, 1)
+    await batchConsume(consumeForm.batchNo, consumeForm.deviceId, consumeForm.qty)
     ElMessage.success('消耗核销已记录')
     showConsumeDialog.value = false
     fetchRecords(); fetchStats()
@@ -218,21 +248,18 @@ async function confirmUnload(row) {
 }
 
 function formatTime(t) { if (!t) return '—'; return typeof t === 'string' ? t.slice(11, 16) : t }
+
+function recordTypeLabel(type) {
+  const map = { ROUTINE: '常规消耗', BATCH_TEST: '批量检测', EQUIP_MAINT: '设备维护' }
+  return map[type] || '手动'
+}
 </script>
 
 <style scoped>
 /* ── Page Header ── */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .page-header h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.header-right { display: flex; align-items: center; gap: 8px; }
 
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-cards { margin-bottom: 16px; }
 
 .card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
 .icon-sm { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; font-size: 14px; }

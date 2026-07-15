@@ -276,11 +276,6 @@ async function confirmInbound() {
 </script>
 
 <style scoped>
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .scan-area {
   border: 2px dashed var(--border-color, #e2e8f0); border-radius: var(--radius-lg, 12px);
   padding: 48px 24px; text-align: center; cursor: pointer;

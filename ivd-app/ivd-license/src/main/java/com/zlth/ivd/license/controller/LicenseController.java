@@ -87,6 +87,14 @@ public class LicenseController {
         return Result.success(licenseService.uploadAttachment(id, file, operatorId));
     }
 
+    /** 下载/预览附件 */
+    @GetMapping("/{id}/file/{objectKey}")
+    public void downloadAttachment(@PathVariable Long id,
+                                   @PathVariable String objectKey,
+                                   HttpServletResponse response) {
+        licenseService.downloadAttachment(id, objectKey, response);
+    }
+
     private static final List<String> EXPORT_HEADERS = List.of(
             "供应商", "证照类型", "证号", "发证机关", "发证日期", "有效期至", "状态", "剩余天数"
     );

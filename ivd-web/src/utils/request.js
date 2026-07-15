@@ -31,6 +31,11 @@ service.interceptors.response.use(
     if (response.config.responseType === 'blob' || response.config.responseType === 'arraybuffer') {
       return response.data
     }
+    // 防御：非 JSON 响应（如 500 错误页 HTML）直接 reject
+    if (!response.data || typeof response.data !== 'object') {
+      ElMessage.error('服务器响应格式异常')
+      return Promise.reject(new Error('Invalid response format'))
+    }
     const { code, message, data } = response.data
     if (code === 200) {
       return data

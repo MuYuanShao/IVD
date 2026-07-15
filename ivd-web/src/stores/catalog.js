@@ -66,8 +66,9 @@ export const useCatalogStore = defineStore('catalog', () => {
       stats.approved = approved.total || 0
       stats.pending = pending.total || 0
       stats.rejected = rejected.total || 0
-    } catch {
-      // 静默失败，stats 保持默认值
+    } catch (e) {
+      console.error('获取目录统计失败:', e)
+      // stats 保持默认值
     }
   }
 

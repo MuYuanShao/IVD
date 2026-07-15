@@ -3,6 +3,8 @@ package com.zlth.ivd.settlement.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.common.enums.SettlementStatusEnum;
+import com.zlth.ivd.common.enums.SettlementTypeEnum;
 import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.consumption.entity.ConsumptionRecord;
@@ -51,7 +53,7 @@ public class SettlementServiceImpl implements SettlementService {
         String no = generateSettlementNo("REQ");
         SettlementRecord record = new SettlementRecord();
         record.setSettlementNo(no);
-        record.setSettlementType("REQUISITION");
+        record.setSettlementType(SettlementTypeEnum.REQUISITION.getCode());
         record.setSourceId(requisitionId);
         record.setQuantity(BigDecimal.ONE);
         record.setAmount(BigDecimal.ZERO);
@@ -74,7 +76,7 @@ public class SettlementServiceImpl implements SettlementService {
         String no = generateSettlementNo("CNS");
         SettlementRecord record = new SettlementRecord();
         record.setSettlementNo(no);
-        record.setSettlementType("CONSUMPTION");
+        record.setSettlementType(SettlementTypeEnum.CONSUMPTION.getCode());
         record.setSourceId(consumptionRecordId);
         record.setSourceNo(source != null ? "CNS-" + source.getId() : null);
         record.setBatchNo(source != null ? source.getBatchNo() : null);
@@ -94,9 +96,9 @@ public class SettlementServiceImpl implements SettlementService {
         Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
         SettlementRecord record = recordMapper.selectById(settlementId);
         if (record == null) throw new BizException(40400, "结算记录不存在");
-        if ("REVERSED".equals(record.getStatus())) throw new BizException(40001, "该记录已被冲销，不能重复冲销");
+        if (SettlementStatusEnum.REVERSED.getCode().equals(record.getStatus())) throw new BizException(40001, "该记录已被冲销，不能重复冲销");
 
-        record.setStatus("REVERSED");
+        record.setStatus(SettlementStatusEnum.REVERSED.getCode());
         record.setReversedAt(LocalDateTime.now());
         recordMapper.updateById(record);
         log.info("冲销结算: id={}, reason={}, operatorId={}", settlementId, reason, operatorId);
@@ -107,7 +109,7 @@ public class SettlementServiceImpl implements SettlementService {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("total", recordMapper.selectCount(null));
         stats.put("active", recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getStatus, "ACTIVE")));
-        stats.put("reversed", recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getStatus, "REVERSED")));
+        stats.put("reversed", recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getStatus, SettlementStatusEnum.REVERSED.getCode())));
         return stats;
     }
 

@@ -14,7 +14,7 @@
       <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="用户总数" :value="store.userTotal" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="启用中" :value="enabledCount" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="停用" :value="disabledCount" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="角色类型" :value="8" suffix="种" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="角色类型" :value="roleList.length" suffix="种" /></el-card></el-col>
     </el-row>
 
     <!-- 筛选工具栏 -->

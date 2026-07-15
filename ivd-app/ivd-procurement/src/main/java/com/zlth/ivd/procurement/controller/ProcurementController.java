@@ -43,7 +43,7 @@ public class ProcurementController {
     }
 
     @GetMapping("/requisitions/{id}")
-    public Result<PurchaseRequisition> requisitionDetail(@PathVariable Long id) {
+    public Result<PurchaseRequisitionVO> requisitionDetail(@PathVariable Long id) {
         return Result.success(procurementService.getRequisitionDetail(id));
     }
 
@@ -70,7 +70,7 @@ public class ProcurementController {
     }
 
     @GetMapping("/shortages/{id}")
-    public Result<ShortageOrder> shortageDetail(@PathVariable Long id) {
+    public Result<ShortageOrderVO> shortageDetail(@PathVariable Long id) {
         return Result.success(procurementService.getShortageDetail(id));
     }
 
@@ -102,7 +102,7 @@ public class ProcurementController {
     }
 
     @GetMapping("/orders/{id}")
-    public Result<PurchaseOrder> orderDetail(@PathVariable Long id) {
+    public Result<PurchaseOrderVO> orderDetail(@PathVariable Long id) {
         return Result.success(procurementService.getOrderDetail(id));
     }
 

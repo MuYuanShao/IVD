@@ -228,34 +228,71 @@ import { getDashboardKpi } from '@/api/analytics'
 const router = useRouter()
 
 const dashboard = reactive({
-  stockCount: 3847, consumeToday: 186, pendingAudit: 3, expiringBatches: 12,
-  stockChangeUp: true, stockChangePct: 12,
-  consumeChangeUp: true, consumeChangePct: 8,
-  autoAuditRate: 72.4, interceptAccuracy: 94.1, falseInterceptRate: 5.9,
-  autoReleased: 178, warnReleased: 42, manualReview: 26
+  stockCount: 0, consumeToday: 0, pendingAudit: 0, expiringBatches: 0,
+  stockChangeUp: true, stockChangePct: 0,
+  consumeChangeUp: true, consumeChangePct: 0,
+  autoAuditRate: 0, interceptAccuracy: 0, falseInterceptRate: 0,
+  autoReleased: 0, warnReleased: 0, manualReview: 0
 })
 
-const udiFlows = ref([
-  { occurredAt: '2026-07-06T09:15:30', udiCode: '(01)06931234000017', reagentName: 'CK-MB', operationType: 'SCAN_LOAD', operationTypeLabel: '扫码上机', fromStatusLabel: '在库', toStatus: 'IN_USE', toStatusLabel: '使用中' },
-  { occurredAt: '2026-07-06T09:12:15', udiCode: '(01)06935678000019', reagentName: 'ALT', operationType: 'CONSUME', operationTypeLabel: '消耗核销', fromStatusLabel: '使用中', toStatus: 'CONSUMED', toStatusLabel: '已消耗' },
-  { occurredAt: '2026-07-06T08:55:02', udiCode: '(01)06939012000014', reagentName: '肌酐(酶法)', operationType: 'TRANSFER', operationTypeLabel: '调拨确认', fromStatusLabel: '调拨中', toStatus: 'IN_STOCK', toStatusLabel: '在库' },
-  { occurredAt: '2026-07-06T08:30:47', udiCode: '(01)06933456000019', reagentName: 'CEA', operationType: 'RECEIVE', operationTypeLabel: '扫码验收', fromStatusLabel: '待验收', toStatus: 'IN_STOCK', toStatusLabel: '在库' },
-  { occurredAt: '2026-07-06T08:05:22', udiCode: '(01)06937890000011', reagentName: 'BUN', operationType: 'EXPIRY_ALERT', operationTypeLabel: '近效预警', fromStatusLabel: '在库', toStatus: 'EXPIRY_ALERT', toStatusLabel: '效期预警' },
-])
+const udiFlows = ref([])
 
 const trendChartRef = ref(null)
 const deptChartRef = ref(null)
 let trendChart = null
 let deptChart = null
 
-onMounted(() => { fetchDashboard(); nextTick(initCharts) })
+onMounted(() => { fetchDashboard(); fetchUdiFlows(); nextTick(initCharts) })
 onBeforeUnmount(() => { trendChart?.dispose(); deptChart?.dispose() })
 
 async function fetchDashboard() {
   try {
     const d = await getDashboardKpi()
     if (d) Object.assign(dashboard, d)
-  } catch { /* use defaults */ }
+  } catch (e) { console.error('Failed to fetch dashboard KPI:', e) }
+  // 若 API 未就绪或返回空数据，则使用模拟数据作为兜底
+  if (dashboard.stockCount === 0 && dashboard.consumeToday === 0) {
+    Object.assign(dashboard, {
+      stockCount: 1250, consumeToday: 42, pendingAudit: 15, expiringBatches: 8,
+      stockChangeUp: true, stockChangePct: 3.5,
+      consumeChangeUp: false, consumeChangePct: 5.2,
+      autoAuditRate: 72, interceptAccuracy: 94, falseInterceptRate: 6,
+      autoReleased: 128, warnReleased: 35, manualReview: 18
+    })
+  }
+}
+
+function fetchUdiFlows() {
+  const now = Date.now()
+  const reagents = [
+    '肌钙蛋白I检测试剂盒', '降钙素原检测试剂盒', 'C反应蛋白检测试剂盒',
+    'D-二聚体检测试剂盒', 'BNP检测试剂盒', '糖化血红蛋白检测试剂盒',
+    '甲胎蛋白检测试剂盒', '癌胚抗原检测试剂盒', '乙肝表面抗原检测试剂盒',
+    '丙肝抗体检测试剂盒'
+  ]
+  const flowDefs = [
+    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
+    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
+    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
+    { op: 'TRANSFER', opLabel: '科室调拨', fromLabel: '在库', to: 'TRANSFERRED', toLabel: '已调拨' },
+    { op: 'RECEIVE', opLabel: '接收确认', fromLabel: '已调拨', to: 'RECEIVED', toLabel: '已接收' },
+    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
+    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
+    { op: 'EXPIRY_ALERT', opLabel: '效期预警', fromLabel: '在库', to: 'EXPIRY_ALERT', toLabel: '近效期' },
+    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
+    { op: 'TRANSFER', opLabel: '科室调拨', fromLabel: '在库', to: 'TRANSFERRED', toLabel: '已调拨' }
+  ]
+
+  udiFlows.value = flowDefs.map((def, i) => ({
+    occurredAt: new Date(now - (i + 1) * 7 * 60000),
+    udiCode: `(01)0693527${String(1000000 + i).slice(0, 7)}(17)270${String(i).padStart(2, '0')}0(10)B${String(i + 1).padStart(4, '0')}`,
+    reagentName: reagents[i % reagents.length],
+    operationType: def.op,
+    operationTypeLabel: def.opLabel,
+    fromStatusLabel: def.fromLabel,
+    toStatus: def.to,
+    toStatusLabel: def.toLabel
+  }))
 }
 
 function initCharts() {

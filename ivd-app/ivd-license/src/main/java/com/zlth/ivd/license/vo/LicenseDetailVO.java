@@ -1,7 +1,9 @@
 package com.zlth.ivd.license.vo;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,6 +47,8 @@ public class LicenseDetailVO {
     /** 关联试剂 */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class RelReagent {
         private Long reagentId;
         private String hisCode;
@@ -56,6 +60,8 @@ public class LicenseDetailVO {
     /** 附件项 */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class AttachmentItem {
         private String name;
         private String objectKey;
@@ -68,6 +74,8 @@ public class LicenseDetailVO {
     /** 变更记录项 */
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class ChangeLogItem {
         private Long id;
         private String changeType;

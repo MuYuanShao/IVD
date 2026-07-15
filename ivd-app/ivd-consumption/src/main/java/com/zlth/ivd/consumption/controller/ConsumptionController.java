@@ -3,8 +3,8 @@ package com.zlth.ivd.consumption.controller;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
-import com.zlth.ivd.consumption.entity.ConsumptionRecord;
 import com.zlth.ivd.consumption.service.ConsumptionService;
+import com.zlth.ivd.consumption.vo.ConsumptionRecordVO;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,7 @@ public class ConsumptionController {
     private final ConsumptionService consumptionService;
 
     @GetMapping
-    public Result<PageVO<ConsumptionRecord>> list(
+    public Result<PageVO<ConsumptionRecordVO>> list(
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String recordType, @RequestParam(required = false) Long deviceId,
             @RequestParam(required = false) Long reagentId) {
@@ -66,9 +66,9 @@ public class ConsumptionController {
     public void export(@RequestParam(defaultValue = "xlsx") String format,
                        @RequestParam(required = false) Long deviceId,
                        HttpServletResponse response) {
-        PageVO<ConsumptionRecord> result = consumptionService.listRecords(1, 10000, null, deviceId, null);
+        PageVO<ConsumptionRecordVO> result = consumptionService.listRecords(1, 10000, null, deviceId, null);
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (ConsumptionRecord r : result.getRecords()) {
+        for (ConsumptionRecordVO r : result.getRecords()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("类型", r.getRecordType() != null ? r.getRecordType() : "");
             row.put("批号", r.getBatchNo() != null ? r.getBatchNo() : "");

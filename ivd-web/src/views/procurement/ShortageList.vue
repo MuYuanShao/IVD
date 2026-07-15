@@ -97,17 +97,13 @@ const showReqDetailDialog = ref(false), reqDetail = ref(null)
 const showShortageDetailDialog = ref(false), shortageDetail = ref(null)
 const showCreatePODialog = ref(false)
 const selectedShortageId = ref(null), selectedShortageNo = ref('')
-const supplierOptions = ref([
-  { value: 1, label: '九州通医药集团' },
-  { value: 2, label: '国药控股' },
-  { value: 3, label: '华润医药' }
-])
+const supplierOptions = ref([])
 
 async function loadSuppliers() {
   try {
     const list = await getSuppliers()
     if (list && list.length) supplierOptions.value = list.map(s => ({ value: s.id, label: s.name }))
-  } catch {}
+  } catch (e) { console.error('Failed to load suppliers:', e) }
 }
 
 async function viewReqDetail(reqId) {
@@ -160,16 +156,3 @@ function fetchData() {
 onMounted(() => { loadSuppliers(); fetchData() })
 </script>
 
-<style scoped>
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; }
-.stat-cards { margin-bottom: 16px; }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

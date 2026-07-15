@@ -80,7 +80,7 @@
         <el-table-column prop="batchNo" label="批号" width="110" />
       </el-table>
       <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);background:#f0fdf4;padding:8px 16px;border-radius:8px;">
-        共 <strong>{{ filteredDetailList.length }}</strong> 种试剂 · <strong>116</strong> 盒 · 库存金额 <strong>¥284,900</strong>
+        共 <strong>{{ filteredDetailList.length }}</strong> 种试剂 · <strong>{{ totalBoxes }}</strong> 盒 · 库存金额 <strong>¥{{ totalAmount }}</strong>
       </div>
     </el-card>
 
@@ -105,21 +105,14 @@ const groups = [
 ]
 
 const currentGroupLeader = computed(() => groups.find(g => g.value === selectedGroup.value)?.leader || '—')
+const totalBoxes = computed(() => fefoDetailList.value.reduce((sum, r) => sum + (r.qty || 0), 0))
+const totalAmount = computed(() => fefoDetailList.value.reduce((sum, r) => sum + (r.amount || 0), 0))
 
 // ── 搜索过滤 ──
 const filterHisCode = ref(''), filterReagentName = ref('')
 const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
 
-const fefoDetailList = ref([
-  { code: '051266', name: 'CK-MB检测试剂盒', spec: '100T', model: 'R1:20ml×2, R2:10ml×2', unitPrice: 1200, unit: '盒', qty: 32, amount: 38400, manufacturer: '九强生物', supplier: '国药控股', productionDate: '2026-04-12', expiryDate: '2027-04-12', batchNo: '250612' },
-  { code: '051267', name: 'ALT测定试剂盒', spec: '200T', model: 'R1:50ml×2, R2:25ml×2', unitPrice: 850, unit: '盒', qty: 25, amount: 21250, manufacturer: '美康生物', supplier: '九州通医药', productionDate: '2026-05-08', expiryDate: '2027-05-08', batchNo: '250608' },
-  { code: '051268', name: '肌酐测定试剂盒(酶法)', spec: '200T', model: 'R1:40ml×2, R2:20ml×2', unitPrice: 1800, unit: '盒', qty: 18, amount: 32400, manufacturer: '九强生物', supplier: '国药控股', productionDate: '2026-03-25', expiryDate: '2026-12-25', batchNo: '250520' },
-  { code: '051269', name: 'CEA检测试剂盒', spec: '100T', model: 'R1:20ml×1, R2:10ml×1', unitPrice: 3200, unit: '盒', qty: 15, amount: 48000, manufacturer: '罗氏诊断', supplier: '华润医药', productionDate: '2026-02-18', expiryDate: '2027-02-18', batchNo: 'LOT-CEA-2409' },
-  { code: '051270', name: '凝血酶原时间测定试剂盒', spec: '150T', model: 'R1:30ml×2', unitPrice: 2500, unit: '盒', qty: 12, amount: 30000, manufacturer: '希森美康', supplier: '国药控股', productionDate: '2026-01-20', expiryDate: '2027-01-20', batchNo: 'PT-250120' },
-  { code: '051271', name: 'HbA1c检测试剂盒', spec: '100T', model: 'R1:20ml×1, R2:10ml×1', unitPrice: 2800, unit: '盒', qty: 8, amount: 22400, manufacturer: '东曹', supplier: '九州通医药', productionDate: '2026-04-05', expiryDate: '2027-04-05', batchNo: 'A1C-250405' },
-  { code: '051272', name: 'hs-CRP检测试剂盒', spec: '200T', model: 'R1:40ml×2, R2:20ml×2', unitPrice: 3200, unit: '盒', qty: 4, amount: 12800, manufacturer: '九强生物', supplier: '国药控股', productionDate: '2026-05-30', expiryDate: '2027-05-30', batchNo: 'CRP-250530' },
-  { code: '051273', name: '降钙素原检测试剂盒', spec: '100T', model: 'R1:20ml×1, R2:10ml×1', unitPrice: 4500, unit: '盒', qty: 2, amount: 9000, manufacturer: '罗氏诊断', supplier: '华润医药', productionDate: '2026-03-10', expiryDate: '2027-03-10', batchNo: 'PCT-250310' }
-])
+const fefoDetailList = ref([])
 
 function fetchData() { store.fetchFefo(null, selectedGroup.value) }
 
@@ -166,16 +159,7 @@ function openTransfer(row, source) { sourceName.value = source; maxQty.value = r
 async function doSubmitTransfer(form) {
   transferLoading.value = true
   try { await store.doTransfer(1, form.targetWarehouse, form.quantity); ElMessage.success('出库成功'); showTransferDialog.value = false; fetchData() }
-  catch {} finally { transferLoading.value = false }
+  catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 </script>
 
-<style scoped>
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; margin-left: 8px; }
-.header-right { display: flex; align-items: center; gap: 8px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

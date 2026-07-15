@@ -296,7 +296,6 @@ function actionTagType(action) {
 .card-header-row {
   display: flex; align-items: center; justify-content: space-between;
 }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .card-subtitle { font-size: 12px; color: var(--text-tertiary); }
 
 .mono-text { font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }

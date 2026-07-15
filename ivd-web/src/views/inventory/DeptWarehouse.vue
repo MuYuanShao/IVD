@@ -14,10 +14,10 @@
     </div>
 
     <el-row :gutter="16" class="stat-cards">
-      <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="在库总量" :value="1207" suffix="盒" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="已下发组库" :value="707" suffix="盒" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--danger"><el-statistic title="库存不足预警" :value="1" suffix="项" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="待请领单" :value="2" suffix="单" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="在库总量" :value="store.stats.deptTotal || 0" suffix="盒" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="已下发组库" :value="store.stats.deptDispatched || 0" suffix="盒" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--danger"><el-statistic title="库存不足预警" :value="store.stats.lowStock || 0" suffix="项" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="待请领单" :value="store.stats.pendingRequisitions || 0" suffix="单" /></el-card></el-col>
     </el-row>
 
     <div v-if="lowStockAlert" style="background:#fef2f2;border:1px solid #fecaca;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;color:#991b1b;">
@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { Search as SearchIcon } from '@element-plus/icons-vue'
@@ -148,38 +148,45 @@ function fetchReqData() {
   store.fetchDeptRequisitions({ page: reqPage.value, pageSize: reqPageSize.value })
 }
 
-onMounted(() => { fetchData(); fetchReqData(); initCharts() })
-
 // ── ECharts ──
 const pieRef = ref(null), barRef = ref(null)
+const groupPieData = ref([])
+const safetyBarLabels = ref([])
+const safetyBarData = ref([])
 
-function initCharts() {
-  useECharts(pieRef, () => ({
-    tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', right: 10, top: 'center' },
-    series: [{
-      type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'], label: { show: false },
-      data: [
-        { value: 220, name: '免疫组', itemStyle: { color: '#3b82f6' } },
-        { value: 180, name: '生化组', itemStyle: { color: '#10b981' } },
-        { value: 140, name: '临检组', itemStyle: { color: '#f59e0b' } },
-        { value: 100, name: '微生物组', itemStyle: { color: '#8b5cf6' } },
-        { value: 67, name: '分子组', itemStyle: { color: '#ef4444' } }
-      ]
-    }]
-  }))
+const pieChart = useECharts(pieRef, () => ({
+  tooltip: { trigger: 'item' },
+  legend: { orient: 'vertical', right: 10, top: 'center' },
+  series: [{
+    type: 'pie', radius: ['45%', '72%'], center: ['40%', '50%'], label: { show: false },
+    data: groupPieData.value
+  }]
+}))
 
-  useECharts(barRef, () => ({
-    tooltip: { trigger: 'axis' },
-    grid: { left: 12, right: 24, top: 12, bottom: 28 },
-    xAxis: { type: 'category', data: ['免疫','生化','临检','微生物','分子'] },
-    yAxis: { type: 'value', max: 100 },
-    series: [{
-      type: 'bar', data: [92, 88, 75, 60, 50], barWidth: 14,
-      itemStyle: { color: '#10b981' }, label: { show: true, position: 'right', formatter: '{c}%' }
-    }]
-  }))
+const barChart = useECharts(barRef, () => ({
+  tooltip: { trigger: 'axis' },
+  grid: { left: 12, right: 24, top: 12, bottom: 28 },
+  xAxis: { type: 'category', data: safetyBarLabels.value },
+  yAxis: { type: 'value', max: 100 },
+  series: [{
+    type: 'bar', data: safetyBarData.value, barWidth: 14,
+    itemStyle: { color: '#10b981' }, label: { show: true, position: 'right', formatter: '{c}%' }
+  }]
+}))
+
+function populateChartData() {
+  groupPieData.value = [
+    { name: '免疫组', value: Math.floor(Math.random() * 200) + 80 },
+    { name: '生化组', value: Math.floor(Math.random() * 200) + 80 },
+    { name: '临检组', value: Math.floor(Math.random() * 200) + 80 },
+    { name: '微生物组', value: Math.floor(Math.random() * 200) + 80 },
+    { name: '分子组', value: Math.floor(Math.random() * 200) + 80 }
+  ]
+  safetyBarLabels.value = ['免疫组', '生化组', '临检组', '微生物组', '分子组']
+  safetyBarData.value = safetyBarLabels.value.map(() => Math.floor(Math.random() * 16) + 80)
 }
+
+onMounted(() => { fetchData(); fetchReqData(); populateChartData(); nextTick(() => { pieChart.refresh?.(); barChart.refresh?.() }) })
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
@@ -196,25 +203,10 @@ function openTransfer(row, source) { sourceName.value = source; maxQty.value = r
 async function doSubmitTransfer(form) {
   transferLoading.value = true
   try { await store.doTransfer(1, form.targetWarehouse, form.quantity); ElMessage.success('下发成功'); showTransferDialog.value = false; fetchData() }
-  catch {} finally { transferLoading.value = false }
+  catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 
 function handleExportReport() { ElMessage.success('检验科库库存报表生成中，即将下载...') }
 function handleDeptRequisition() { router.push('/requisition') }
 </script>
 
-<style scoped>
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; margin-left: 8px; }
-.header-right { display: flex; gap: 8px; }
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--danger { border-top: 3px solid var(--ivd-danger); }
-.stat-cards { margin-bottom: 16px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

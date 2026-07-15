@@ -246,7 +246,7 @@
         <el-table-column prop="reagentId" label="试剂ID" width="80" />
         <el-table-column label="物料类型" width="100">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.materialType?.label || row.materialType }}</el-tag>
+            <el-tag size="small">{{ materialTypeLabel(row.materialType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="impactLevel" label="影响级别" width="100">
@@ -313,14 +313,9 @@ import RejectReasonDialog from './components/RejectReasonDialog.vue'
 
 const catalogStore = useCatalogStore()
 
-// ── 五码映射数据 ──
-const fiveCodes = [
-  { label: 'UDI-DI', desc: '01A8888D92FD3D0A' },
-  { label: 'GTIN', desc: '08888880000123' },
-  { label: '医保编码', desc: 'XB8888-D01-2024-0001' },
-  { label: 'NMPA注册证', desc: '国械注准20243408888' },
-  { label: '院内编码', desc: 'IVD-BC-002' }
-]
+// ── 五码映射数据 — 由后端 API 填充，初始为空
+// TODO: 对接五码映射查询 API 后由 fetchData 统一加载
+const fiveCodes = ref([])
 
 // ── 搜索 & 筛选 ──
 const searchText = ref('')
@@ -559,6 +554,12 @@ function materialTypeTag(type) {
     'OTHER': ''
   }
   return map[code] || ''
+}
+
+function materialTypeLabel(type) {
+  const code = typeof type === 'string' ? type : type?.code || ''
+  const map = { REAGENT: '试剂', CALIBRATOR: '校准品', QC_MATERIAL: '质控品', CONSUMABLE: '耗材', OTHER: '其他' }
+  return map[code] || code || '—'
 }
 
 function statusDotClass(status) {

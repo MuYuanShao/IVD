@@ -113,12 +113,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Plus, Download, MagicStick } from '@element-plus/icons-vue'
 import { useProcurementStore } from '@/stores/procurement'
 import { getPoStatusType, getReceivePct } from '@/utils/procurement'
+import { getSuppliers } from '@/api/license'
 
 const store = useProcurementStore()
 const router = useRouter()
@@ -134,7 +135,23 @@ function fetchData() {
   store.fetchOrderStats()
 }
 
-onMounted(() => fetchData())
+onMounted(() => { fetchData(); loadSuppliers() })
+
+// ── 搜索防抖 ──
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page.value = 1; fetchData() }, 300)
+})
+
+onBeforeUnmount(() => { clearTimeout(searchTimer) })
+
+async function loadSuppliers() {
+  try {
+    const list = await getSuppliers()
+    if (list && list.length) suppliers.value = list.map(s => ({ value: s.id, label: s.name }))
+  } catch (e) { console.error('加载供应商列表失败:', e) }
+}
 
 function handleExport() { ElMessage.success('采购报表生成中，即将下载...') }
 
@@ -162,9 +179,7 @@ const manualPORules = {
   supplierId: [{ required: true, message: '请选择供应商', trigger: 'change' }],
   orderDate: [{ required: true, message: '请选择下单日期', trigger: 'change' }]
 }
-const suppliers = [
-  { value: 1, label: '九州通医药集团' }, { value: 2, label: '国药控股' }, { value: 3, label: '华润医药' }
-]
+const suppliers = ref([])
 
 async function submitManualPO() {
   const valid = await manualPOFormRef.value?.validate().catch(() => false)
@@ -174,7 +189,7 @@ async function submitManualPO() {
     await store.doCreateManualOrder({ ...manualPOForm })
     ElMessage.success('采购单已创建')
     showManualPODialog.value = false
-  } catch {} finally { manualPOLoading.value = false }
+  } catch (e) { console.error('创建采购单失败:', e) } finally { manualPOLoading.value = false }
 }
 
 function resetManualPO() {
@@ -183,17 +198,3 @@ function resetManualPO() {
 }
 </script>
 
-<style scoped>
-.stat-card { border-radius: var(--radius-md); transition: transform 0.2s; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-card--warning { border-top: 3px solid var(--ivd-warning); }
-.stat-card--info { border-top: 3px solid var(--ivd-info); }
-.stat-card--success { border-top: 3px solid var(--ivd-success); }
-.stat-card--danger { border-top: 3px solid var(--ivd-danger); }
-.page-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.page-title h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; margin: 0; }
-.title-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; font-size: 18px; }
-.sub-tag { font-size: 11px; color: var(--ivd-primary, #059669); background: #ecfdf5; padding: 3px 9px; border-radius: 12px; font-weight: 600; border: 1px solid #a7f3d0; }
-.stat-cards { margin-bottom: 16px; }
-:deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; font-size: 12px; }
-</style>

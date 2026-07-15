@@ -15,6 +15,7 @@ import com.zlth.ivd.inventory.mapper.*;
 import com.zlth.ivd.inventory.service.InventoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +38,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final DeviceBatchLoadMapper loadMapper;
     private final PatientAssociationMapper patientAssociationMapper;
     private final ReagentCatalogMapper catalogMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public PageVO<ReagentBatchVO> listBatches(int page, int pageSize, String keyword, String status, Long warehouseId,
@@ -141,6 +143,56 @@ public class InventoryServiceImpl implements InventoryService {
         stats.put("total", batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>().eq(warehouseId != null, ReagentBatch::getWarehouseId, warehouseId).gt(ReagentBatch::getStock, BigDecimal.ZERO)));
         stats.put("expiring30", batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>().le(ReagentBatch::getExpiryDate, LocalDate.now().plusDays(30)).gt(ReagentBatch::getStock, BigDecimal.ZERO)));
         stats.put("expiring90", batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>().le(ReagentBatch::getExpiryDate, LocalDate.now().plusDays(90)).gt(ReagentBatch::getStock, BigDecimal.ZERO)));
+
+        // todayInbound: count of batches received today (created_at on reagent_batch)
+        try {
+            stats.put("todayInbound", batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>()
+                    .ge(ReagentBatch::getCreatedAt, LocalDate.now().atStartOfDay())));
+        } catch (Exception e) { stats.put("todayInbound", 0L); }
+
+        // todayOutbound: count of consumption records created today (JDBC to avoid cyclic dep)
+        try {
+            Long todayOut = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM consumption_record WHERE record_type = ? AND created_at >= ?",
+                    Long.class, "CONSUME", LocalDate.now().atStartOfDay());
+            stats.put("todayOutbound", todayOut != null ? todayOut : 0L);
+        } catch (Exception e) { stats.put("todayOutbound", 0L); }
+
+        // deptTotal: total batch records in dept warehouses (warehouse level=2)
+        try {
+            LambdaQueryWrapper<Warehouse> deptQw = new LambdaQueryWrapper<>();
+            deptQw.eq(Warehouse::getLevel, 2);
+            List<Warehouse> deptWarehouses = warehouseMapper.selectList(deptQw);
+            Set<Long> deptWarehouseIds = deptWarehouses.stream().map(Warehouse::getId).collect(Collectors.toSet());
+            long deptTotal = 0;
+            if (!deptWarehouseIds.isEmpty()) {
+                deptTotal = batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>()
+                        .in(ReagentBatch::getWarehouseId, deptWarehouseIds)
+                        .gt(ReagentBatch::getStock, BigDecimal.ZERO));
+            }
+            stats.put("deptTotal", deptTotal);
+        } catch (Exception e) { stats.put("deptTotal", 0L); }
+
+        // deptDispatched: count of device_batch_load records created today (representing transfers to dept)
+        try {
+            stats.put("deptDispatched", loadMapper.selectCount(new LambdaQueryWrapper<DeviceBatchLoad>()
+                    .ge(DeviceBatchLoad::getCreatedAt, LocalDate.now().atStartOfDay())));
+        } catch (Exception e) { stats.put("deptDispatched", 0L); }
+
+        // lowStock: count of batches where quantity < 10 (safety threshold)
+        try {
+            stats.put("lowStock", batchMapper.selectCount(new LambdaQueryWrapper<ReagentBatch>()
+                    .lt(ReagentBatch::getStock, new BigDecimal("10"))
+                    .gt(ReagentBatch::getStock, BigDecimal.ZERO)));
+        } catch (Exception e) { stats.put("lowStock", 0L); }
+
+        // pendingRequisitions: count of purchase_requisition with status PENDING_REVIEW
+        try {
+            Long pending = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM purchase_requisition WHERE status = ?", Long.class, "PENDING_REVIEW");
+            stats.put("pendingRequisitions", pending != null ? pending : 0L);
+        } catch (Exception e) { stats.put("pendingRequisitions", 0L); }
+
         return stats;
     }
 

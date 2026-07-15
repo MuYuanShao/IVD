@@ -2,9 +2,11 @@ package com.zlth.ivd.procurement.vo;
 
 import com.zlth.ivd.common.enums.ShortageStatusEnum;
 import com.zlth.ivd.common.enums.UrgencyEnum;
+import com.zlth.ivd.procurement.entity.ShortageOrderItem;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 缺货单 VO（含关联显示字段）
@@ -31,4 +33,7 @@ public class ShortageOrderVO {
     private Long poId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** 缺货明细列表 */
+    private List<ShortageOrderItem> items;
 }

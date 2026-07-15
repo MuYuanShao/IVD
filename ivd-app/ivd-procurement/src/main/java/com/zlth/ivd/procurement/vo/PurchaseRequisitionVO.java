@@ -2,10 +2,12 @@ package com.zlth.ivd.procurement.vo;
 
 import com.zlth.ivd.common.enums.RequisitionStatusEnum;
 import com.zlth.ivd.common.enums.UrgencyEnum;
+import com.zlth.ivd.procurement.entity.PurchaseRequisitionItem;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 申领单 VO（含关联显示字段）
@@ -37,4 +39,7 @@ public class PurchaseRequisitionVO {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** 明细列表 */
+    private List<PurchaseRequisitionItem> items;
 }

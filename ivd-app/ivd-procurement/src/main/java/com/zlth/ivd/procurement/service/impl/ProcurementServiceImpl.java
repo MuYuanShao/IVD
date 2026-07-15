@@ -120,10 +120,35 @@ public class ProcurementServiceImpl implements ProcurementService {
     }
 
     @Override
-    public PurchaseRequisition getRequisitionDetail(Long id) {
+    public PurchaseRequisitionVO getRequisitionDetail(Long id) {
         PurchaseRequisition req = reqMapper.selectById(id);
         if (req == null) throw new BizException(40400, "申领单不存在");
-        return req;
+
+        List<PurchaseRequisitionItem> items = reqItemMapper.selectList(
+                new LambdaQueryWrapper<PurchaseRequisitionItem>().eq(PurchaseRequisitionItem::getReqId, id));
+        if (items == null) items = Collections.emptyList();
+
+        PurchaseRequisitionVO vo = new PurchaseRequisitionVO();
+        vo.setId(req.getId()); vo.setReqNo(req.getReqNo());
+        vo.setFromDeptId(req.getFromDeptId());
+        vo.setDeptName("科室#" + req.getFromDeptId());
+        vo.setToWarehouseId(req.getToWarehouseId());
+        vo.setApplicantId(req.getApplicantId());
+        vo.setApplicantName("用户#" + (req.getApplicantId() != null ? req.getApplicantId() : "-"));
+        vo.setUrgency(req.getUrgency()); vo.setStatus(req.getStatus());
+        vo.setReviewerId(req.getReviewerId()); vo.setReviewTime(req.getReviewTime());
+        vo.setReviewComment(req.getReviewComment()); vo.setRemark(req.getRemark());
+        vo.setCreatedAt(req.getCreatedAt()); vo.setUpdatedAt(req.getUpdatedAt());
+
+        int totalQty = items.stream().mapToInt(i -> i.getQtyRequested() != null ? i.getQtyRequested().intValue() : 0).sum();
+        BigDecimal totalAmount = items.stream().map(i -> i.getAmount() != null ? i.getAmount() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
+        int shippedQty = items.stream().mapToInt(i -> i.getQtyFulfilled() != null ? i.getQtyFulfilled().intValue() : 0).sum();
+        int shortageQty = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+        vo.setTotalQty(totalQty); vo.setTotalAmount(totalAmount);
+        vo.setShippedQty(shippedQty); vo.setShortageQty(shortageQty);
+        vo.setItems(items);
+
+        return vo;
     }
 
     // ── 缺货单 ──
@@ -191,10 +216,51 @@ public class ProcurementServiceImpl implements ProcurementService {
     }
 
     @Override
-    public ShortageOrder getShortageDetail(Long id) {
+    public ShortageOrderVO getShortageDetail(Long id) {
         ShortageOrder so = shortageMapper.selectById(id);
         if (so == null) throw new BizException(40400, "缺货单不存在");
-        return so;
+
+        List<ShortageOrderItem> items = shortageItemMapper.selectList(
+                new LambdaQueryWrapper<ShortageOrderItem>().eq(ShortageOrderItem::getShortageOrderId, id));
+        if (items == null) items = Collections.emptyList();
+
+        ShortageOrderVO vo = new ShortageOrderVO();
+        vo.setId(so.getId()); vo.setShortageNo(so.getShortageNo());
+        vo.setReqId(so.getReqId());
+        vo.setSourceReqNo(so.getReqId() != null ? "REQ#" + so.getReqId() : "-");
+        vo.setFromDeptId(so.getFromDeptId());
+        vo.setDeptName("科室#" + so.getFromDeptId());
+        vo.setStatus(so.getStatus()); vo.setUrgency(so.getUrgency());
+        vo.setSuggestedSupplierId(so.getSuggestedSupplierId());
+        vo.setSuggestedSupplier("供应商#" + (so.getSuggestedSupplierId() != null ? so.getSuggestedSupplierId() : "-"));
+        vo.setPoId(so.getPoId());
+        vo.setCreatedAt(so.getCreatedAt()); vo.setUpdatedAt(so.getUpdatedAt());
+
+        if (!items.isEmpty()) {
+            ShortageOrderItem first = items.get(0);
+            // Try to get catalog info
+            Set<Integer> reagentIds = items.stream().map(ShortageOrderItem::getReagentId).collect(Collectors.toSet());
+            Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
+            if (!reagentIds.isEmpty()) {
+                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                        reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
+                for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
+            }
+            ReagentCatalog cat = catalogMap.get(Long.valueOf(first.getReagentId()));
+            vo.setReagentName(cat != null ? cat.getGenericName() : "试剂#" + first.getReagentId());
+            vo.setSpec(cat != null ? cat.getSpecification() : "-");
+            int totalShortage = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+            vo.setShortageQty(totalShortage);
+            BigDecimal estAmount = items.stream().map(i -> {
+                BigDecimal qty = i.getQtyShortage() != null ? i.getQtyShortage() : BigDecimal.ZERO;
+                BigDecimal price = i.getEstUnitPrice() != null ? i.getEstUnitPrice() : BigDecimal.ZERO;
+                return qty.multiply(price);
+            }).reduce(BigDecimal.ZERO, BigDecimal::add);
+            vo.setEstimatedAmount(estAmount);
+        }
+        vo.setItems(items);
+
+        return vo;
     }
 
     @Override
@@ -265,13 +331,45 @@ public class ProcurementServiceImpl implements ProcurementService {
     }
 
     @Override
-    public PurchaseOrder getOrderDetail(Long id) {
+    public PurchaseOrderVO getOrderDetail(Long id) {
         PurchaseOrder po = orderMapper.selectById(id);
         if (po == null) throw new BizException(40400, "采购订单不存在");
+
         List<PurchaseOrderItem> items = orderItemMapper.selectList(
                 new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getPoId, id));
-        po.setItems(items != null ? items : Collections.emptyList());
-        return po;
+        if (items == null) items = Collections.emptyList();
+
+        PurchaseOrderVO vo = new PurchaseOrderVO();
+        vo.setId(po.getId()); vo.setPoNo(po.getPoNo());
+        vo.setSupplierId(po.getSupplierId());
+        vo.setSupplierName("供应商#" + (po.getSupplierId() != null ? po.getSupplierId() : "-"));
+        vo.setSourceType(po.getSourceType());
+        vo.setShortageOrderId(po.getShortageOrderId()); vo.setReqId(po.getReqId());
+        vo.setTotalAmount(po.getTotalAmount()); vo.setStatus(po.getStatus());
+        vo.setOrderDate(po.getOrderDate());
+        vo.setExpectedDeliveryDate(po.getExpectedDeliveryDate());
+        vo.setReceivedQuantity(po.getReceivedQuantity());
+        vo.setAcceptanceMethod(po.getAcceptanceMethod());
+        vo.setCreatedAt(po.getCreatedAt()); vo.setUpdatedAt(po.getUpdatedAt());
+
+        if (!items.isEmpty()) {
+            PurchaseOrderItem first = items.get(0);
+            Set<Integer> reagentIds = items.stream().map(PurchaseOrderItem::getReagentId).collect(Collectors.toSet());
+            Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
+            if (!reagentIds.isEmpty()) {
+                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                        reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
+                for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
+            }
+            ReagentCatalog cat = catalogMap.get(Long.valueOf(first.getReagentId()));
+            vo.setReagentName(cat != null ? cat.getGenericName() : "试剂#" + first.getReagentId());
+            vo.setSpecification(cat != null ? cat.getSpecification() : "-");
+            vo.setOrderQuantity(first.getQtyOrdered());
+            vo.setUnitPrice(first.getUnitPrice());
+        }
+        vo.setItems(items);
+
+        return vo;
     }
 
     @Override

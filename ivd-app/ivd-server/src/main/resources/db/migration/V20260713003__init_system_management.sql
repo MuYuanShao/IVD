@@ -44,16 +44,16 @@ CREATE TABLE IF NOT EXISTS `sys_dept` (
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统科室表';
 
--- 3. 仓库表新增 M00 管理字段 (IF NOT EXISTS 兼容)
+-- 3. 仓库表新增 M00 管理字段
 ALTER TABLE `warehouse`
-    ADD COLUMN IF NOT EXISTS `code`            VARCHAR(64)  DEFAULT NULL  COMMENT '库房编码' AFTER `name`,
-    ADD COLUMN IF NOT EXISTS `dept_id`         BIGINT       DEFAULT NULL  COMMENT '关联科室ID (FK → sys_dept.id)' AFTER `parent_id`,
-    ADD COLUMN IF NOT EXISTS `location`        VARCHAR(256) DEFAULT NULL  COMMENT '物理位置' AFTER `location_code`,
-    ADD COLUMN IF NOT EXISTS `contact_person`  VARCHAR(64)  DEFAULT NULL  COMMENT '联系人' AFTER `location`,
-    ADD COLUMN IF NOT EXISTS `contact_phone`   VARCHAR(20)  DEFAULT NULL  COMMENT '联系电话' AFTER `contact_person`,
-    ADD COLUMN IF NOT EXISTS `sort_order`      INT          NOT NULL DEFAULT 99 COMMENT '排序 (升序)' AFTER `contact_phone`,
-    ADD COLUMN IF NOT EXISTS `status`          TINYINT      NOT NULL DEFAULT 1  COMMENT '状态: 1启用 | 0停用' AFTER `sort_order`,
-    ADD COLUMN IF NOT EXISTS `remark`          VARCHAR(512) DEFAULT NULL  COMMENT '备注' AFTER `status`;
+    ADD COLUMN `code`            VARCHAR(64)  DEFAULT NULL  COMMENT '库房编码' AFTER `name`,
+    ADD COLUMN `dept_id`         BIGINT       DEFAULT NULL  COMMENT '关联科室ID (FK → sys_dept.id)' AFTER `parent_id`,
+    ADD COLUMN `location`        VARCHAR(256) DEFAULT NULL  COMMENT '物理位置' AFTER `location_code`,
+    ADD COLUMN `contact_person`  VARCHAR(64)  DEFAULT NULL  COMMENT '联系人' AFTER `location`,
+    ADD COLUMN `contact_phone`   VARCHAR(20)  DEFAULT NULL  COMMENT '联系电话' AFTER `contact_person`,
+    ADD COLUMN `sort_order`      INT          NOT NULL DEFAULT 99 COMMENT '排序 (升序)' AFTER `contact_phone`,
+    ADD COLUMN `status`          TINYINT      NOT NULL DEFAULT 1  COMMENT '状态: 1启用 | 0停用' AFTER `sort_order`,
+    ADD COLUMN `remark`          VARCHAR(512) DEFAULT NULL  COMMENT '备注' AFTER `status`;
 
 -- 4. 种子数据: 默认系统管理员 (密码: IVD@2026 → BCrypt)
 INSERT IGNORE INTO `sys_user` (`username`, `real_name`, `password`, `role`, `status`)
