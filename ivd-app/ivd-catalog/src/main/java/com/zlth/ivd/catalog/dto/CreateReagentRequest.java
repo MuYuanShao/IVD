@@ -65,12 +65,6 @@ public class CreateReagentRequest {
     /** 开瓶稳定天数 */
     private Integer stabilityDaysAfterOpen;
 
-    /** 最低库存警戒 */
-    private BigDecimal minStockLevel;
-
-    /** 最高库存 */
-    private BigDecimal maxStockLevel;
-
     /** 采购提前期(天) */
     private Integer leadTimeDays;
 

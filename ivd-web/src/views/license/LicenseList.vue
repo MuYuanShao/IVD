@@ -274,7 +274,7 @@
           </el-col>
         </el-row>
         <el-form-item label="证照附件">
-          <el-upload ref="uploadFilesRef" drag :auto-upload="false" :limit="3" accept=".pdf,.jpg,.jpeg,.png">
+          <el-upload ref="uploadFilesRef" drag :auto-upload="false" :limit="3" accept=".pdf,.jpg,.jpeg,.png" :on-change="onFileChange" :on-remove="onFileRemove">
             <el-icon :size="40" color="#059669"><UploadFilled /></el-icon>
             <div style="font-size:13px;color:#475569;margin-top:8px">拖拽文件到此处，或点击上传</div>
             <template #tip><div style="font-size:12px;color:#94a3b8;margin-top:4px">支持 PDF / JPG / PNG，单文件不超过 20MB</div></template>
@@ -294,13 +294,38 @@
           <el-icon :size="48" class="is-loading"><Loading /></el-icon>
           <p style="margin-top:12px;color:#94a3b8">加载中...</p>
         </div>
-        <template v-else-if="previewItem.type !== 'pdf'">
-          <img v-if="previewUrl" :src="previewUrl" alt="预览" style="max-width:100%" />
+        <!-- 图片预览（点击图片进入全屏查看器，支持滚轮缩放 / 拖拽平移 / 旋转） -->
+        <div v-else-if="previewMimeType && previewMimeType.startsWith('image/')" style="text-align:center">
+          <el-image
+            v-if="previewUrl"
+            :src="previewUrl"
+            :preview-src-list="[previewUrl]"
+            :initial-index="0"
+            fit="scale-down"
+            :hide-on-click-modal="false"
+            :preview-teleported="true"
+            style="max-width:100%;max-height:65vh;cursor:zoom-in"
+          />
+          <div v-if="previewUrl" style="margin-top:6px;font-size:12px;color:#94a3b8">
+            <el-icon :size="14"><ZoomIn /></el-icon> 点击图片可放大查看
+          </div>
           <el-empty v-else description="加载失败，请重试" :image-size="80" />
-        </template>
+        </div>
+        <!-- PDF 内联预览 -->
+        <div v-else-if="previewMimeType === 'application/pdf'" style="text-align:center">
+          <embed v-if="previewUrl" :src="previewUrl" type="application/pdf" width="100%" height="520px" style="border:none;border-radius:8px" />
+          <el-empty v-else description="加载失败，请重试" :image-size="80" />
+        </div>
+        <!-- 文本文件预览 -->
+        <div v-else-if="isTextPreview">
+          <div v-if="previewText" style="max-height:450px;overflow:auto;background:#f8fafc;padding:16px;border-radius:8px;font-size:13px;line-height:1.6;white-space:pre-wrap;font-family:Consolas,Monaco,monospace;border:1px solid var(--border-color,#e2e8f0)">{{ previewText }}</div>
+          <el-empty v-else description="加载失败，请重试" :image-size="80" />
+        </div>
+        <!-- 不支持在线预览的类型 -->
         <div v-else style="text-align:center;padding:40px">
-          <el-icon :size="64" color="#ef4444"><Document /></el-icon>
-          <p style="color:#475569;margin-top:12px">{{ previewItem.name }}</p>
+          <el-icon :size="64" color="#94a3b8"><Document /></el-icon>
+          <p style="color:#475569;margin-top:12px;font-weight:500">{{ previewItem.name }}</p>
+          <p style="color:#94a3b8;margin:8px 0 0;font-size:13px">该文件类型不支持在线预览</p>
           <el-button type="primary" style="margin-top:16px" @click="downloadAttachment">下载查看</el-button>
         </div>
       </div>
@@ -309,18 +334,20 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Search, Upload, Download, View, Edit, Stamp, OfficeBuilding, Document, Medal, Checked,
-  Paperclip, Document as DocIcon, PictureFilled, UploadFilled, InfoFilled, ArrowDown, Loading
+  Paperclip, Document as DocIcon, PictureFilled, UploadFilled, InfoFilled, ArrowDown, Loading, ZoomIn
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { useLicenseStore } from '@/stores/license'
+import { useAuthStore } from '@/stores/auth'
 import { getSuppliers } from '@/api/license'
 import request from '@/utils/request'
 
 const licenseStore = useLicenseStore()
+const authStore = useAuthStore()
 
 const searchText = ref('')
 const filterType = ref('')
@@ -345,6 +372,16 @@ const uploadFormRef = ref(null)
 const uploadFilesRef = ref(null)
 const editingLicenseId = ref(null)
 const suppliers = ref([])
+// Element Plus el-upload 不通过 defineExpose 暴露 uploadFiles，
+// 必须通过 onChange/onRemove 事件在本地追踪已选文件。
+const selectedFiles = ref([])
+
+function onFileChange(_file, fileList) {
+  selectedFiles.value = fileList
+}
+function onFileRemove(_file, fileList) {
+  selectedFiles.value = fileList
+}
 
 async function loadSuppliers() {
   try {
@@ -371,6 +408,25 @@ const showPreviewDialog = ref(false)
 const previewLoading = ref(false)
 const previewItem = ref(null)
 const previewUrl = ref('')
+const previewMimeType = ref('')
+const previewText = ref('')
+
+// 文本类型扩展名列表（用于 application/octet-stream 回退判断）
+const TEXT_EXTENSIONS = ['txt', 'csv', 'json', 'xml', 'md', 'log', 'sql', 'html', 'htm',
+  'css', 'js', 'ts', 'vue', 'java', 'yml', 'yaml', 'properties', 'ini', 'cfg', 'sh', 'bat', 'py', 'rb', 'go']
+
+const isTextPreview = computed(() => {
+  if (!previewMimeType.value) return false
+  if (previewMimeType.value.startsWith('text/')) return true
+  if (previewMimeType.value === 'application/xml') return true
+  if (previewMimeType.value === 'application/json') return true
+  // application/octet-stream 时根据文件名扩展名猜测
+  if (previewMimeType.value === 'application/octet-stream' && previewItem.value?.name) {
+    const ext = previewItem.value.name.split('.').pop()?.toLowerCase()
+    return TEXT_EXTENSIONS.includes(ext)
+  }
+  return false
+})
 
 let searchTimer = null
 watch(searchText, () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { page.value = 1; fetchData() }, 300) })
@@ -380,7 +436,7 @@ onMounted(() => {
   fetchData(); licenseStore.fetchStats(); licenseStore.fetchExpiryAlerts(); loadSuppliers()
   nextTick(() => initCharts())
 })
-onBeforeUnmount(() => { pieChart?.dispose(); barChart?.dispose() })
+onBeforeUnmount(() => { pieChart?.dispose(); barChart?.dispose(); revokePreviewUrl() })
 
 async function fetchData() {
   const params = { page: page.value, pageSize: pageSize.value }
@@ -444,35 +500,44 @@ async function handleUpload() {
   try {
     // 1. 创建/更新证照元数据
     let licenseId = editingLicenseId.value
+    const operatorId = authStore.user?.userId || 1
+    const operatorName = authStore.realName || '管理员'
     if (licenseId) {
-      await licenseStore.update(licenseId, { ...uploadForm, operatorId: 1, operatorName: '管理员' })
+      await licenseStore.update(licenseId, { ...uploadForm, operatorId, operatorName })
     } else {
-      const created = await licenseStore.create({ ...uploadForm, operatorId: 1, operatorName: '管理员' })
+      const created = await licenseStore.create({ ...uploadForm, operatorId, operatorName })
       licenseId = created?.id
     }
 
-    // 2. 上传选中的附件
-    const files = uploadFilesRef.value?.uploadFiles || []
-    for (const f of files) {
-      if (f.raw) {
+    // 2. 上传选中的附件（从本地 selectedFiles 数组读取，因为 Element Plus
+    //    el-upload 组件不通过 defineExpose 暴露 uploadFiles 属性）
+    for (const f of selectedFiles.value) {
+      if (f.raw && f.raw instanceof File) {
         const formData = new FormData()
         formData.append('file', f.raw)
         try {
           await request.post(`/license/${licenseId}/upload`, formData)
-        } catch { /* 单个文件上传失败不中断流程 */ }
+        } catch (e) {
+          console.error('附件上传失败:', f.name, e)
+          ElMessage.warning(`附件 "${f.name}" 上传失败，请稍后重试`)
+        }
       }
     }
 
     ElMessage.success(editingLicenseId.value ? '证照更新成功' : '证照上传成功')
     showUploadDialog.value = false
     fetchData(); licenseStore.fetchStats()
-  } catch { /* handled */ } finally { uploading.value = false }
+  } catch (e) {
+    console.error('证照操作失败:', e)
+    ElMessage.error('证照操作失败，请稍后重试')
+  } finally { uploading.value = false }
 }
 
 function resetUploadForm() {
   editingLicenseId.value = null
   uploadFormRef.value?.resetFields()
   uploadFilesRef.value?.clearFiles()
+  selectedFiles.value = []
   Object.assign(uploadForm, { supplierId: null, licenseType: '', certNo: '', issuingAuthority: '', issueDate: null, expireDate: null })
 }
 
@@ -489,8 +554,8 @@ async function handleImportFile(e) {
   if (!file) return
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('operatorId', '1')
-  formData.append('operatorName', '管理员')
+  formData.append('operatorId', String(authStore.user?.userId || 1))
+  formData.append('operatorName', authStore.realName || '管理员')
   try {
     const res = await request({
       url: '/license/import', method: 'post', data: formData
@@ -518,8 +583,9 @@ async function handleExport(format) {
     a.href = URL.createObjectURL(blob)
     a.download = `证照列表.${ext}`
     a.click()
-    URL.revokeObjectURL(a.href)
-  } catch {
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  } catch (e) {
+    console.error('导出失败:', e)
     ElMessage.error('导出失败')
   }
 }
@@ -531,6 +597,8 @@ async function previewAttachment(att) {
     previewUrl.value = ''
   }
   previewItem.value = att
+  previewMimeType.value = ''
+  previewText.value = ''
   previewLoading.value = true
   showPreviewDialog.value = true
 
@@ -544,20 +612,40 @@ async function previewAttachment(att) {
       `/license/${detailData.value.id}/file/${encodeURIComponent(att.objectKey)}`,
       { responseType: 'blob' }
     )
-    // 检测错误响应：后端异常会返回 200 OK JSON 而非实际图片
+    // 记录实际 MIME 类型（后端返回的 Content-Type）
+    previewMimeType.value = blob.type || 'application/octet-stream'
+
+    // 检测错误响应：JSON 类型需区分 Result<T> 错误包装 vs 合法 JSON 文件
     if (blob.type === 'application/json' || blob.type === '') {
       const text = await blob.text()
+      let parsed
       try {
-        const err = JSON.parse(text)
-        throw new Error(err.message || '服务器返回错误')
-      } catch (parseErr) {
-        if (parseErr.message !== '服务器返回错误') {
-          throw new Error('服务器返回了非预期的响应格式')
-        }
-        throw parseErr
+        parsed = JSON.parse(text)
+      } catch {
+        // 非 JSON 内容（如反向代理 HTML 错误页）
+        throw new Error('服务器返回了非预期的响应格式')
+      }
+      // Result<T> 错误包装：{ code(非200), message, data, timestamp }
+      if (typeof parsed.code === 'number' && parsed.code !== 200
+          && typeof parsed.message === 'string' && typeof parsed.timestamp === 'string') {
+        throw new Error(parsed.message)
+      }
+      // 合法的 JSON 文件 — 作为文本预览
+      previewText.value = text
+      previewMimeType.value = 'application/json'
+    } else {
+      // 非 JSON 文件：创建 blob URL 用于图片/PDF 预览
+      previewUrl.value = URL.createObjectURL(blob)
+    }
+
+    // 文本类型文件读取文本内容用于预览
+    if (isTextPreview.value && !previewText.value) {
+      try {
+        previewText.value = await blob.text()
+      } catch {
+        // 文本读取失败不影响 blob URL（仍可下载）
       }
     }
-    previewUrl.value = URL.createObjectURL(blob)
   } catch (e) {
     console.error('附件预览失败:', e)
     ElMessage.error('附件预览失败: ' + (e.message || '未知错误'))
@@ -591,6 +679,8 @@ function revokePreviewUrl() {
     URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = ''
   }
+  previewMimeType.value = ''
+  previewText.value = ''
   previewLoading.value = false
 }
 

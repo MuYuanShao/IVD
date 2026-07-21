@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 @TableName("reagent_catalog")
 public class ReagentCatalog {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 院内编码（IVD-{组别缩写}-{序号}） */
@@ -72,12 +72,6 @@ public class ReagentCatalog {
 
     /** 开瓶稳定天数 */
     private Integer stabilityDaysAfterOpen;
-
-    /** 最低库存警戒 */
-    private BigDecimal minStockLevel;
-
-    /** 最高库存 */
-    private BigDecimal maxStockLevel;
 
     /** 采购提前期(天) */
     private Integer leadTimeDays;

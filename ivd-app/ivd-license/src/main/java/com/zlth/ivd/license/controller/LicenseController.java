@@ -11,6 +11,7 @@ import com.zlth.ivd.license.dto.UpdateLicenseRequest;
 import com.zlth.ivd.license.service.LicenseService;
 import com.zlth.ivd.license.vo.LicenseDetailVO;
 import com.zlth.ivd.license.vo.LicenseVO;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ public class LicenseController {
     /** 新增证照 */
     @PostMapping
     @AuditLog(module = "证照管理", action = "新增证照")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<LicenseVO> create(@Valid @RequestBody CreateLicenseRequest request) {
         return Result.success(licenseService.create(request));
     }
@@ -56,6 +58,7 @@ public class LicenseController {
     /** 编辑证照 */
     @PutMapping("/{id}")
     @AuditLog(module = "证照管理", action = "编辑证照")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<LicenseVO> update(@PathVariable Long id, @Valid @RequestBody UpdateLicenseRequest request) {
         return Result.success(licenseService.update(id, request));
     }
@@ -81,6 +84,7 @@ public class LicenseController {
     /** 上传附件 */
     @PostMapping("/{id}/upload")
     @AuditLog(module = "证照管理", action = "上传附件")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<String> uploadAttachment(@PathVariable Long id,
                                            @RequestParam("file") MultipartFile file) {
         Long operatorId = SecurityUtils.getCurrentUserId();
@@ -126,6 +130,7 @@ public class LicenseController {
     /** 批量导入证照 */
     @PostMapping("/import")
     @AuditLog(module = "证照管理", action = "批量导入证照")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Map<String, Object>> importFile(@RequestParam("file") MultipartFile file) {
         Long operatorId = SecurityUtils.getCurrentUserId();
         String operatorName = SecurityUtils.getCurrentUsername();

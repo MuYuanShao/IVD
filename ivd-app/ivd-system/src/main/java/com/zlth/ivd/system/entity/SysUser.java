@@ -14,8 +14,11 @@ import java.time.LocalDateTime;
 @TableName("sys_user")
 public class SysUser {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+
+    /** 用户编码（业务唯一标识，格式 USER-YYYYMMDD-NNN） */
+    private String userCode;
 
     /** 登录用户名 */
     private String username;

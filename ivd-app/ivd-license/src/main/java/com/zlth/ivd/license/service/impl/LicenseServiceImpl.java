@@ -1,6 +1,5 @@
 package com.zlth.ivd.license.service.impl;
 
-import cn.hutool.core.util.IdUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -138,7 +137,6 @@ public class LicenseServiceImpl implements LicenseService {
     @Override
     public LicenseVO create(CreateLicenseRequest request) {
         SupplierLicense license = new SupplierLicense();
-        license.setId(IdUtil.getSnowflakeNextId());
         license.setSupplierId(request.getSupplierId());
         license.setLicenseType(LicenseTypeEnum.valueOf(request.getLicenseType()));
         license.setCertNo(request.getCertNo());
@@ -283,7 +281,7 @@ public class LicenseServiceImpl implements LicenseService {
         try {
             license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
         } catch (Exception e) {
-            log.error("附件JSON序列化失败", e);
+            log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
             throw new BizException(50000, "附件信息保存失败");
         }
         licenseMapper.updateById(license);
@@ -361,7 +359,6 @@ public class LicenseServiceImpl implements LicenseService {
     private void insertChangeLog(Long licenseId, String changeType, LocalDate oldExpire,
                                   LocalDate newExpire, Long operatorId, String operatorName, String note) {
         LicenseChangeLog log = new LicenseChangeLog();
-        log.setId(IdUtil.getSnowflakeNextId());
         log.setLicenseId(licenseId);
         log.setChangeType(changeType);
         log.setOldExpireDate(oldExpire);
@@ -440,6 +437,16 @@ public class LicenseServiceImpl implements LicenseService {
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "jpg";
         if (lower.endsWith(".gif")) return "gif";
         if (lower.endsWith(".bmp")) return "bmp";
+        if (lower.endsWith(".webp")) return "webp";
+        if (lower.endsWith(".svg")) return "svg";
+        if (lower.endsWith(".txt")) return "txt";
+        if (lower.endsWith(".csv")) return "csv";
+        if (lower.endsWith(".json")) return "json";
+        if (lower.endsWith(".xml")) return "xml";
+        if (lower.endsWith(".md")) return "md";
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+        if (lower.endsWith(".doc") || lower.endsWith(".docx")) return "doc";
+        if (lower.endsWith(".xls") || lower.endsWith(".xlsx")) return "xls";
         return "unknown";
     }
 
@@ -459,11 +466,27 @@ public class LicenseServiceImpl implements LicenseService {
     private String guessContentType(String filename) {
         if (filename == null) return "application/octet-stream";
         String lower = filename.toLowerCase();
-        if (lower.endsWith(".pdf")) return "application/pdf";
+        // 图片
         if (lower.endsWith(".png")) return "image/png";
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
         if (lower.endsWith(".gif")) return "image/gif";
         if (lower.endsWith(".bmp")) return "image/bmp";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".svg")) return "image/svg+xml";
+        // 文档
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        // 文本
+        if (lower.endsWith(".txt")) return "text/plain; charset=utf-8";
+        if (lower.endsWith(".csv")) return "text/csv; charset=utf-8";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".xml")) return "application/xml";
+        if (lower.endsWith(".md")) return "text/markdown; charset=utf-8";
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html; charset=utf-8";
+        // Office
+        if (lower.endsWith(".doc")) return "application/msword";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
         return "application/octet-stream";
     }
 

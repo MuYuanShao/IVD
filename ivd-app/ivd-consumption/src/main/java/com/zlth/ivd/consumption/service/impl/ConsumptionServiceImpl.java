@@ -1,7 +1,6 @@
 package com.zlth.ivd.consumption.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zlth.ivd.catalog.entity.ReagentCatalog;
 import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
@@ -135,13 +134,14 @@ public class ConsumptionServiceImpl implements ConsumptionService {
                 batch.setUdiStatus(UdiStatusEnum.IN_USE);
             }
 
-            try {
-                batchMapper.updateById(batch);
+            int updated = batchMapper.updateById(batch);
+            if (updated > 0) {
                 return batch;
-            } catch (MybatisPlusException e) {
-                if (i == maxRetries - 1) throw e;
-                log.warn("库存扣减乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
             }
+            if (i == maxRetries - 1) {
+                throw new BizException(50000, "库存扣减失败：超过最大重试次数");
+            }
+            log.warn("库存扣减乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
         }
         throw new BizException(50000, "库存扣减失败：超过最大重试次数");
     }
@@ -178,13 +178,14 @@ public class ConsumptionServiceImpl implements ConsumptionService {
             batch.setUdiStatus(UdiStatusEnum.IN_STOCK);
             batch.setWarehouseId(warehouseId);
 
-            try {
-                batchMapper.updateById(batch);
+            int updated = batchMapper.updateById(batch);
+            if (updated > 0) {
                 return batch;
-            } catch (MybatisPlusException e) {
-                if (i == maxRetries - 1) throw e;
-                log.warn("入库库存乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
             }
+            if (i == maxRetries - 1) {
+                throw new BizException(50000, "入库库存更新失败：超过最大重试次数");
+            }
+            log.warn("入库库存乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
         }
         throw new BizException(50000, "入库库存更新失败：超过最大重试次数");
     }

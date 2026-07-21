@@ -3,6 +3,7 @@ package com.zlth.ivd.rules.controller;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.rules.entity.AuditRule;
 import com.zlth.ivd.rules.service.RulesService;
+import com.zlth.ivd.common.annotation.RequireRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/rules")
 @RequiredArgsConstructor
+@RequireRole("SYSTEM_ADMIN")
 public class RulesController {
 
     private final RulesService rulesService;

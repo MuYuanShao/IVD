@@ -3,6 +3,7 @@ package com.zlth.ivd.settlement.controller;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
+import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.settlement.entity.SettlementRecord;
 import com.zlth.ivd.settlement.service.SettlementService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,6 +17,7 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/v1/settlement")
 @RequiredArgsConstructor
+@RequireRole({"SYSTEM_ADMIN", "FINANCE"})
 public class SettlementController {
 
     private final SettlementService settlementService;

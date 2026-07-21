@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @TableName("sys_dept")
 public class SysDept {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 科室名称 */

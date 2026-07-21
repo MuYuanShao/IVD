@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @TableName("udi_backlog")
 public class UdiBacklog {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 关联试剂ID（唯一） */

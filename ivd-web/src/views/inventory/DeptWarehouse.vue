@@ -190,7 +190,7 @@ onMounted(() => { fetchData(); fetchReqData(); populateChartData(); nextTick(() 
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
-const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false)
+const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedBatchId = ref(null)
 
 const targetWarehouses = [
   { value: 11, label: '免疫组库' }, { value: 12, label: '生化组库' },
@@ -198,11 +198,11 @@ const targetWarehouses = [
 ]
 
 function openTrace(row) { traceSearch.value = row.udiDi || row.batchNo || ''; showTraceDialog.value = true }
-function openTransfer(row, source) { sourceName.value = source; maxQty.value = row.stock || 999; showTransferDialog.value = true }
+function openTransfer(row, source) { sourceName.value = source; maxQty.value = row.stock || 999; selectedBatchId.value = row.id; showTransferDialog.value = true }
 
 async function doSubmitTransfer(form) {
   transferLoading.value = true
-  try { await store.doTransfer(1, form.targetWarehouse, form.quantity); ElMessage.success('下发成功'); showTransferDialog.value = false; fetchData() }
+  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity); ElMessage.success('下发成功'); showTransferDialog.value = false; fetchData() }
   catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 

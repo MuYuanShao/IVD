@@ -1,8 +1,7 @@
 package com.zlth.ivd.inventory.service.impl;
 
-import cn.hutool.core.util.IdUtil;
+import com.zlth.ivd.common.utils.IdGenerator;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.zlth.ivd.catalog.entity.ReagentCatalog;
 import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
@@ -222,13 +221,14 @@ public class InventoryServiceImpl implements InventoryService {
                 sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
             }
 
-            try {
-                batchMapper.updateById(sourceBatch);
+            int updated = batchMapper.updateById(sourceBatch);
+            if (updated > 0) {
                 return sourceBatch;
-            } catch (MybatisPlusException e) {
-                if (i == maxRetries - 1) throw e;
-                log.warn("调拨扣减乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
             }
+            if (i == maxRetries - 1) {
+                throw new BizException(50000, "调拨扣减失败：超过最大重试次数");
+            }
+            log.warn("调拨扣减乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
         }
         throw new BizException(50000, "调拨扣减失败：超过最大重试次数");
     }
@@ -246,16 +246,17 @@ public class InventoryServiceImpl implements InventoryService {
 
             if (targetBatch != null) {
                 targetBatch.setStock(targetBatch.getStock().add(qty));
-                try {
-                    batchMapper.updateById(targetBatch);
+                int updated = batchMapper.updateById(targetBatch);
+                if (updated > 0) {
                     return;
-                } catch (MybatisPlusException e) {
-                    if (i == maxRetries - 1) throw e;
-                    log.warn("调拨入库乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
                 }
+                if (i == maxRetries - 1) {
+                    throw new BizException(50000, "调拨入库失败：超过最大重试次数");
+                }
+                log.warn("调拨入库乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
             } else {
                 ReagentBatch newBatch = new ReagentBatch();
-                newBatch.setId(IdUtil.getSnowflakeNextId());
+                newBatch.setId(IdGenerator.nextId());
                 newBatch.setBatchNo(sourceBatch.getBatchNo());
                 newBatch.setReagentId(sourceBatch.getReagentId());
                 newBatch.setMaterialType(sourceBatch.getMaterialType());
@@ -282,6 +283,7 @@ public class InventoryServiceImpl implements InventoryService {
         LambdaQueryWrapper<ReagentBatch> qw = new LambdaQueryWrapper<>();
         qw.eq(ReagentBatch::getUdiDi, udiDi);
         if (lotNo != null) qw.eq(ReagentBatch::getBatchNo, lotNo);
+        qw.last("LIMIT 1");
         ReagentBatch batch = batchMapper.selectOne(qw);
         if (batch == null) throw new BizException(40400, "未找到该 UDI 的批次信息");
         Map<String, Object> trace = new LinkedHashMap<>();
@@ -403,19 +405,14 @@ public class InventoryServiceImpl implements InventoryService {
             row.put("udiDi", batch.getUdiDi());
             row.put("expiryDate", batch.getExpiryDate() != null ? batch.getExpiryDate().toString() : null);
             row.put("stock", batch.getStock());
-            // 安全库存取自试剂目录
-            row.put("safetyStock", catalog != null && catalog.getMinStockLevel() != null
-                    ? catalog.getMinStockLevel() : BigDecimal.ZERO);
+            // 安全库存（待二期规则引擎接入后动态计算）
+            row.put("safetyStock", BigDecimal.ZERO);
             // 库位（仓库名称）
             Warehouse wh = allWarehouses.stream()
                     .filter(w -> w.getId().equals(batch.getWarehouseId())).findFirst().orElse(null);
             row.put("location", wh != null ? wh.getName() : "");
-            // 可支撑天数 = 当前库存 / 日均消耗（取安全库存/7 为估算日均消耗，避免除零）
+            // 可支撑天数 = 当前库存 / 日均消耗
             BigDecimal dailyRate = BigDecimal.ONE;
-            if (catalog != null && catalog.getMinStockLevel() != null
-                    && catalog.getMinStockLevel().compareTo(BigDecimal.ZERO) > 0) {
-                dailyRate = catalog.getMinStockLevel().divide(BigDecimal.valueOf(7), 2, RoundingMode.HALF_UP);
-            }
             long supportDays = dailyRate.compareTo(BigDecimal.ZERO) > 0
                     ? batch.getStock().divide(dailyRate, 0, RoundingMode.DOWN).longValue()
                     : batch.getStock().longValue();

@@ -1,6 +1,7 @@
 package com.zlth.ivd.system.service;
 
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.system.vo.DeptReagentVO;
 import com.zlth.ivd.system.vo.DeptVO;
 
 import java.util.List;
@@ -30,4 +31,15 @@ public interface DeptService {
     List<DeptVO> tree();
 
     List<DeptVO> options();
+
+    // ── 科室试剂目录 ──
+
+    /** 查询科室已分配的试剂目录 */
+    List<DeptReagentVO> listDeptReagents(Long deptId);
+
+    /** 批量添加试剂到科室目录 */
+    void addDeptReagents(Long deptId, List<Long> reagentIds);
+
+    /** 批量移除科室试剂目录 */
+    void removeDeptReagents(Long deptId, List<Long> reagentIds);
 }

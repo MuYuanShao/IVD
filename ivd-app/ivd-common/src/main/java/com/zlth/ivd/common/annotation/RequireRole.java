@@ -1,11 +1,11 @@
-package com.zlth.ivd.server.annotation;
+package com.zlth.ivd.common.annotation;
 
 import java.lang.annotation.*;
 
 /**
  * RBAC 角色校验注解 — 标注在 Controller 方法上
  * <p>
- * 用法: @RequireRole("ADMIN")  // 仅管理员可访问
+ * 用法: @RequireRole("SYSTEM_ADMIN")  // 仅管理员可访问
  *
  * @author IVD Team
  * @since 2026-07-06

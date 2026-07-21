@@ -7,10 +7,10 @@
 export function getReqStatusType(s) {
   if (s === 'PENDING_REVIEW') return 'warning'
   if (s === 'PICKING') return 'info'
-  if (s === 'PARTIAL_SHIPPED') return ''
+  if (s === 'PARTIAL_SHIPPED') return 'info'
   if (s === 'FULFILLED') return 'success'
   if (s === 'SHORTAGE_PENDING') return 'danger'
-  return ''
+  return 'info'
 }
 
 /** 缺货单状态 → Element Plus Tag type */
@@ -18,7 +18,7 @@ export function getShStatusType(s) {
   if (s === 'PENDING_PROCUREMENT') return 'warning'
   if (s === 'PURCHASING') return 'info'
   if (s === 'COMPLETED') return 'success'
-  return ''
+  return 'info'
 }
 
 /** 采购订单状态 → Element Plus Tag type */
@@ -27,7 +27,7 @@ export function getPoStatusType(s) {
   if (s === 'PARTIAL_RECEIVED') return 'info'
   if (s === 'COMPLETED') return 'success'
   if (s === 'CANCELLED') return 'danger'
-  return ''
+  return 'info'
 }
 
 /** 计算采购订单收货百分比 */

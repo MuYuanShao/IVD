@@ -31,8 +31,6 @@ public class UpdateReagentRequest {
     private Integer testsPerKit;
     private BigDecimal pricePerUnit;
     private Integer stabilityDaysAfterOpen;
-    private BigDecimal minStockLevel;
-    private BigDecimal maxStockLevel;
     private Integer leadTimeDays;
     private DeviceBindModeEnum deviceBindMode;
 }

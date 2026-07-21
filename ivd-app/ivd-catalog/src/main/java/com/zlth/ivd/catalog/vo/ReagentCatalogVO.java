@@ -37,8 +37,6 @@ public class ReagentCatalogVO {
     private Integer testsPerKit;
     private BigDecimal pricePerUnit;
     private Integer stabilityDaysAfterOpen;
-    private BigDecimal minStockLevel;
-    private BigDecimal maxStockLevel;
     private Integer leadTimeDays;
 
     /** 设备关联策略 code */

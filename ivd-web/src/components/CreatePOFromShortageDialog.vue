@@ -1,6 +1,6 @@
 <!--
   CreatePOFromShortageDialog.vue — 从缺货单生成采购订单弹窗
-  表单：供应商下拉/预计到货日期/付款条款/备注
+  表单：供应商下拉/预计到货日期/结算模式/备注
 -->
 <template>
   <el-dialog :model-value="modelValue" title="生成采购订单" width="520px" top="8vh" @update:model-value="$emit('update:modelValue', $event)" @closed="resetForm">
@@ -16,12 +16,12 @@
       <el-form-item label="预计到货日期" prop="expectedDeliveryDate">
         <el-date-picker v-model="form.expectedDeliveryDate" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
       </el-form-item>
-      <el-form-item label="付款条款">
-        <el-select v-model="form.paymentTerms" placeholder="请选择付款条款" style="width:100%">
-          <el-option label="货到付款" value="COD" />
-          <el-option label="月结30天" value="NET30" />
-          <el-option label="月结60天" value="NET60" />
-          <el-option label="预付30%" value="PREPAID30" />
+      <el-form-item label="结算模式">
+        <el-select v-model="form.settlementMode" placeholder="请选择结算模式" style="width:100%">
+          <el-option label="消耗结算" value="消耗结算" />
+          <el-option label="领用结算" value="领用结算" />
+          <el-option label="验收结算" value="验收结算" />
+          <el-option label="调拨结算" value="调拨结算" />
         </el-select>
       </el-form-item>
       <el-form-item label="备注">
@@ -57,7 +57,7 @@ const loading = ref(false)
 const form = reactive({
   supplierId: null,
   expectedDeliveryDate: '',
-  paymentTerms: 'NET30',
+  settlementMode: '调拨结算',
   remark: ''
 })
 
@@ -68,7 +68,7 @@ const rules = {
 
 function resetForm() {
   formRef.value?.resetFields()
-  Object.assign(form, { supplierId: null, expectedDeliveryDate: '', paymentTerms: 'NET30', remark: '' })
+  Object.assign(form, { supplierId: null, expectedDeliveryDate: '', settlementMode: '调拨结算', remark: '' })
   loading.value = false
 }
 
@@ -80,7 +80,7 @@ async function submitForm() {
     shortageId: props.shortageId,
     supplierId: form.supplierId,
     expectedDeliveryDate: form.expectedDeliveryDate,
-    paymentTerms: form.paymentTerms,
+    settlementMode: form.settlementMode,
     remark: form.remark
   })
   loading.value = false

@@ -20,8 +20,6 @@ CREATE TABLE IF NOT EXISTS reagent_catalog (
     tests_per_kit INT,
     price_per_unit DECIMAL(12,2),
     stability_days_after_open INT,
-    min_stock_level DECIMAL(10,2) DEFAULT 0,
-    max_stock_level DECIMAL(10,2) DEFAULT 99999,
     lead_time_days INT NOT NULL DEFAULT 7,
     device_bind_mode VARCHAR(20) NOT NULL DEFAULT 'FORCE',
     approval_status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',

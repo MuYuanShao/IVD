@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 @Data
 @TableName("audit_rule")
 public class AuditRule {
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
     private String ruleId;              // R-RST-001 etc.
     private String name;

@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import cn.hutool.core.util.IdUtil;
+import com.zlth.ivd.common.utils.IdGenerator;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -117,6 +117,6 @@ public class SettlementServiceImpl implements SettlementService {
      * 生成全局唯一结算单号（Snowflake 算法，保证分布式唯一）
      */
     private String generateSettlementNo(String prefix) {
-        return "STL-" + prefix + "-" + IdUtil.getSnowflakeNextIdStr();
+        return "STL-" + prefix + "-" + IdGenerator.nextIdStr();
     }
 }

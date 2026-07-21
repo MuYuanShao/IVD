@@ -2,6 +2,7 @@ package com.zlth.ivd.system.controller;
 
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.system.service.UserService;
 import com.zlth.ivd.system.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +23,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/system/users")
 @RequiredArgsConstructor
+@RequireRole("SYSTEM_ADMIN")
 public class UserController {
 
     private final UserService userService;

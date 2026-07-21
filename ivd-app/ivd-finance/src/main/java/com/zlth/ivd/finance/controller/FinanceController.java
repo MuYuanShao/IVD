@@ -4,6 +4,7 @@ import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.finance.entity.DailyInventorySnapshot;
 import com.zlth.ivd.finance.service.FinanceService;
+import com.zlth.ivd.common.annotation.RequireRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/finance")
 @RequiredArgsConstructor
+@RequireRole({"SYSTEM_ADMIN", "FINANCE"})
 public class FinanceController {
 
     private final FinanceService financeService;

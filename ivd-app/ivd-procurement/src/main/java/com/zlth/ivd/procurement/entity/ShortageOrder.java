@@ -13,12 +13,12 @@ public class ShortageOrder {
     private Long id;
     private String shortageNo;
     private Long reqId;
-    private Integer fromDeptId;
+    private Long fromDeptId;
     private ShortageStatusEnum status;
     private UrgencyEnum urgency;
-    private Integer suggestedSupplierId;
+    private Long suggestedSupplierId;
     private Long poId;
-    private Integer createdBy;
+    private Long createdBy;
 
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

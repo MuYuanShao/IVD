@@ -13,6 +13,7 @@ public class PurchaseOrderItem {
     private Long poId;
     private Integer lineNo;
     private Integer reagentId;
+    private String materialType;            // REAGENT/CALIBRATOR/QC_MATERIAL/CONSUMABLE/OTHER
     @TableField("order_quantity")
     private BigDecimal qtyOrdered;
     private BigDecimal unitPrice;

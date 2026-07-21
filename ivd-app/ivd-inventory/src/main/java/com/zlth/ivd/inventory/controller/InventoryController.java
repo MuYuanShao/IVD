@@ -6,6 +6,7 @@ import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.inventory.entity.*;
 import com.zlth.ivd.inventory.vo.ReagentBatchVO;
 import com.zlth.ivd.inventory.service.InventoryService;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +61,7 @@ public class InventoryController {
     }
 
     @PostMapping("/transfer")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<String> transfer(@RequestParam Long batchId, @RequestParam Long targetWarehouseId,
                                    @RequestParam BigDecimal qty, @RequestParam(defaultValue = "NORMAL") String urgency) {
         inventoryService.transferBatch(batchId, targetWarehouseId, qty, urgency);

@@ -23,6 +23,7 @@ public class PurchaseOrder {
     @TableField(exist = false)
     private Long sourceId;
     private String acceptanceMethod;
+    private String settlementMode;
     private BigDecimal totalAmount;
     private PurchaseOrderStatusEnum status;
     private LocalDate orderDate;

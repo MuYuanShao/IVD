@@ -37,4 +37,7 @@ public class ReagentCatalogQuery {
 
     /** 适用组别（模糊） */
     private String testGroups;
+
+    /** 科室 ID — 按科室过滤试剂目录（匹配 test_groups 或全局试剂） */
+    private Long deptId;
 }

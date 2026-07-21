@@ -33,7 +33,7 @@
       <el-table :data="store.shortages" stripe v-loading="store.shLoading" style="width:100%">
         <el-table-column prop="shortageNo" label="缺货单号" width="160" />
         <el-table-column label="来源申领" width="130">
-          <template #default="{row}"><el-button link type="primary" size="small" @click="viewReqDetail(row.reqId)">{{ row.sourceReqNo || '查看' }}</el-button></template>
+          <template #default="{row}"><el-button link type="primary" size="small" @click="viewReqDetail(row)">{{ row.sourceReqNo || '查看' }}</el-button></template>
         </el-table-column>
         <el-table-column prop="deptName" label="申领科室" width="120" />
         <el-table-column prop="reagentName" label="缺货试剂" width="140" />
@@ -47,7 +47,7 @@
         </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="{row}">
-            <el-button link type="primary" size="small" @click="viewShortageDetail(row.id)">详情</el-button>
+            <el-button link type="primary" size="small" @click="viewShortageDetail(row)">详情</el-button>
             <el-button v-if="row.reqId" link type="warning" size="small" @click="goViewRequisition(row.reqId)">查看申领单</el-button>
             <el-button v-if="row.status==='PENDING_PROCUREMENT'" link type="primary" size="small" @click="openGeneratePO(row)">生成采购单</el-button>
             <el-button v-if="row.poId" link type="success" size="small" @click="$router.push('/purchase')">查看订单</el-button>
@@ -62,10 +62,21 @@
     </el-card>
 
     <!-- 申领明细弹窗 -->
-    <RequisitionDetailDialog v-model="showReqDetailDialog" :detail="reqDetail" />
+    <RequisitionDetailDialog
+      v-model="showReqDetailDialog"
+      :reqId="reqDetail.id"
+      :reqNo="reqDetail.reqNo"
+      :deptName="reqDetail.deptName"
+      :status="reqDetail.status"
+    />
 
     <!-- 缺货明细弹窗 -->
-    <ShortageDetailDialog v-model="showShortageDetailDialog" :detail="shortageDetail" @generatePO="openGeneratePOFromDetail" @viewRequisition="goViewRequisition" />
+    <ShortageDetailDialog
+      v-model="showShortageDetailDialog"
+      :header="shortageDetail"
+      @generatePO="openGeneratePOFromDetail"
+      @viewRequisition="goViewRequisition"
+    />
 
     <!-- 生成采购订单弹窗 -->
     <CreatePOFromShortageDialog
@@ -93,8 +104,8 @@ const store = useProcurementStore()
 const page = ref(1), pageSize = ref(10)
 const statusFilter = ref(''), search = ref('')
 
-const showReqDetailDialog = ref(false), reqDetail = ref(null)
-const showShortageDetailDialog = ref(false), shortageDetail = ref(null)
+const showReqDetailDialog = ref(false), reqDetail = ref({})
+const showShortageDetailDialog = ref(false), shortageDetail = ref({})
 const showCreatePODialog = ref(false)
 const selectedShortageId = ref(null), selectedShortageNo = ref('')
 const supplierOptions = ref([])
@@ -106,21 +117,24 @@ async function loadSuppliers() {
   } catch (e) { console.error('Failed to load suppliers:', e) }
 }
 
-async function viewReqDetail(reqId) {
-  showReqDetailDialog.value = true; reqDetail.value = null
-  try { reqDetail.value = await store.fetchRequisitionDetail(reqId) } catch {}
+function viewReqDetail(row) {
+  reqDetail.value = { id: row.reqId, reqNo: row.sourceReqNo || '-', deptName: row.deptName || '-', status: row.reqStatus || '-' }
+  showReqDetailDialog.value = true
 }
 
-async function viewShortageDetail(id) {
-  showShortageDetailDialog.value = true; shortageDetail.value = null
-  try { shortageDetail.value = await store.fetchShortageDetail(id) } catch {}
+function viewShortageDetail(row) {
+  shortageDetail.value = {
+    id: row.id, shortageNo: row.shortageNo, reqId: row.reqId,
+    deptName: row.deptName, status: row.status, poId: row.poId, createdAt: row.createdAt
+  }
+  showShortageDetailDialog.value = true
 }
 
 function goViewRequisition(reqId) {
   if (reqId) {
     showShortageDetailDialog.value = false
-    showReqDetailDialog.value = true; reqDetail.value = null
-    store.fetchRequisitionDetail(reqId).then(d => reqDetail.value = d).catch(() => {})
+    reqDetail.value = { id: reqId, reqNo: '-', deptName: '-', status: '-' }
+    showReqDetailDialog.value = true
   }
 }
 

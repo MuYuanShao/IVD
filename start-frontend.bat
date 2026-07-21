@@ -8,13 +8,9 @@ echo   IVD Frontend (Vite)
 echo   Port: 5173
 echo ==========================================
 echo.
-echo Starting Vite dev server...
+echo Starting Vite dev server in background...
+echo Log: D:\IVD\ivd-web\frontend.log
 echo.
 
 cd /d D:\IVD\ivd-web
-npm run dev
-
-echo.
-echo ==========================================
-echo Frontend stopped. Press any key to close...
-pause >nul
+npm run dev > "D:\IVD\ivd-web\frontend.log" 2>&1

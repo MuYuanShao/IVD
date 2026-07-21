@@ -16,6 +16,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const role = computed(() => user.value?.role || '')
   const realName = computed(() => user.value?.realName || user.value?.username || '')
+  const deptId = computed(() => user.value?.deptId || null)
+  const deptName = computed(() => user.value?.deptName || '')
   const roleLabel = computed(() => {
     const map = { ADMIN: '系统管理员', USER: '操作员', AUDITOR: '审核员' }
     return map[role.value] || role.value || '检验科主任'
@@ -82,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     token, refreshTokenVal, user, loading,
-    isLoggedIn, role, realName, roleLabel,
+    isLoggedIn, role, realName, deptId, deptName, roleLabel,
     login, refresh, fetchUserInfo, logout
   }
 })

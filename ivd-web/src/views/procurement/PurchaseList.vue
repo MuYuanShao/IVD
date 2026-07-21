@@ -54,9 +54,10 @@
         <el-table-column label="状态" width="110">
           <template #default="{row}"><el-tag :type="getPoStatusType(row.status)" size="small">{{ row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="180">
           <template #default="{row}">
             <el-button link type="primary" size="small" @click="goInbound(row)">扫码验收</el-button>
+            <el-button link type="success" size="small" @click="goReceiving(row)">人工验收</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -68,41 +69,108 @@
     </el-card>
 
     <!-- 智能补货建议弹窗 -->
-    <el-dialog v-model="showSmartReplenishDialog" title="✨ 智能补货建议" width="800px" top="5vh">
+    <el-dialog v-model="showSmartReplenishDialog" title="✨ 智能补货建议" width="1000px" align-center @open="loadSmartReplenish">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
         <span style="font-size:13px;">分析周期：</span>
         <el-select v-model="replenishForm.period" style="width:130px" @change="loadSmartReplenish">
           <el-option label="近7天" value="7" /><el-option label="近14天" value="14" /><el-option label="近30天" value="30" /><el-option label="近90天" value="90" />
         </el-select>
-        <span style="font-size:13px;">安全库存阈值（天）：</span>
-        <el-input-number v-model="replenishForm.thresholdDays" :min="3" :max="60" style="width:110px" @change="loadSmartReplenish" />
+        <el-button :icon="Refresh" size="small" @click="loadSmartReplenish">刷新数据</el-button>
       </div>
-      <el-table :data="store.replenishSuggestions" stripe v-loading="store.replenishLoading" @selection-change="sel => selectedReplenish = sel">
+      <el-table :data="store.replenishSuggestions" stripe v-loading="store.replenishLoading" @selection-change="sel => selectedReplenish = sel" max-height="400">
         <el-table-column type="selection" width="45" />
-        <el-table-column prop="reagentName" label="试剂" min-width="180" />
-        <el-table-column prop="suggestedQty" label="建议采购量" width="110" />
-        <el-table-column prop="currentStock" label="当前库存" width="90" />
-        <el-table-column prop="safetyStock" label="安全库存" width="90" />
-        <el-table-column prop="supplier" label="推荐供应商" width="120" />
+        <el-table-column prop="reagentName" label="试剂名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="specification" label="规格型号" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="厂家" min-width="100" show-overflow-tooltip />
+        <el-table-column prop="currentStock" label="当前库存" width="90" align="right" />
+        <el-table-column prop="dailyConsumption" label="日均消耗" width="90" align="right" />
+        <el-table-column prop="safetyStock" label="安全库存" width="90" align="right" />
+        <el-table-column prop="suggestedQty" label="建议补货量" width="120" align="right">
+          <template #default="{row}">
+            <el-input-number
+              v-model="row.suggestedQty"
+              :min="1"
+              :max="999"
+              :step="1"
+              step-strictly
+              size="small"
+              style="width:100px"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="unit" label="单位" width="60" />
+        <el-table-column prop="supplier" label="推荐供应商" width="120" show-overflow-tooltip />
       </el-table>
       <template #footer>
         <el-button @click="showSmartReplenishDialog = false">取消</el-button>
-        <el-button type="primary" @click="doBatchCreatePO" :disabled="!selectedReplenish.length">批量生成采购单 ({{ selectedReplenish.length }})</el-button>
+        <el-button type="primary" :loading="replenishCreating" @click="doBatchCreatePO" :disabled="!selectedReplenish.length">批量生成采购单 ({{ selectedReplenish.length }})</el-button>
       </template>
     </el-dialog>
 
     <!-- 手动创建采购单弹窗 -->
-    <el-dialog v-model="showManualPODialog" title="新建采购单" width="500px" top="8vh" @closed="resetManualPO">
+    <el-dialog v-model="showManualPODialog" title="新建采购单" width="1100px" top="4vh" @closed="resetManualPO" @open="loadReagents">
       <el-form ref="manualPOFormRef" :model="manualPOForm" :rules="manualPORules" label-width="90px">
-        <el-form-item label="供应商" prop="supplierId">
-          <el-select v-model="manualPOForm.supplierId" placeholder="请选择供应商" style="width:100%">
-            <el-option v-for="s in suppliers" :key="s.value" :label="s.label" :value="s.value" />
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="供应商" prop="supplierId">
+              <el-select v-model="manualPOForm.supplierId" placeholder="请选择供应商" style="width:100%">
+                <el-option v-for="s in suppliers" :key="s.value" :label="s.label" :value="s.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="下单日期" prop="orderDate">
+              <el-date-picker v-model="manualPOForm.orderDate" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="结算模式">
+          <el-select v-model="manualPOForm.settlementMode" placeholder="请选择结算模式" style="width:100%">
+            <el-option label="消耗结算" value="消耗结算" />
+            <el-option label="领用结算" value="领用结算" />
+            <el-option label="验收结算" value="验收结算" />
+            <el-option label="调拨结算" value="调拨结算" />
           </el-select>
         </el-form-item>
-        <el-form-item label="下单日期" prop="orderDate">
-          <el-date-picker v-model="manualPOForm.orderDate" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
+        <el-divider content-position="left" style="margin:12px 0">采购明细</el-divider>
+        <el-table :data="manualPOForm.items" stripe size="small" max-height="320" style="width:100%">
+          <el-table-column label="试剂名称" min-width="160">
+            <template #default="{row, $index}">
+              <el-select v-model="row.reagentId" placeholder="搜索/选择试剂" filterable style="width:100%" size="small" @change="onReagentChange($index, $event)">
+                <el-option v-for="r in reagentOptions" :key="r.value" :label="r.label" :value="r.value" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="规格型号" min-width="100">
+            <template #default="{row}">{{ row.specification || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="厂家" min-width="90">
+            <template #default="{row}">{{ row.manufacturer || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="注册证" min-width="110">
+            <template #default="{row}">{{ row.registrationCertNo || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="单价" width="100" align="right">
+            <template #default="{row}">{{ row.unitPrice ? '¥' + row.unitPrice : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="采购数量" width="110" align="center">
+            <template #default="{row}">
+              <el-input-number v-model="row.quantity" :min="1" :max="999" size="small" style="width:90px" />
+            </template>
+          </el-table-column>
+          <el-table-column label="采购金额" width="110" align="right">
+            <template #default="{row}">{{ row.unitPrice ? '¥' + (row.unitPrice * row.quantity).toFixed(2) : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="60" align="center">
+            <template #default="{ $index }">
+              <el-button :icon="Delete" circle size="small" type="danger" plain @click="removeManualItem($index)" :disabled="manualPOForm.items.length <= 1" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-button size="small" :icon="Plus" @click="addManualItem" style="margin-top:4px">添加试剂</el-button>
+        <el-form-item label="备注" prop="remark" style="margin-top:12px">
+          <el-input v-model="manualPOForm.remark" type="textarea" :rows="2" placeholder="选填" />
         </el-form-item>
-        <el-form-item label="备注" prop="remark"><el-input v-model="manualPOForm.remark" type="textarea" :rows="2" placeholder="选填" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showManualPODialog = false">取消</el-button>
@@ -116,10 +184,12 @@
 import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Plus, Download, MagicStick } from '@element-plus/icons-vue'
+import { Search, Plus, Download, MagicStick, Refresh, Delete } from '@element-plus/icons-vue'
 import { useProcurementStore } from '@/stores/procurement'
 import { getPoStatusType, getReceivePct } from '@/utils/procurement'
 import { getSuppliers } from '@/api/license'
+import { getCatalogList } from '@/api/catalog'
+import { createOrdersFromReplenish } from '@/api/procurement'
 
 const store = useProcurementStore()
 const router = useRouter()
@@ -128,6 +198,10 @@ const search = ref(''), statusFilter = ref('')
 
 function goInbound(row) {
   router.push({ path: '/inbound', query: { orderId: row.id, poNo: row.poNo } })
+}
+
+function goReceiving(row) {
+  router.push({ path: '/receiving', query: { orderId: row.id, poNo: row.poNo } })
 }
 
 function fetchData() {
@@ -158,43 +232,129 @@ function handleExport() { ElMessage.success('采购报表生成中，即将下�
 // ── 智能补货 ──
 const showSmartReplenishDialog = ref(false)
 const selectedReplenish = ref([])
-const replenishForm = reactive({ period: '30', thresholdDays: 7 })
+const replenishCreating = ref(false)
+const replenishForm = reactive({ period: '30' })
 
+// 点击"智能补货建议"按钮 → 触发运算事件 → 加载补货数据
 async function loadSmartReplenish() {
   await store.fetchSmartReplenish(replenishForm.period)
 }
 
+// 批量生成采购单
 async function doBatchCreatePO() {
-  ElMessage.success(`已批量生成 ${selectedReplenish.value.length} 张采购单`)
-  showSmartReplenishDialog.value = false
-  fetchData()
+  if (!selectedReplenish.value.length) return
+  replenishCreating.value = true
+  try {
+    const items = selectedReplenish.value.map(s => ({
+      id: s.id,                              // 建议表记录 ID
+      reagentId: s.reagentId,
+      suggestedQty: s.suggestedQty            // 用户可能已修改
+    }))
+    await createOrdersFromReplenish(items)
+    ElMessage.success(`已批量生成 ${items.length} 张采购单`)
+    showSmartReplenishDialog.value = false
+    selectedReplenish.value = []
+    fetchData()
+  } catch (e) {
+    console.error('批量生成采购单失败:', e)
+  } finally { replenishCreating.value = false }
 }
 
 // ── 手动采购单 ──
 const showManualPODialog = ref(false), manualPOLoading = ref(false)
 const manualPOFormRef = ref(null)
 const getToday = () => new Date().toISOString().slice(0, 10)
-const manualPOForm = reactive({ supplierId: null, orderDate: getToday(), remark: '' })
+const createEmptyItem = () => ({
+  reagentId: null,
+  reagentName: '',
+  specification: '',
+  manufacturer: '',
+  registrationCertNo: '',
+  unitPrice: null,
+  quantity: 1
+})
+const manualPOForm = reactive({
+  supplierId: null,
+  orderDate: getToday(),
+  settlementMode: '调拨结算',
+  remark: '',
+  items: [createEmptyItem()]
+})
 const manualPORules = {
   supplierId: [{ required: true, message: '请选择供应商', trigger: 'change' }],
   orderDate: [{ required: true, message: '请选择下单日期', trigger: 'change' }]
 }
 const suppliers = ref([])
+const reagentOptions = ref([])
+
+async function loadReagents() {
+  try {
+    const res = await getCatalogList({ page: 1, pageSize: 200 })
+    const list = res?.records || res?.data?.records || []
+    reagentOptions.value = list.map(r => ({
+      value: r.id,
+      label: `${r.genericName || r.name || '—'} (${r.specification || '—'})`,
+      genericName: r.genericName,
+      specification: r.specification,
+      manufacturer: r.manufacturer,
+      registrationCertNo: r.registrationCertNo,
+      pricePerUnit: r.pricePerUnit
+    }))
+  } catch (e) { console.error('加载试剂列表失败:', e) }
+}
+
+function onReagentChange(idx, reagentId) {
+  const found = reagentOptions.value.find(r => r.value === reagentId)
+  if (found) {
+    const item = manualPOForm.items[idx]
+    item.reagentName = found.genericName || ''
+    item.specification = found.specification || ''
+    item.manufacturer = found.manufacturer || ''
+    item.registrationCertNo = found.registrationCertNo || ''
+    item.unitPrice = found.pricePerUnit
+  }
+}
+
+function addManualItem() { manualPOForm.items.push(createEmptyItem()) }
+function removeManualItem(idx) { if (manualPOForm.items.length > 1) manualPOForm.items.splice(idx, 1) }
 
 async function submitManualPO() {
   const valid = await manualPOFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  // Ensure at least one item has reagent selected
+  const hasReagent = manualPOForm.items.some(i => i.reagentId)
+  if (!hasReagent) { ElMessage.warning('请至少选择一个试剂'); return }
   manualPOLoading.value = true
   try {
-    await store.doCreateManualOrder({ ...manualPOForm })
+    const payload = {
+      supplierId: manualPOForm.supplierId,
+      orderDate: manualPOForm.orderDate,
+      settlementMode: manualPOForm.settlementMode,
+      remark: manualPOForm.remark,
+      items: manualPOForm.items.filter(i => i.reagentId).map(i => ({
+        reagentId: i.reagentId,
+        quantity: i.quantity
+      }))
+    }
+    await store.doCreateManualOrder(payload)
     ElMessage.success('采购单已创建')
     showManualPODialog.value = false
+    fetchData()
   } catch (e) { console.error('创建采购单失败:', e) } finally { manualPOLoading.value = false }
 }
 
 function resetManualPO() {
   manualPOFormRef.value?.resetFields()
-  Object.assign(manualPOForm, { supplierId: null, orderDate: getToday(), remark: '' })
+  Object.assign(manualPOForm, {
+    supplierId: null,
+    orderDate: getToday(),
+    settlementMode: '调拨结算',
+    remark: '',
+    items: [createEmptyItem()]
+  })
+  manualPOForm.items.forEach((item, idx) => {
+    Object.assign(item, createEmptyItem())
+  })
 }
 </script>
 

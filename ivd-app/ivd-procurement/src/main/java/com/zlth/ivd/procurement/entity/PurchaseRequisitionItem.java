@@ -24,4 +24,20 @@ public class PurchaseRequisitionItem {
     private Long shortageOrderId;
 
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
+
+    /** 试剂名称（非数据库字段，查询时 JOIN 填充） */
+    @TableField(exist = false)
+    private String reagentName;
+
+    /** 通用名称（非数据库字段） */
+    @TableField(exist = false)
+    private String genericName;
+
+    /** 生产厂家（非数据库字段） */
+    @TableField(exist = false)
+    private String manufacturer;
+
+    /** 单位（非数据库字段） */
+    @TableField(exist = false)
+    private String unit;
 }

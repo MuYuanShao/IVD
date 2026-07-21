@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import {
   getUserList, getUserById, createUser, updateUser, deleteUser, toggleUserStatus, resetUserPassword, getUserOptions,
   getDeptList, getDeptById, createDept, updateDept, deleteDept, toggleDeptStatus, getDeptTree, getDeptOptions,
+  getDeptReagents, addDeptReagents, removeDeptReagents,
   getWarehouseList, getWarehouseById, createWarehouse, updateWarehouse, deleteWarehouse, toggleWarehouseStatus, getWarehouseTree, getWarehouseOptions,
 } from '@/api/system'
 
@@ -95,6 +96,33 @@ export const useSystemStore = defineStore('system', () => {
     await toggleDeptStatus(id)
   }
 
+  // ── 科室试剂目录 ──
+  const deptReagents = ref([])
+  const deptReagentLoading = ref(false)
+  const selectedDeptId = ref(null)
+
+  async function fetchDeptReagents(deptId) {
+    deptReagentLoading.value = true
+    selectedDeptId.value = deptId
+    try {
+      deptReagents.value = (await getDeptReagents(deptId)) || []
+      return deptReagents.value
+    } finally { deptReagentLoading.value = false }
+  }
+
+  async function batchAddDeptReagents(deptId, reagentIds) {
+    await addDeptReagents(deptId, reagentIds)
+  }
+
+  async function batchRemoveDeptReagents(deptId, reagentIds) {
+    await removeDeptReagents(deptId, reagentIds)
+  }
+
+  function clearDeptReagents() {
+    deptReagents.value = []
+    selectedDeptId.value = null
+  }
+
   // ── 库房 ──
   const warehouses = ref([])
   const whTotal = ref(0)
@@ -146,6 +174,8 @@ export const useSystemStore = defineStore('system', () => {
     warehouses, whTotal, whLoading, whTree, whOptions,
     fetchUsers, fetchUserOptions, addUser, editUser, removeUser, toggleUser, resetPwd,
     fetchDepts, fetchDeptTree, fetchDeptOptions, addDept, editDept, removeDept, toggleDept,
+    deptReagents, deptReagentLoading, selectedDeptId,
+    fetchDeptReagents, batchAddDeptReagents, batchRemoveDeptReagents, clearDeptReagents,
     fetchWarehouses, fetchWhTree, fetchWhOptions, addWarehouse, editWarehouse, removeWarehouse, toggleWh,
   }
 })

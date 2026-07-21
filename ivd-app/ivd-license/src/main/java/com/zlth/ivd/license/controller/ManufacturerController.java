@@ -7,6 +7,7 @@ import com.zlth.ivd.license.dto.CreateManufacturerRequest;
 import com.zlth.ivd.license.dto.UpdateManufacturerRequest;
 import com.zlth.ivd.license.service.ManufacturerService;
 import com.zlth.ivd.license.vo.ManufacturerVO;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -47,18 +48,21 @@ public class ManufacturerController {
 
     /** 新增 */
     @PostMapping
+    @RequireRole("SYSTEM_ADMIN")
     public Result<ManufacturerVO> create(@Valid @RequestBody CreateManufacturerRequest request) {
         return Result.success(manufacturerService.create(request));
     }
 
     /** 编辑 */
     @PutMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<ManufacturerVO> update(@PathVariable Long id, @Valid @RequestBody UpdateManufacturerRequest request) {
         return Result.success(manufacturerService.update(id, request));
     }
 
     /** 删除 */
     @DeleteMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Void> delete(@PathVariable Long id) {
         manufacturerService.delete(id);
         return Result.success();
@@ -66,6 +70,7 @@ public class ManufacturerController {
 
     /** 启用/停用 */
     @PutMapping("/{id}/toggle")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Void> toggleActive(@PathVariable Long id) {
         manufacturerService.toggleActive(id);
         return Result.success();
@@ -107,6 +112,7 @@ public class ManufacturerController {
 
     /** 批量导入厂家 */
     @PostMapping("/import")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Map<String, Object>> importFile(@RequestParam("file") MultipartFile file) {
         List<Map<String, Object>> rawRows = ExportImportUtil.importFromFile(file, EXPORT_HEADERS);
         List<CreateManufacturerRequest> requests = new ArrayList<>();

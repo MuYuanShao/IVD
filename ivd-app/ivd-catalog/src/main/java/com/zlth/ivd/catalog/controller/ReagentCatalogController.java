@@ -13,6 +13,7 @@ import com.zlth.ivd.catalog.vo.ReagentCatalogVO;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +56,8 @@ public class ReagentCatalogController {
             @RequestParam(required = false) String distributor,
             @RequestParam(required = false) String materialType,
             @RequestParam(required = false) String approvalStatus,
-            @RequestParam(required = false) String testGroups) {
+            @RequestParam(required = false) String testGroups,
+            @RequestParam(required = false) Long deptId) {
 
         ReagentCatalogQuery query = new ReagentCatalogQuery();
         query.setHisCode(hisCode);
@@ -67,6 +69,7 @@ public class ReagentCatalogController {
         query.setMaterialType(materialType);
         query.setApprovalStatus(approvalStatus);
         query.setTestGroups(testGroups);
+        query.setDeptId(deptId);
 
         log.debug("试剂目录分页查询: page={}, pageSize={}", page, pageSize);
         return Result.success(catalogService.pageList(query, page, pageSize));
@@ -85,6 +88,7 @@ public class ReagentCatalogController {
 
     /** 新增试剂 */
     @PostMapping
+    @RequireRole("SYSTEM_ADMIN")
     public Result<ReagentCatalogVO> create(@Valid @RequestBody CreateReagentRequest request) {
         log.info("新增试剂: hisCode={}, genericName={}, materialType={}",
                 request.getHisCode(), request.getGenericName(),
@@ -94,6 +98,7 @@ public class ReagentCatalogController {
 
     /** 编辑试剂 */
     @PutMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<ReagentCatalogVO> update(@PathVariable Long id,
                                             @Valid @RequestBody UpdateReagentRequest request) {
         log.info("编辑试剂: id={}", id);
@@ -102,6 +107,7 @@ public class ReagentCatalogController {
 
     /** 软删除试剂 */
     @DeleteMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Void> delete(@PathVariable Long id) {
         log.info("删除试剂: id={}", id);
         catalogService.delete(id);
@@ -114,6 +120,7 @@ public class ReagentCatalogController {
 
     /** 提交审批 */
     @PostMapping("/{id}/approval")
+    @RequireRole({"SYSTEM_ADMIN", "LAB_DIRECTOR"})
     public Result<Void> submitApproval(@PathVariable Long id,
                                         @Valid @RequestBody SubmitApprovalRequest request) {
         // 优先从认证上下文获取操作人身份
@@ -129,6 +136,7 @@ public class ReagentCatalogController {
 
     /** 审批通过 */
     @PostMapping("/approval/{logId}/approve")
+    @RequireRole({"SYSTEM_ADMIN", "LAB_DIRECTOR"})
     public Result<Void> approve(@PathVariable Long logId,
                                  @Valid @RequestBody ReviewRequest request) {
         Long authUserId = SecurityUtils.getCurrentUserIdOrNull();
@@ -143,6 +151,7 @@ public class ReagentCatalogController {
 
     /** 审批驳回 */
     @PostMapping("/approval/{logId}/reject")
+    @RequireRole({"SYSTEM_ADMIN", "LAB_DIRECTOR"})
     public Result<Void> reject(@PathVariable Long logId,
                                 @Valid @RequestBody ReviewRequest request) {
         Long authUserId = SecurityUtils.getCurrentUserIdOrNull();
@@ -193,7 +202,7 @@ public class ReagentCatalogController {
 
     private static final List<String> CATALOG_EXPORT_HEADERS = List.of(
             "HIS编码", "通用名称", "UDI-DI", "注册证号", "厂家", "配送商", "物料类型", "规格", "包装规格",
-            "最小库存", "审批状态", "检测组别", "创建时间"
+            "审批状态", "检测组别", "创建时间"
     );
 
     /** 导出试剂目录（xlsx / csv） */
@@ -212,7 +221,6 @@ public class ReagentCatalogController {
             row.put("物料类型", vo.getMaterialTypeLabel() != null ? vo.getMaterialTypeLabel() : "");
             row.put("规格", vo.getSpecification() != null ? vo.getSpecification() : "");
             row.put("包装规格", vo.getUnit() != null ? vo.getUnit() : "");
-            row.put("最小库存", vo.getMinStockLevel() != null ? vo.getMinStockLevel().toString() : "");
             row.put("审批状态", vo.getApprovalStatusLabel() != null ? vo.getApprovalStatusLabel() : "");
             row.put("检测组别", vo.getTestGroups() != null ? vo.getTestGroups() : "");
             row.put("创建时间", vo.getCreatedAt() != null ? vo.getCreatedAt().toString() : "");
@@ -227,6 +235,7 @@ public class ReagentCatalogController {
 
     /** 批量导入试剂目录 */
     @PostMapping("/import")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Map<String, Object>> importFile(@RequestParam("file") MultipartFile file) {
         List<Map<String, Object>> rawRows = ExportImportUtil.importFromFile(file, CATALOG_EXPORT_HEADERS);
         int success = 0, skipped = 0;
@@ -241,10 +250,6 @@ public class ReagentCatalogController {
                 req.setDistributor(objToStr(row.get("配送商")));
                 req.setSpecification(objToStr(row.get("规格")));
                 req.setUnit(objToStr(row.get("包装规格")));
-                String minStock = objToStr(row.get("最小库存"));
-                if (minStock != null && !minStock.isBlank()) {
-                    req.setMinStockLevel(new java.math.BigDecimal(minStock));
-                }
                 req.setTestGroups(objToStr(row.get("检测组别")));
                 if (req.getGenericName() != null && !req.getGenericName().isBlank()) {
                     catalogService.create(req);

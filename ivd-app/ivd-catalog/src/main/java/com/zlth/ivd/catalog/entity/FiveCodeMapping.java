@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @TableName("five_code_mapping")
 public class FiveCodeMapping {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** 关联试剂ID（唯一） */

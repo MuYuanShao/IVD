@@ -7,6 +7,7 @@ import com.zlth.ivd.license.dto.CreateDistributorRequest;
 import com.zlth.ivd.license.dto.UpdateDistributorRequest;
 import com.zlth.ivd.license.service.DistributorService;
 import com.zlth.ivd.license.vo.DistributorVO;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -47,18 +48,21 @@ public class DistributorController {
 
     /** 新增 */
     @PostMapping
+    @RequireRole("SYSTEM_ADMIN")
     public Result<DistributorVO> create(@Valid @RequestBody CreateDistributorRequest request) {
         return Result.success(distributorService.create(request));
     }
 
     /** 编辑 */
     @PutMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<DistributorVO> update(@PathVariable Long id, @Valid @RequestBody UpdateDistributorRequest request) {
         return Result.success(distributorService.update(id, request));
     }
 
     /** 删除 */
     @DeleteMapping("/{id}")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Void> delete(@PathVariable Long id) {
         distributorService.delete(id);
         return Result.success();
@@ -66,6 +70,7 @@ public class DistributorController {
 
     /** 启用/停用 */
     @PutMapping("/{id}/toggle")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Void> toggleActive(@PathVariable Long id) {
         distributorService.toggleActive(id);
         return Result.success();
@@ -107,6 +112,7 @@ public class DistributorController {
 
     /** 批量导入配送商 */
     @PostMapping("/import")
+    @RequireRole("SYSTEM_ADMIN")
     public Result<Map<String, Object>> importFile(@RequestParam("file") MultipartFile file) {
         List<Map<String, Object>> rawRows = ExportImportUtil.importFromFile(file, EXPORT_HEADERS);
         List<CreateDistributorRequest> requests = new ArrayList<>();

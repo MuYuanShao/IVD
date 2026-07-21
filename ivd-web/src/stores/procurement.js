@@ -5,6 +5,7 @@ import {
   getShortageList, getShortageStats, getShortageDetail,
   getOrderList, getOrderDetail, getOrderStats,
   createRequisition, createOrderFromShortage, createManualOrder, getSmartReplenish,
+  reviewRequisition,
   receiveOrder
 } from '@/api/procurement'
 import { ElMessage } from 'element-plus'
@@ -60,6 +61,10 @@ export const useProcurementStore = defineStore('procurement', () => {
     await createRequisition(data)
     await fetchRequisitions()
     await fetchRequisitionStats()
+  }
+
+  async function doReviewRequisition(id, action, comment = '') {
+    await reviewRequisition(id, { action, comment })
   }
 
   // ========== 缺货 ==========
@@ -173,7 +178,7 @@ export const useProcurementStore = defineStore('procurement', () => {
     orders, poTotal, poLoading, poStats,
     replenishSuggestions, replenishLoading,
     inboundItems, lastScanResult, currentOrder, receiveLoading,
-    fetchRequisitions, fetchRequisitionStats, fetchRequisitionDetail, doCreateRequisition,
+    fetchRequisitions, fetchRequisitionStats, fetchRequisitionDetail, doCreateRequisition, doReviewRequisition,
     fetchShortages, fetchShortageStats, fetchShortageDetail, doCreateOrderFromShortage,
     fetchOrders, fetchOrderStats, fetchOrderDetail, doCreateManualOrder,
     fetchSmartReplenish,

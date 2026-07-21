@@ -49,8 +49,9 @@
                 <el-switch :model-value="row.status === 1" @change="handleToggle(row)" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="260" fixed="right">
               <template #default="{row}">
+                <el-button link type="success" size="small" @click="handleDeptReagent(row)">试剂</el-button>
                 <el-button link type="primary" size="small" @click="openDialog(row)">编辑</el-button>
                 <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
               </template>
@@ -60,6 +61,45 @@
             <el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="store.deptTotal"
               :page-sizes="[10,15,30,50]" layout="total,sizes,prev,pager,next" @size-change="fetchData" @current-change="fetchData" />
           </div>
+        </el-card>
+
+        <!-- 科室试剂目录卡片 -->
+        <el-card v-if="store.selectedDeptId" shadow="never" style="margin-top:16px">
+          <template #header>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-weight:600">
+                🧪 申领试剂范围 —
+                <el-tag type="success" size="small" style="margin-left:8px">{{ selectedDeptName }}</el-tag>
+              </span>
+              <div>
+                <el-button type="primary" size="small" @click="openReagentPicker">引用试剂</el-button>
+                <el-button
+                  v-if="selectedReagentIds.length"
+                  type="danger" size="small" style="margin-left:8px"
+                  @click="handleBatchRemove">批量移除 ({{ selectedReagentIds.length }})</el-button>
+                <el-button size="small" style="margin-left:8px" @click="store.clearDeptReagents()">关闭</el-button>
+              </div>
+            </div>
+          </template>
+          <el-table
+            :data="store.deptReagents" stripe v-loading="store.deptReagentLoading" size="small"
+            @selection-change="handleReagentSelectionChange"
+          >
+            <el-table-column type="selection" width="45" />
+            <el-table-column prop="hisCode" label="HIS编码" width="130" />
+            <el-table-column prop="genericName" label="物料名称" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="materialTypeLabel" label="物料类型" width="90" />
+            <el-table-column prop="specification" label="规格" width="130" show-overflow-tooltip />
+            <el-table-column prop="manufacturer" label="生产厂家" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="unit" label="单位" width="70" />
+            <el-table-column prop="registrationCertNo" label="注册证号" width="140" show-overflow-tooltip />
+            <el-table-column label="操作" width="80" fixed="right">
+              <template #default="{row}">
+                <el-button link type="danger" size="small" @click="handleRemoveReagent(row)">移除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!store.deptReagentLoading && store.deptReagents.length === 0" description="该科室暂无试剂目录，请点击「引用试剂」添加" :image-size="80" />
         </el-card>
       </el-col>
     </el-row>
@@ -81,6 +121,21 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 试剂引用对话框 -->
+    <el-dialog v-model="reagentPickerVisible" title="引用试剂到科室" width="780px" @close="resetReagentPicker">
+      <template #header>
+        <span>引用试剂 — <el-tag type="success" size="small">{{ selectedDeptName }}</el-tag></span>
+      </template>
+      <ReagentPicker
+        v-model="pickerSelected"
+        mode="batch"
+        :allow-mode-switch="false"
+        :items="catalogItems"
+        :loading="catalogLoading"
+        @confirm="handleReagentConfirm"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -89,6 +144,8 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { useSystemStore } from '@/stores/system'
+import { getCatalogList } from '@/api/catalog'
+import ReagentPicker from '@/components/ReagentPicker.vue'
 
 const store = useSystemStore()
 
@@ -103,6 +160,14 @@ const rules = {
   deptName: [{ required: true, message: '请输入科室名称', trigger: 'blur' }],
   deptCode: [{ required: true, message: '请输入科室编码', trigger: 'blur' }],
 }
+
+// ── 试剂管理 ──
+const selectedDeptName = ref('')
+const reagentPickerVisible = ref(false)
+const catalogItems = ref([])
+const catalogLoading = ref(false)
+const pickerSelected = ref([])
+const selectedReagentIds = ref([])
 
 function buildTree(list) {
   const map = {}, roots = []
@@ -120,9 +185,12 @@ async function loadTree() {
   treeSelectData.value = buildTree(list)
 }
 
-function handleNodeClick(data) {
+async function handleNodeClick(data) {
   filterKeyword.value = data.deptName
   fetchData()
+  // 同时加载该科室的试剂目录
+  selectedDeptName.value = data.deptName
+  await store.fetchDeptReagents(data.id)
 }
 
 // ── data ──
@@ -180,6 +248,83 @@ async function handleDelete(row) {
     ElMessage.success('科室已删除')
     await Promise.all([fetchData(), loadTree()])
   } catch (e) { /* cancelled */ }
+}
+
+// ── 试剂管理方法 ──
+
+async function handleDeptReagent(row) {
+  selectedDeptName.value = row.deptName
+  await store.fetchDeptReagents(row.id)
+}
+
+function handleReagentSelectionChange(selection) {
+  selectedReagentIds.value = selection.map(r => r.reagentId)
+}
+
+async function openReagentPicker() {
+  reagentPickerVisible.value = true
+  catalogLoading.value = true
+  pickerSelected.value = []
+  try {
+    const result = await getCatalogList({ page: 1, pageSize: 500, approvalStatus: 'APPROVED' })
+    const records = result.records || []
+    catalogItems.value = records.map(r => ({
+      ...r,
+      reagentName: r.genericName || '—',
+      supplierName: r.manufacturer || '—',
+      spec: r.specification || '—',
+      testGroup: r.testGroups || '通用'
+    }))
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+async function handleReagentConfirm(selected) {
+  const reagentIds = selected.map(i => i.id)
+  if (!reagentIds.length) { reagentPickerVisible.value = false; return }
+  try {
+    await store.batchAddDeptReagents(store.selectedDeptId, reagentIds)
+    ElMessage.success(`已成功引用 ${reagentIds.length} 种试剂`)
+    reagentPickerVisible.value = false
+    await store.fetchDeptReagents(store.selectedDeptId)
+  } catch (e) { /* handled by interceptor */ }
+}
+
+async function handleRemoveReagent(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定从科室「${selectedDeptName.value}」中移除试剂「${row.genericName}」吗？`,
+      '移除试剂',
+      { type: 'warning', confirmButtonText: '确定移除', cancelButtonText: '取消' }
+    )
+    await store.batchRemoveDeptReagents(store.selectedDeptId, [row.reagentId])
+    ElMessage.success('试剂已从科室目录移除')
+    await store.fetchDeptReagents(store.selectedDeptId)
+  } catch (e) { /* cancelled or error */ }
+}
+
+async function handleBatchRemove() {
+  if (!selectedReagentIds.value.length) {
+    ElMessage.warning('请先选择要移除的试剂')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定从科室「${selectedDeptName.value}」中移除 ${selectedReagentIds.value.length} 种试剂吗？`,
+      '批量移除试剂',
+      { type: 'warning', confirmButtonText: '确定移除', cancelButtonText: '取消' }
+    )
+    await store.batchRemoveDeptReagents(store.selectedDeptId, selectedReagentIds.value)
+    ElMessage.success(`已移除 ${selectedReagentIds.value.length} 种试剂`)
+    selectedReagentIds.value = []
+    await store.fetchDeptReagents(store.selectedDeptId)
+  } catch (e) { /* cancelled or error */ }
+}
+
+function resetReagentPicker() {
+  catalogItems.value = []
+  pickerSelected.value = []
 }
 
 onMounted(async () => {

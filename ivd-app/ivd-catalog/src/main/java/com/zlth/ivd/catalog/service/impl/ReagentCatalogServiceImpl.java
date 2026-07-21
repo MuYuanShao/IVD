@@ -123,8 +123,6 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         entity.setTestsPerKit(request.getTestsPerKit());
         entity.setPricePerUnit(request.getPricePerUnit());
         entity.setStabilityDaysAfterOpen(request.getStabilityDaysAfterOpen());
-        entity.setMinStockLevel(request.getMinStockLevel() != null ? request.getMinStockLevel() : BigDecimal.ZERO);
-        entity.setMaxStockLevel(request.getMaxStockLevel() != null ? request.getMaxStockLevel() : new BigDecimal("99999"));
         entity.setLeadTimeDays(request.getLeadTimeDays() != null ? request.getLeadTimeDays() : 7);
         entity.setDeviceBindMode(request.getDeviceBindMode() != null ? request.getDeviceBindMode() : DeviceBindModeEnum.FORCE);
         entity.setApprovalStatus(ApprovalStatusEnum.DRAFT);
@@ -179,8 +177,6 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         applyIfChanged("testsPerKit", entity.getTestsPerKit(), request.getTestsPerKit(), entity::setTestsPerKit, changes);
         applyIfChanged("pricePerUnit", entity.getPricePerUnit(), request.getPricePerUnit(), entity::setPricePerUnit, changes);
         applyIfChanged("stabilityDaysAfterOpen", entity.getStabilityDaysAfterOpen(), request.getStabilityDaysAfterOpen(), entity::setStabilityDaysAfterOpen, changes);
-        applyIfChanged("minStockLevel", entity.getMinStockLevel(), request.getMinStockLevel(), entity::setMinStockLevel, changes);
-        applyIfChanged("maxStockLevel", entity.getMaxStockLevel(), request.getMaxStockLevel(), entity::setMaxStockLevel, changes);
         applyIfChanged("leadTimeDays", entity.getLeadTimeDays(), request.getLeadTimeDays(), entity::setLeadTimeDays, changes);
 
         if (request.getMaterialType() != null && request.getMaterialType() != entity.getMaterialType()) {
@@ -396,8 +392,6 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         vo.setTestsPerKit(entity.getTestsPerKit());
         vo.setPricePerUnit(entity.getPricePerUnit());
         vo.setStabilityDaysAfterOpen(entity.getStabilityDaysAfterOpen());
-        vo.setMinStockLevel(entity.getMinStockLevel());
-        vo.setMaxStockLevel(entity.getMaxStockLevel());
         vo.setLeadTimeDays(entity.getLeadTimeDays());
 
         if (entity.getDeviceBindMode() != null) {

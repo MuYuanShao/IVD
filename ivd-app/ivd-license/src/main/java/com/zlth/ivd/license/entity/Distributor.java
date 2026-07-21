@@ -15,8 +15,12 @@ import java.time.LocalDateTime;
 @TableName("distributor")
 public class Distributor {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+
+    /** 配送商编码（业务唯一标识，格式 DST-YYYYMMDD-NNN） */
+    private String distributorCode;
+
     private String name;
     private String shortName;
     private String contactPerson;

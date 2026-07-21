@@ -34,11 +34,47 @@
       </el-form-item>
 
       <el-form-item label="生产厂家" prop="manufacturer">
-        <el-input v-model="form.manufacturer" placeholder="请输入生产厂家" maxlength="200" />
+        <el-select
+          v-model="form.manufacturer"
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="loadManufacturerOptions"
+          :loading="manufacturerLoading"
+          allow-create
+          clearable
+          placeholder="请选择或输入生产厂家"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="item in manufacturerOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="配送商" prop="distributor">
-        <el-input v-model="form.distributor" placeholder="请输入配送商" maxlength="200" />
+        <el-select
+          v-model="form.distributor"
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="loadDistributorOptions"
+          :loading="distributorLoading"
+          allow-create
+          clearable
+          placeholder="请选择或输入配送商"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="item in distributorOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="规格">
@@ -119,14 +155,6 @@
         <el-input-number v-model="form.stabilityDaysAfterOpen" :min="0" :max="3650" style="width: 100%" />
       </el-form-item>
 
-      <el-form-item label="最低库存警戒">
-        <el-input-number v-model="form.minStockLevel" :min="0" :precision="2" style="width: 100%" />
-      </el-form-item>
-
-      <el-form-item label="最高库存">
-        <el-input-number v-model="form.maxStockLevel" :min="0" :precision="2" style="width: 100%" />
-      </el-form-item>
-
       <el-form-item label="采购提前期(天)">
         <el-input-number v-model="form.leadTimeDays" :min="1" :max="365" style="width: 100%" />
       </el-form-item>
@@ -152,6 +180,8 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useCatalogStore } from '@/stores/catalog'
+import { getManufacturerOptions } from '@/api/manufacturer'
+import { getDistributorOptions } from '@/api/distributor'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false }
@@ -167,6 +197,30 @@ const visible = computed({
 const catalogStore = useCatalogStore()
 const formRef = ref(null)
 const submitting = ref(false)
+
+// ── 生产厂家 / 配送商远程搜索 ──
+const manufacturerOptions = ref([])
+const distributorOptions = ref([])
+const manufacturerLoading = ref(false)
+const distributorLoading = ref(false)
+
+async function loadManufacturerOptions(keyword) {
+  manufacturerLoading.value = true
+  try {
+    const list = await getManufacturerOptions(keyword || undefined)
+    manufacturerOptions.value = list || []
+  } catch { manufacturerOptions.value = [] }
+  finally { manufacturerLoading.value = false }
+}
+
+async function loadDistributorOptions(keyword) {
+  distributorLoading.value = true
+  try {
+    const list = await getDistributorOptions(keyword || undefined)
+    distributorOptions.value = list || []
+  } catch { distributorOptions.value = [] }
+  finally { distributorLoading.value = false }
+}
 
 const defaultForm = () => ({
   hisCode: '',
@@ -186,8 +240,6 @@ const defaultForm = () => ({
   testsPerKit: null,
   pricePerUnit: null,
   stabilityDaysAfterOpen: null,
-  minStockLevel: 0,
-  maxStockLevel: 99999,
   leadTimeDays: 7,
   deviceBindMode: 'FORCE'
 })
@@ -218,6 +270,14 @@ watch(() => form.materialType, () => {
   }
   if (!showTestsPerKit.value) {
     form.testsPerKit = null
+  }
+})
+
+// 对话框打开时预加载厂家/配送商选项
+watch(visible, (val) => {
+  if (val) {
+    loadManufacturerOptions('')
+    loadDistributorOptions('')
   }
 })
 

@@ -1,11 +1,14 @@
 package com.zlth.ivd.procurement.service;
 
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.procurement.dto.CreateManualOrderRequest;
+import com.zlth.ivd.procurement.dto.DirectReceiveRequest;
 import com.zlth.ivd.procurement.dto.ReceiveItemRequest;
 import com.zlth.ivd.procurement.entity.*;
 import com.zlth.ivd.procurement.vo.PurchaseOrderVO;
 import com.zlth.ivd.procurement.vo.PurchaseRequisitionVO;
 import com.zlth.ivd.procurement.vo.ShortageOrderVO;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,17 +23,20 @@ public interface ProcurementService {
     PageVO<PurchaseRequisitionVO> listRequisitions(int page, int pageSize, String status, String keyword);
     PurchaseRequisition createRequisition(PurchaseRequisition req);
     PurchaseRequisitionVO getRequisitionDetail(Long id);
+    List<PurchaseRequisitionItem> getRequisitionItems(Long reqId);
+    PurchaseRequisitionVO reviewRequisition(Long id, String action, String comment);
 
     // ── 缺货单 ──
     PageVO<ShortageOrderVO> listShortages(int page, int pageSize, String status, String keyword);
     ShortageOrderVO getShortageDetail(Long id);
+    List<ShortageOrderItem> getShortageItems(Long shortageId);
     ShortageOrder createShortageFromRequisition(Long reqId);
 
     // ── 采购订单 ──
     PageVO<PurchaseOrderVO> listOrders(int page, int pageSize, String status, String keyword);
     PurchaseOrderVO getOrderDetail(Long id);
-    PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String paymentTerms, String remark);
-    PurchaseOrder createManualOrder(PurchaseOrder order);
+    PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String settlementMode, String remark);
+    PurchaseOrder createManualOrder(CreateManualOrderRequest request);
 
     // ── 验收 ──
     void receiveOrder(ReceiveItemRequest request);
@@ -43,6 +49,10 @@ public interface ProcurementService {
     // ── 科室库请领记录 ──
     PageVO<Map<String, Object>> listDeptRequisitions(int page, int pageSize, Long deptId);
 
+    // ── 人工验收直收 ──
+    Map<String, Object> receiveDirect(DirectReceiveRequest request);
+
     // ── 智能补货建议 ──
-    java.util.List<Map<String, Object>> getSmartReplenishSuggestions(int days);
+    List<Map<String, Object>> getSmartReplenishSuggestions(int days);
+    List<PurchaseOrder> createOrdersFromReplenish(List<Map<String, Object>> items);
 }

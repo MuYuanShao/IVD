@@ -39,7 +39,7 @@ export function getSuppliers() {
   return request({ url: '/license/suppliers', method: 'get' })
 }
 
-/** 上传附件 */
+/** 上传附件（注：FormData 上传不要手动设置 Content-Type，axios 会自动带上正确 boundary） */
 export function uploadAttachment(id, formData) {
-  return request({ url: `/license/${id}/upload`, method: 'post', data: formData, headers: { 'Content-Type': 'multipart/form-data' } })
+  return request({ url: `/license/${id}/upload`, method: 'post', data: formData })
 }

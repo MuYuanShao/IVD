@@ -189,7 +189,7 @@ onMounted(() => { fetchData(); populateChartData(); nextTick(() => { barChart.re
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
-const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedUrgency = ref('NORMAL')
+const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedUrgency = ref('NORMAL'), selectedBatchId = ref(null)
 
 const targetWarehouses = [
   { value: 2, label: '门诊药房' }, { value: 3, label: '住院药房' },
@@ -197,12 +197,12 @@ const targetWarehouses = [
 ]
 
 function openTrace(row) { traceSearch.value = row.udiDi || row.batchNo || ''; showTraceDialog.value = true }
-function openTransfer(row, source, urgency = 'NORMAL') { sourceName.value = source; maxQty.value = row.stock || 999; selectedUrgency.value = urgency; showTransferDialog.value = true }
+function openTransfer(row, source, urgency = 'NORMAL') { sourceName.value = source; maxQty.value = row.stock || 999; selectedUrgency.value = urgency; selectedBatchId.value = row.id; showTransferDialog.value = true }
 function handleTransferCmd(cmd, row) { openTransfer(row, '中心库', cmd) }
 
 async function doSubmitTransfer(form) {
   transferLoading.value = true
-  try { await store.doTransfer(1, form.targetWarehouse, form.quantity, selectedUrgency.value); ElMessage.success('调拨成功'); showTransferDialog.value = false; fetchData() }
+  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity, selectedUrgency.value); ElMessage.success('调拨成功'); showTransferDialog.value = false; fetchData() }
   catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 

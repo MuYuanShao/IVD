@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @TableName("reagent_supplier_rel")
 public class ReagentSupplierRel {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
     private Long reagentId;
     private Long supplierId;

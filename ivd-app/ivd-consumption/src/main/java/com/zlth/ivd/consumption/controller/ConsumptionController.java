@@ -5,6 +5,7 @@ import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.consumption.service.ConsumptionService;
 import com.zlth.ivd.consumption.vo.ConsumptionRecordVO;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class ConsumptionController {
     }
 
     @PostMapping("/consume")
+    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
     public Result<String> consume(@RequestParam Long batchId, @RequestParam Long deviceId,
                                   @RequestParam BigDecimal qty, @RequestParam(required = false) String purpose,
                                   @RequestParam(required = false) String remark) {
@@ -38,6 +40,7 @@ public class ConsumptionController {
     }
 
     @PostMapping("/inbound")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<String> inbound(@RequestParam Long batchId, @RequestParam BigDecimal qty,
                                   @RequestParam Long warehouseId) {
         consumptionService.recordInbound(batchId, qty, warehouseId);
@@ -45,6 +48,7 @@ public class ConsumptionController {
     }
 
     @PostMapping("/batch-consume")
+    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
     public Result<String> batchConsume(@RequestParam String batchNo, @RequestParam Long deviceId,
                                        @RequestParam BigDecimal qty) {
         consumptionService.batchConsume(batchNo, deviceId, qty);

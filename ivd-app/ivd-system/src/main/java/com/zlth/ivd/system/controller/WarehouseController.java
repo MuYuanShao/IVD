@@ -2,6 +2,7 @@ package com.zlth.ivd.system.controller;
 
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.system.service.WarehouseService;
 import com.zlth.ivd.system.vo.WarehouseVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +23,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/system/warehouses")
 @RequiredArgsConstructor
+@RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
 public class WarehouseController {
 
     private final WarehouseService warehouseService;

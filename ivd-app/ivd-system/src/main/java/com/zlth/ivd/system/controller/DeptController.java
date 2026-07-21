@@ -2,10 +2,14 @@ package com.zlth.ivd.system.controller;
 
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.annotation.RequireRole;
+import com.zlth.ivd.system.dto.BatchReagentDTO;
 import com.zlth.ivd.system.service.DeptService;
+import com.zlth.ivd.system.vo.DeptReagentVO;
 import com.zlth.ivd.system.vo.DeptVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/system/depts")
 @RequiredArgsConstructor
+@RequireRole({"SYSTEM_ADMIN", "LAB_DIRECTOR"})
 public class DeptController {
 
     private final DeptService deptService;
@@ -91,6 +96,28 @@ public class DeptController {
     @Operation(summary = "科室下拉选项")
     public Result<List<DeptVO>> options() {
         return Result.success(deptService.options());
+    }
+
+    // ── 科室试剂目录 ──
+
+    @GetMapping("/{deptId}/reagents")
+    @Operation(summary = "查询科室已分配的试剂目录")
+    public Result<List<DeptReagentVO>> listDeptReagents(@PathVariable Long deptId) {
+        return Result.success(deptService.listDeptReagents(deptId));
+    }
+
+    @PostMapping("/{deptId}/reagents")
+    @Operation(summary = "批量添加试剂到科室目录")
+    public Result<Void> addDeptReagents(@PathVariable Long deptId, @RequestBody @Valid BatchReagentDTO body) {
+        deptService.addDeptReagents(deptId, body.getReagentIds());
+        return Result.success();
+    }
+
+    @DeleteMapping("/{deptId}/reagents")
+    @Operation(summary = "批量移除科室试剂目录")
+    public Result<Void> removeDeptReagents(@PathVariable Long deptId, @RequestBody @Valid BatchReagentDTO body) {
+        deptService.removeDeptReagents(deptId, body.getReagentIds());
+        return Result.success();
     }
 
     private Long toLong(Object v) {

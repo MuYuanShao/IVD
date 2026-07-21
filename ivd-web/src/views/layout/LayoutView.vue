@@ -63,6 +63,10 @@
           <el-icon><Camera /></el-icon>
           <span style="flex:1">扫码验收</span>
         </el-menu-item>
+        <el-menu-item index="/receiving">
+          <el-icon><EditPen /></el-icon>
+          <span style="flex:1">人工验收</span>
+        </el-menu-item>
         <el-menu-item index="/trace">
           <el-icon><Search /></el-icon>
           <span style="flex:1">UDI追溯</span>
@@ -194,7 +198,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useProcurementStore } from '@/stores/procurement'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLicenseStore } from '@/stores/license'
-import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Fold, Expand } from '@element-plus/icons-vue'
+import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, EditPen, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -254,6 +258,7 @@ const breadcrumbParent = computed(() => {
     '/shortage': '进销存地基',
     '/purchase': '进销存地基',
     '/inbound': '进销存地基',
+    '/receiving': '进销存地基',
     '/central': '进销存地基',
     '/dept': '进销存地基',
     '/expiry': '进销存地基',
@@ -282,6 +287,7 @@ function doGlobalSearch() {
   else if (/申领|requisition/.test(q)) router.push('/requisition')
   else if (/缺货|shortage/.test(q)) router.push('/shortage')
   else if (/采购订单|采购单|订单|purchase/.test(q)) router.push('/purchase')
+  else if (/人工验收|手动验收|receiving/.test(q)) router.push('/receiving')
   else if (/验收|扫码|入库|inbound/.test(q)) router.push('/inbound')
   else if (/中心库|一级库|central/.test(q)) router.push('/central')
   else if (/科室库|二级库|dept/.test(q)) router.push('/dept')

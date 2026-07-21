@@ -2,6 +2,7 @@ package com.zlth.ivd.integration.controller;
 
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.integration.service.IntegrationService;
+import com.zlth.ivd.common.annotation.RequireRole;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +17,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/integration")
+@RequireRole("SYSTEM_ADMIN")
 public class IntegrationController {
 
     private static final Logger log = LoggerFactory.getLogger(IntegrationController.class);

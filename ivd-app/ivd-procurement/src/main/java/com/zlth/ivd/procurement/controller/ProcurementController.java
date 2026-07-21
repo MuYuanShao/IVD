@@ -10,6 +10,7 @@ import com.zlth.ivd.procurement.vo.PurchaseOrderVO;
 import com.zlth.ivd.procurement.vo.PurchaseRequisitionVO;
 import com.zlth.ivd.procurement.vo.ShortageOrderVO;
 import com.zlth.ivd.procurement.service.ProcurementService;
+import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,8 +48,15 @@ public class ProcurementController {
         return Result.success(procurementService.getRequisitionDetail(id));
     }
 
+    /** 申领明细（仅查 purchase_requisition_item 表，不混入总表数据） */
+    @GetMapping("/requisitions/{reqId}/items")
+    public Result<List<PurchaseRequisitionItem>> requisitionItems(@PathVariable Long reqId) {
+        return Result.success(procurementService.getRequisitionItems(reqId));
+    }
+
     @PostMapping("/requisitions")
     @AuditLog(module = "采购管理", action = "创建申领单")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
     public Result<PurchaseRequisition> createRequisition(@RequestBody PurchaseRequisition req) {
         return Result.success(procurementService.createRequisition(req));
     }
@@ -56,6 +64,17 @@ public class ProcurementController {
     @GetMapping("/requisitions/stats")
     public Result<Map<String, Long>> requisitionStats() {
         return Result.success(procurementService.getRequisitionStats());
+    }
+
+    @PutMapping("/requisitions/{id}/review")
+    @AuditLog(module = "采购管理", action = "审核申领单")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
+    public Result<PurchaseRequisitionVO> reviewRequisition(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String action = body.getOrDefault("action", "APPROVE");
+        String comment = body.getOrDefault("comment", "");
+        return Result.success(procurementService.reviewRequisition(id, action, comment));
     }
 
     // ==================== 缺货单 ====================
@@ -74,8 +93,15 @@ public class ProcurementController {
         return Result.success(procurementService.getShortageDetail(id));
     }
 
+    /** 缺货明细（仅查 shortage_order_item 表） */
+    @GetMapping("/shortages/{id}/items")
+    public Result<List<ShortageOrderItem>> shortageItems(@PathVariable Long id) {
+        return Result.success(procurementService.getShortageItems(id));
+    }
+
     @PostMapping("/shortages")
     @AuditLog(module = "采购管理", action = "生成缺货单")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
     public Result<ShortageOrder> createShortage(@RequestParam Long reqId) {
         return Result.success(procurementService.createShortageFromRequisition(reqId));
     }
@@ -108,16 +134,18 @@ public class ProcurementController {
 
     @PostMapping("/orders/from-shortage")
     @AuditLog(module = "采购管理", action = "从缺货单生成采购订单")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
     public Result<PurchaseOrder> createFromShortage(@RequestBody com.zlth.ivd.procurement.dto.CreateOrderFromShortageRequest request) {
         return Result.success(procurementService.createOrderFromShortage(
                 request.getShortageId(), request.getSupplierId(),
-                request.getExpectedDeliveryDate(), request.getPaymentTerms(), request.getRemark()));
+                request.getExpectedDeliveryDate(), request.getSettlementMode(), request.getRemark()));
     }
 
     @PostMapping("/orders/manual")
     @AuditLog(module = "采购管理", action = "手动创建采购订单")
-    public Result<PurchaseOrder> createManualOrder(@RequestBody PurchaseOrder order) {
-        return Result.success(procurementService.createManualOrder(order));
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
+    public Result<PurchaseOrder> createManualOrder(@RequestBody com.zlth.ivd.procurement.dto.CreateManualOrderRequest request) {
+        return Result.success(procurementService.createManualOrder(request));
     }
 
     @GetMapping("/orders/stats")
@@ -125,13 +153,30 @@ public class ProcurementController {
         return Result.success(procurementService.getOrderStats());
     }
 
+    // ==================== 智能补货生成订单 ====================
+
+    @PostMapping("/orders/from-replenish")
+    @AuditLog(module = "采购管理", action = "智能补货生成采购订单")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
+    public Result<List<PurchaseOrder>> createFromReplenish(@RequestBody List<Map<String, Object>> items) {
+        return Result.success(procurementService.createOrdersFromReplenish(items));
+    }
+
     // ==================== 验收 ====================
 
     @PostMapping("/receive")
     @AuditLog(module = "采购管理", action = "验收入库")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<String> receiveOrder(@RequestBody ReceiveItemRequest request) {
         procurementService.receiveOrder(request);
         return Result.success("验收成功");
+    }
+
+    @PostMapping("/receive/direct")
+    @AuditLog(module = "采购管理", action = "人工验收直收（无采购订单）")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
+    public Result<Map<String, Object>> receiveDirect(@RequestBody com.zlth.ivd.procurement.dto.DirectReceiveRequest request) {
+        return Result.success(procurementService.receiveDirect(request));
     }
 
     // ==================== 科室库请领记录 ====================

@@ -1,7 +1,7 @@
-package com.zlth.ivd.server.aspect;
+package com.zlth.ivd.common.aspect;
 
+import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.common.exception.BizException;
-import com.zlth.ivd.server.annotation.RequireRole;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;

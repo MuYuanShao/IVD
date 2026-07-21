@@ -54,7 +54,7 @@
         </el-table-column>
         <el-table-column label="操作" width="180">
           <template #default="{row}">
-            <el-button link type="primary" size="small" @click="viewDetail(row.id)">详情</el-button>
+            <el-button link type="primary" size="small" @click="viewDetail(row)">详情</el-button>
             <el-button v-if="row.status==='PENDING_REVIEW'" link type="warning" size="small" @click="doReview(row.id)">审核</el-button>
             <el-button v-if="row.status==='SHORTAGE_PENDING'" link type="danger" size="small" @click="$router.push('/shortage')">查看缺货单</el-button>
           </template>
@@ -68,7 +68,13 @@
     </el-card>
 
     <!-- 申领明细弹窗（共用组件） -->
-    <RequisitionDetailDialog v-model="showReqDetailDialog" :detail="reqDetail" />
+    <RequisitionDetailDialog
+      v-model="showReqDetailDialog"
+      :reqId="reqDetail.id"
+      :reqNo="reqDetail.reqNo"
+      :deptName="reqDetail.deptName"
+      :status="reqDetail.status"
+    />
 
     <!-- 新建申领弹窗 -->
     <el-dialog v-model="showNewReqDialog" title="新建申领" width="700px" top="5vh" @closed="resetNewReq">
@@ -96,12 +102,12 @@
         <template v-if="addMode === 'single'">
           <div v-for="(item, idx) in newReqForm.items" :key="idx" style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
             <el-select v-model="item.reagentId" placeholder="选择试剂" filterable style="flex:2">
-              <el-option v-for="r in reagentOptions" :key="r.id" :label="r.name + ' (' + r.spec + ')'" :value="r.id" />
+              <el-option v-for="r in reagentOptions" :key="r.id" :label="(r.genericName || r.name || '—') + ' (' + (r.specification || r.spec || '—') + ')'" :value="r.id" />
             </el-select>
-            <el-input-number v-model="item.qty" :min="1" style="flex:1" placeholder="数量" />
+            <el-input-number v-model="item.qtyRequested" :min="1" style="flex:1" placeholder="数量" />
             <el-button :icon="Delete" circle size="small" @click="newReqForm.items.splice(idx,1)" :disabled="newReqForm.items.length<=1" />
           </div>
-          <el-button type="primary" link :icon="Plus" @click="newReqForm.items.push({ reagentId: null, qty: 1 })">添加试剂</el-button>
+          <el-button type="primary" link :icon="Plus" @click="newReqForm.items.push({ reagentId: null, qtyRequested: 1 })">添加试剂</el-button>
         </template>
 
         <!-- 批量选择模式 -->
@@ -114,9 +120,13 @@
             @confirm="onBatchConfirm"
           />
           <div v-if="batchConfirmedItems.length" style="margin-top:12px">
-            <el-tag v-for="(item, idx) in batchConfirmedItems" :key="idx" closable style="margin:4px" @close="batchConfirmedItems.splice(idx,1)">
-              {{ item.genericName || item.name || item.reagentName }} ×1
-            </el-tag>
+            <div v-for="(item, idx) in batchConfirmedItems" :key="idx" style="display:flex;gap:12px;margin-bottom:8px;align-items:center">
+              <span style="flex:2;line-height:32px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="item.genericName || item.name || item.reagentName">
+                {{ item.genericName || item.name || item.reagentName || '试剂#' + item.reagentId }}
+              </span>
+              <el-input-number v-model="item.qtyRequested" :min="1" style="flex:1" placeholder="数量" size="small" />
+              <el-button :icon="Delete" circle size="small" @click="batchConfirmedItems.splice(idx,1)" />
+            </div>
           </div>
         </template>
 
@@ -168,31 +178,58 @@ watch(search, () => {
 
 onBeforeUnmount(() => { clearTimeout(searchTimer) })
 
+// ── 新建申领（状态定义必须在 watch 之前）──
+const newReqFormRef = ref(null), newReqLoading = ref(false)
+const showNewReqDialog = ref(false)
+const addMode = ref('single')
+const batchSelected = ref([])
+const batchConfirmedItems = ref([])
+const newReqForm = reactive({ deptId: null, urgency: 'NORMAL', remark: '', items: [{ reagentId: null, qtyRequested: 1 }] })
+const newReqRules = { deptId: [{ required: true, message: '请选择申领科室', trigger: 'change' }] }
+const deptOptions = ref([])
+const reagentOptions = ref([])
+
 async function loadOptions() {
   try {
     const depts = await getDeptOptions()
-    if (depts && depts.length) deptOptions.value = depts.map(d => ({ value: d.id, label: d.name }))
+    if (depts && depts.length) deptOptions.value = depts.map(d => ({ value: d.id, label: d.deptName }))
   } catch (e) { console.error('加载科室列表失败:', e) }
+  await loadReagentOptions()
+}
+
+async function loadReagentOptions(deptId) {
   try {
-    const list = await getCatalogList({ page: 1, pageSize: 200 })
+    const params = { page: 1, pageSize: 200 }
+    if (deptId) params.deptId = deptId
+    const list = await getCatalogList(params)
     if (list && list.records) reagentOptions.value = list.records
   } catch (e) { console.error('加载试剂列表失败:', e) }
 }
 
+// 监听科室变更 → 重新加载科室试剂目录
+watch(() => newReqForm.deptId, (newDeptId) => {
+  if (showNewReqDialog.value) {
+    loadReagentOptions(newDeptId || undefined)
+  }
+})
+
 // ── 申领明细 ──
-const showReqDetailDialog = ref(false), reqDetail = ref(null)
-async function viewDetail(id) {
-  showReqDetailDialog.value = true; reqDetail.value = null
-  try { reqDetail.value = await store.fetchRequisitionDetail(id) } catch (e) { console.error('获取申领明细失败:', e) }
+const showReqDetailDialog = ref(false), reqDetail = ref({})
+async function viewDetail(row) {
+  reqDetail.value = { id: row.id, reqNo: row.reqNo, deptName: row.deptName, status: row.status }
+  showReqDetailDialog.value = true
 }
 
 // ── 审核 ──
 async function doReview(id) {
   try {
     await ElMessageBox.confirm('确认通过该申领单？', '审核确认', { confirmButtonText: '通过', type: 'warning' })
+    await store.doReviewRequisition(id, 'APPROVE')
     ElMessage.success('申领单已审核通过')
     fetchData()
-  } catch (e) { /* 用户取消确认，无需处理 */ }
+  } catch (e) {
+    if (e !== 'cancel') console.error('审核失败:', e)
+  }
 }
 
 // ── 导出 ──
@@ -204,29 +241,30 @@ function fetchData() {
   store.fetchRequisitionStats()
 }
 
-// ── 新建申领 ──
-const newReqFormRef = ref(null), newReqLoading = ref(false)
-const showNewReqDialog = ref(false)
-const addMode = ref('single')
-const batchSelected = ref([])
-const batchConfirmedItems = ref([])
-const newReqForm = reactive({ deptId: null, urgency: 'NORMAL', remark: '', items: [{ reagentId: null, qty: 1 }] })
-const newReqRules = { deptId: [{ required: true, message: '请选择申领科室', trigger: 'change' }] }
-const deptOptions = ref([])
-const reagentOptions = ref([])
-
 const reagentPickerItems = computed(() =>
-  reagentOptions.value.map(r => ({ ...r, genericName: r.name, reagentName: r.name, supplierName: '—' }))
+  reagentOptions.value.map(r => ({
+    ...r,
+    genericName: r.genericName || r.name || '—',
+    reagentName: r.genericName || r.name || '—',
+    supplierName: r.manufacturer || r.distributor || '—',
+    spec: r.specification || r.spec || '—',
+    testGroup: r.testGroups || r.testGroup || '通用'
+  }))
 )
 
 function openNewReqDialog() {
   showNewReqDialog.value = true
   addMode.value = 'single'
   batchConfirmedItems.value = []
+  loadReagentOptions()  // 初始加载全量试剂目录（科室未选时展示全部）
 }
 
 function onBatchConfirm(selected) {
-  batchConfirmedItems.value = selected
+  for (const item of selected) {
+    if (!batchConfirmedItems.value.find(i => i.id === item.id)) {
+      batchConfirmedItems.value.push({ ...item, qtyRequested: 1 })
+    }
+  }
 }
 
 async function submitNewReq() {
@@ -235,7 +273,7 @@ async function submitNewReq() {
   newReqLoading.value = true
   try {
     const items = addMode.value === 'batch'
-      ? batchConfirmedItems.value.map(i => ({ reagentId: i.id, qty: 1 }))
+      ? batchConfirmedItems.value.map(i => ({ reagentId: i.id, qtyRequested: i.qtyRequested || 1 }))
       : newReqForm.items.filter(i => i.reagentId)
     if (!items.length) { ElMessage.warning('请至少选择一种试剂'); newReqLoading.value = false; return }
     await store.doCreateRequisition({
@@ -251,7 +289,7 @@ async function submitNewReq() {
 
 function resetNewReq() {
   newReqFormRef.value?.resetFields()
-  Object.assign(newReqForm, { deptId: null, urgency: 'NORMAL', remark: '', items: [{ reagentId: null, qty: 1 }] })
+  Object.assign(newReqForm, { deptId: null, urgency: 'NORMAL', remark: '', items: [{ reagentId: null, qtyRequested: 1 }] })
   addMode.value = 'single'
   batchConfirmedItems.value = []
   batchSelected.value = []

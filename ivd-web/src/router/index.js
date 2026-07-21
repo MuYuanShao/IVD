@@ -36,6 +36,7 @@ const routes = [
       { path: 'shortage', name: 'Shortage', component: () => import('@/views/procurement/ShortageList.vue'), meta: { title: '缺货单', group: '采购管理' } },
       { path: 'purchase', name: 'Purchase', component: () => import('@/views/procurement/PurchaseList.vue'), meta: { title: '采购订单', group: '采购管理' } },
       { path: 'inbound', name: 'Inbound', component: () => import('@/views/procurement/InboundView.vue'), meta: { title: '扫码验收', group: '采购管理' } },
+      { path: 'receiving', name: 'Receiving', component: () => import('@/views/procurement/ReceivingView.vue'), meta: { title: '人工验收', group: '采购管理' } },
       // ── 进销存地基 · 三级库管理（4 子页，v2 独立路由）──
       { path: 'central', name: 'CentralWarehouse', component: () => import('@/views/inventory/CentralWarehouse.vue'), meta: { title: '中心库(一级)', group: '三级库' } },
       { path: 'dept', name: 'DeptWarehouse', component: () => import('@/views/inventory/DeptWarehouse.vue'), meta: { title: '科室库(二级)', group: '三级库' } },

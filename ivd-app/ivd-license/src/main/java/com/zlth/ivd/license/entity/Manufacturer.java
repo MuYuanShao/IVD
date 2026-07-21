@@ -15,8 +15,12 @@ import java.time.LocalDateTime;
 @TableName("manufacturer")
 public class Manufacturer {
 
-    @TableId(type = IdType.AUTO)
+    @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+
+    /** 厂家编码（业务唯一标识，格式 MFG-YYYYMMDD-NNN） */
+    private String manufacturerCode;
+
     private String name;
     private String shortName;
     private String contactPerson;

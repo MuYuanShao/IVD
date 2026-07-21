@@ -68,6 +68,19 @@ export function getDeptOptions() {
   return request({ url: '/system/depts/options', method: 'get' })
 }
 
+// ── 科室试剂目录 ──
+export function getDeptReagents(deptId) {
+  return request({ url: `/system/depts/${deptId}/reagents`, method: 'get' })
+}
+
+export function addDeptReagents(deptId, reagentIds) {
+  return request({ url: `/system/depts/${deptId}/reagents`, method: 'post', data: { reagentIds } })
+}
+
+export function removeDeptReagents(deptId, reagentIds) {
+  return request({ url: `/system/depts/${deptId}/reagents`, method: 'delete', data: { reagentIds } })
+}
+
 // ── 库房管理 ──
 export function getWarehouseList(params) {
   return request({ url: '/system/warehouses', method: 'get', params })

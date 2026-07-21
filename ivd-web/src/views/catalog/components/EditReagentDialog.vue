@@ -36,11 +36,47 @@
       </el-form-item>
 
       <el-form-item label="生产厂家">
-        <el-input v-model="form.manufacturer" placeholder="请输入生产厂家" maxlength="200" />
+        <el-select
+          v-model="form.manufacturer"
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="loadManufacturerOptions"
+          :loading="manufacturerLoading"
+          allow-create
+          clearable
+          placeholder="请选择或输入生产厂家"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="item in manufacturerOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="配送商">
-        <el-input v-model="form.distributor" placeholder="请输入配送商" maxlength="200" />
+        <el-select
+          v-model="form.distributor"
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="loadDistributorOptions"
+          :loading="distributorLoading"
+          allow-create
+          clearable
+          placeholder="请选择或输入配送商"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="item in distributorOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="item.name"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="规格">
@@ -107,14 +143,6 @@
         <el-input-number v-model="form.stabilityDaysAfterOpen" :min="0" :max="3650" style="width: 100%" />
       </el-form-item>
 
-      <el-form-item label="最低库存警戒">
-        <el-input-number v-model="form.minStockLevel" :min="0" :precision="2" style="width: 100%" />
-      </el-form-item>
-
-      <el-form-item label="最高库存">
-        <el-input-number v-model="form.maxStockLevel" :min="0" :precision="2" style="width: 100%" />
-      </el-form-item>
-
       <el-form-item label="采购提前期(天)">
         <el-input-number v-model="form.leadTimeDays" :min="1" :max="365" style="width: 100%" />
       </el-form-item>
@@ -142,6 +170,8 @@ import { ElMessage } from 'element-plus'
 import { useCatalogStore } from '@/stores/catalog'
 import { getCatalogDetail } from '@/api/catalog'
 import { materialTypeLabel } from '@/utils/format'
+import { getManufacturerOptions } from '@/api/manufacturer'
+import { getDistributorOptions } from '@/api/distributor'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -159,6 +189,30 @@ const catalogStore = useCatalogStore()
 const formRef = ref(null)
 const submitting = ref(false)
 const loadingDetail = ref(false)
+
+// ── 生产厂家 / 配送商远程搜索 ──
+const manufacturerOptions = ref([])
+const distributorOptions = ref([])
+const manufacturerLoading = ref(false)
+const distributorLoading = ref(false)
+
+async function loadManufacturerOptions(keyword) {
+  manufacturerLoading.value = true
+  try {
+    const list = await getManufacturerOptions(keyword || undefined)
+    manufacturerOptions.value = list || []
+  } catch { manufacturerOptions.value = [] }
+  finally { manufacturerLoading.value = false }
+}
+
+async function loadDistributorOptions(keyword) {
+  distributorLoading.value = true
+  try {
+    const list = await getDistributorOptions(keyword || undefined)
+    distributorOptions.value = list || []
+  } catch { distributorOptions.value = [] }
+  finally { distributorLoading.value = false }
+}
 
 const form = reactive({
   hisCode: '',
@@ -178,8 +232,6 @@ const form = reactive({
   testsPerKit: null,
   pricePerUnit: null,
   stabilityDaysAfterOpen: null,
-  minStockLevel: 0,
-  maxStockLevel: 99999,
   leadTimeDays: 7,
   deviceBindMode: 'FORCE'
 })
@@ -208,8 +260,12 @@ watch(() => props.reagentId, async (id) => {
 })
 
 watch(visible, async (val) => {
-  if (val && props.reagentId) {
-    await loadDetail(props.reagentId)
+  if (val) {
+    loadManufacturerOptions('')
+    loadDistributorOptions('')
+    if (props.reagentId) {
+      await loadDetail(props.reagentId)
+    }
   }
 })
 
@@ -234,8 +290,6 @@ async function loadDetail(id) {
     form.testsPerKit = data.testsPerKit
     form.pricePerUnit = data.pricePerUnit
     form.stabilityDaysAfterOpen = data.stabilityDaysAfterOpen
-    form.minStockLevel = data.minStockLevel ?? 0
-    form.maxStockLevel = data.maxStockLevel ?? 99999
     form.leadTimeDays = data.leadTimeDays ?? 7
     form.deviceBindMode = data.deviceBindMode || 'FORCE'
   } finally {

@@ -2,16 +2,22 @@ package com.zlth.ivd.system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.zlth.ivd.catalog.entity.ReagentCatalog;
+import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.inventory.entity.Warehouse;
 import com.zlth.ivd.inventory.mapper.WarehouseMapper;
+import com.zlth.ivd.system.entity.DeptReagent;
 import com.zlth.ivd.system.entity.SysDept;
+import com.zlth.ivd.system.mapper.DeptReagentMapper;
 import com.zlth.ivd.system.mapper.SysDeptMapper;
 import com.zlth.ivd.system.service.DeptService;
+import com.zlth.ivd.system.vo.DeptReagentVO;
 import com.zlth.ivd.system.vo.DeptVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,6 +34,8 @@ public class DeptServiceImpl implements DeptService {
 
     private final SysDeptMapper deptMapper;
     private final WarehouseMapper warehouseMapper;
+    private final DeptReagentMapper deptReagentMapper;
+    private final ReagentCatalogMapper reagentCatalogMapper;
 
     @Override
     public PageVO<DeptVO> list(int page, int pageSize, String keyword) {
@@ -157,6 +165,97 @@ public class DeptServiceImpl implements DeptService {
                     vo.setParentId(d.getParentId());
                     return vo;
                 }).collect(Collectors.toList());
+    }
+
+    // ── 科室试剂目录 ──
+
+    @Override
+    public List<DeptReagentVO> listDeptReagents(Long deptId) {
+        SysDept dept = deptMapper.selectById(deptId);
+        if (dept == null) throw new BizException(40400, "科室不存在: id=" + deptId);
+
+        List<DeptReagent> rels = deptReagentMapper.selectList(
+                new LambdaQueryWrapper<DeptReagent>().eq(DeptReagent::getDeptId, deptId));
+
+        if (rels.isEmpty()) return Collections.emptyList();
+
+        Set<Long> reagentIds = rels.stream().map(DeptReagent::getReagentId).collect(Collectors.toSet());
+        List<ReagentCatalog> reagents = reagentCatalogMapper.selectBatchIds(reagentIds);
+        Map<Long, ReagentCatalog> reagentMap = reagents.stream()
+                .collect(Collectors.toMap(ReagentCatalog::getId, r -> r));
+
+        return rels.stream().map(rel -> {
+            ReagentCatalog rc = reagentMap.get(rel.getReagentId());
+            return toDeptReagentVO(rel, rc);
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public void addDeptReagents(Long deptId, List<Long> reagentIds) {
+        if (reagentIds == null || reagentIds.isEmpty()) return;
+
+        SysDept dept = deptMapper.selectById(deptId);
+        if (dept == null) throw new BizException(40400, "科室不存在: id=" + deptId);
+
+        // 校验试剂ID是否真实存在
+        List<ReagentCatalog> existingReagents = reagentCatalogMapper.selectBatchIds(reagentIds);
+        Set<Long> validIds = existingReagents.stream().map(ReagentCatalog::getId).collect(Collectors.toSet());
+        List<Long> invalidIds = reagentIds.stream().filter(rid -> !validIds.contains(rid)).collect(Collectors.toList());
+        if (!invalidIds.isEmpty()) {
+            throw new BizException(40001, "以下试剂ID不存在: " + invalidIds);
+        }
+
+        // 过滤已存在的关联
+        Set<Long> alreadyLinked = deptReagentMapper.selectList(
+                new LambdaQueryWrapper<DeptReagent>()
+                        .eq(DeptReagent::getDeptId, deptId)
+                        .in(DeptReagent::getReagentId, reagentIds))
+                .stream().map(DeptReagent::getReagentId).collect(Collectors.toSet());
+
+        List<DeptReagent> toInsert = reagentIds.stream()
+                .filter(rid -> !alreadyLinked.contains(rid))
+                .map(rid -> {
+                    DeptReagent dr = new DeptReagent();
+                    dr.setDeptId(deptId);
+                    dr.setReagentId(rid);
+                    return dr;
+                }).collect(Collectors.toList());
+
+        if (!toInsert.isEmpty()) {
+            try {
+                deptReagentMapper.insert(toInsert);
+            } catch (DuplicateKeyException e) {
+                throw new BizException(40001, "部分试剂已在该科室目录中，请刷新后重试");
+            }
+        }
+    }
+
+    @Override
+    public void removeDeptReagents(Long deptId, List<Long> reagentIds) {
+        if (reagentIds == null || reagentIds.isEmpty()) return;
+
+        deptReagentMapper.delete(new LambdaQueryWrapper<DeptReagent>()
+                .eq(DeptReagent::getDeptId, deptId)
+                .in(DeptReagent::getReagentId, reagentIds));
+    }
+
+    private DeptReagentVO toDeptReagentVO(DeptReagent rel, ReagentCatalog rc) {
+        DeptReagentVO vo = new DeptReagentVO();
+        vo.setId(rel.getId());
+        vo.setReagentId(rel.getReagentId());
+        vo.setCreatedAt(rel.getCreatedAt());
+        if (rc != null) {
+            vo.setHisCode(rc.getHisCode());
+            vo.setGenericName(rc.getGenericName());
+            vo.setMaterialType(rc.getMaterialType() != null ? rc.getMaterialType().getCode() : null);
+            vo.setMaterialTypeLabel(rc.getMaterialType() != null ? rc.getMaterialType().getLabel() : null);
+            vo.setSpecification(rc.getSpecification());
+            vo.setManufacturer(rc.getManufacturer());
+            vo.setUnit(rc.getUnit());
+            vo.setTestGroups(rc.getTestGroups());
+            vo.setRegistrationCertNo(rc.getRegistrationCertNo());
+        }
+        return vo;
     }
 
     /** 新建科室时自动创建对应的二级库房 */

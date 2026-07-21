@@ -37,6 +37,10 @@
         <if test="query.testGroups != null and query.testGroups != ''">
             AND test_groups LIKE CONCAT('%', #{query.testGroups}, '%')
         </if>
+        <if test="query.deptId != null">
+            AND (id IN (SELECT reagent_id FROM dept_reagent WHERE dept_id = #{query.deptId})
+                 OR test_groups IS NULL OR test_groups = '')
+        </if>
         ORDER BY updated_at DESC
     </select>
 

@@ -17,7 +17,7 @@ public class CreateOrderFromShortageRequest {
     private Integer supplierId;
 
     private String expectedDeliveryDate;
-    private String paymentTerms;
+    private String settlementMode;
     private String remark;
 
     public Long getShortageId() { return shortageId; }
@@ -29,8 +29,8 @@ public class CreateOrderFromShortageRequest {
     public String getExpectedDeliveryDate() { return expectedDeliveryDate; }
     public void setExpectedDeliveryDate(String expectedDeliveryDate) { this.expectedDeliveryDate = expectedDeliveryDate; }
 
-    public String getPaymentTerms() { return paymentTerms; }
-    public void setPaymentTerms(String paymentTerms) { this.paymentTerms = paymentTerms; }
+    public String getSettlementMode() { return settlementMode; }
+    public void setSettlementMode(String settlementMode) { this.settlementMode = settlementMode; }
 
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }

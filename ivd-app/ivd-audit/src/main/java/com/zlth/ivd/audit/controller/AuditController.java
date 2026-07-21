@@ -3,6 +3,7 @@ package com.zlth.ivd.audit.controller;
 import com.zlth.ivd.audit.entity.AuditDecisionLog;
 import com.zlth.ivd.audit.service.impl.AuditPipelineServiceImpl;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.annotation.RequireRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/audit")
 @RequiredArgsConstructor
+@RequireRole({"SYSTEM_ADMIN", "LAB_TECH", "LAB_DIRECTOR"})
 public class AuditController {
 
     private final AuditPipelineServiceImpl pipelineService;
