@@ -16,8 +16,8 @@
 
     <el-row :gutter="16" class="stat-cards">
       <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="在库总量" :value="store.stats.total || 0" suffix="盒" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="在途库存" :value="store.stats.inTransit || 0" suffix="盒" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="今日入库" :value="store.stats.todayInbound || 0" suffix="盒" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="今日调拨出" :value="store.stats.todayOutbound || 0" suffix="盒" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="近效期批次" :value="store.stats.expiring30 || 0" suffix="项" /></el-card></el-col>
     </el-row>
 
@@ -49,31 +49,47 @@
 
     <el-card shadow="never">
       <el-table :data="store.batches" stripe v-loading="store.loading" style="width:100%">
-        <el-table-column prop="reagentName" label="试剂" width="160" />
-        <el-table-column prop="batchNo" label="批号" width="130" />
+        <el-table-column prop="hisCode" label="试剂编码" width="110" show-overflow-tooltip />
+        <el-table-column prop="reagentName" label="试剂名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="genericName" label="通用名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="specification" label="规格型号" width="100" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="厂家" width="100" show-overflow-tooltip />
+        <el-table-column prop="distributor" label="配送商" width="100" show-overflow-tooltip />
+        <el-table-column prop="batchNo" label="批号" width="120" show-overflow-tooltip />
+        <el-table-column prop="manufactureDate" label="生产日期" width="100" />
         <el-table-column prop="expiryDate" label="效期" width="100" />
-        <el-table-column label="剩余天数" width="90">
+        <el-table-column label="剩余天数" width="85">
           <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存量" width="80" suffix="盒" />
-        <el-table-column prop="location" label="库位" width="90" />
+        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column label="金额" width="100" align="right">
+          <template #default="{row}">{{ row.amount ? '¥' + row.amount.toFixed(2) : '—' }}</template>
+        </el-table-column>
         <el-table-column prop="inboundDate" label="入库日期" width="100" />
-        <el-table-column label="状态" width="90">
+        <el-table-column prop="registrationCertNo" label="注册证号" width="120" show-overflow-tooltip />
+        <el-table-column label="是否带量" width="80" align="center">
           <template #default="{row}">
-            <el-tag :type="row.udiStatus==='IN_STOCK'?'success':'warning'" size="small">
-              {{ row.udiStatus==='IN_STOCK'?'正常': row.udiStatus==='NEAR_EXPIRY'?'近效期': row.udiStatus }}
-            </el-tag>
+            <el-tag :type="row.isVolumeBased ? 'warning' : 'info'" size="small">{{ row.isVolumeBased ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160">
+        <el-table-column prop="volumeType" label="带量类型" width="110" show-overflow-tooltip>
+          <template #default="{row}">{{ row.volumeType || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="是否收费" width="80" align="center">
           <template #default="{row}">
-            <el-button link type="primary" size="small" @click="openTrace(row)">UDI追溯</el-button>
+            <el-tag :type="row.isChargeable ? 'success' : 'info'" size="small">{{ row.isChargeable ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="insuranceCode" label="医保编码" width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{row}">
+            <el-button link type="primary" size="small" @click="openTrace(row)">追溯</el-button>
             <el-dropdown trigger="click" @command="(cmd) => handleTransferCmd(cmd, row)">
               <el-button link type="success" size="small">调拨<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="NORMAL">📦 常规调拨</el-dropdown-item>
-                  <el-dropdown-item command="URGENT">🚨 紧急调拨</el-dropdown-item>
+                  <el-dropdown-item command="NORMAL">常规</el-dropdown-item>
+                  <el-dropdown-item command="URGENT">紧急</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -91,7 +107,7 @@
       </div>
     </el-card>
 
-    <TraceDialog v-model="showTraceDialog" :initial-search="traceSearch" />
+    <TraceDialog v-model="showTraceDialog" mode="reagentUdi" :reagent-id="traceReagentId" />
     <TransferDialog v-model="showTransferDialog" :source-name="sourceName" :max-qty="maxQty" :warehouse-options="targetWarehouses" :loading="transferLoading" @submit="doSubmitTransfer" />
   </div>
 </template>
@@ -121,9 +137,10 @@ function fetchData() {
     reagentName: filterReagentName.value || undefined,
     distributor: filterDistributor.value || undefined,
     manufacturer: filterManufacturer.value || undefined,
-    registrationCertNo: filterRegistrationCert.value || undefined
+    registrationCertNo: filterRegistrationCert.value || undefined,
+    level: 1
   })
-  store.fetchStats()
+  store.fetchStats(null, 1)
   store.fetchWarehouses({ pageSize: 50 })
 }
 
@@ -188,7 +205,7 @@ function populateChartData() {
 onMounted(() => { fetchData(); populateChartData(); nextTick(() => { barChart.refresh?.(); pieChart.refresh?.() }) })
 
 // ── 弹窗 ──
-const showTraceDialog = ref(false), traceSearch = ref('')
+const showTraceDialog = ref(false), traceReagentId = ref(null)
 const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedUrgency = ref('NORMAL'), selectedBatchId = ref(null)
 
 const targetWarehouses = [
@@ -196,7 +213,7 @@ const targetWarehouses = [
   { value: 4, label: '急诊药房' }, { value: 5, label: '检验科' }
 ]
 
-function openTrace(row) { traceSearch.value = row.udiDi || row.batchNo || ''; showTraceDialog.value = true }
+function openTrace(row) { traceReagentId.value = row.reagentId; showTraceDialog.value = true }
 function openTransfer(row, source, urgency = 'NORMAL') { sourceName.value = source; maxQty.value = row.stock || 999; selectedUrgency.value = urgency; selectedBatchId.value = row.id; showTransferDialog.value = true }
 function handleTransferCmd(cmd, row) { openTransfer(row, '中心库', cmd) }
 

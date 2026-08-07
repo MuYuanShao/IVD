@@ -4,6 +4,7 @@ import com.zlth.ivd.common.annotation.AuditLog;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
+import com.zlth.ivd.procurement.dto.PickAndShipRequest;
 import com.zlth.ivd.procurement.dto.ReceiveItemRequest;
 import com.zlth.ivd.procurement.entity.*;
 import com.zlth.ivd.procurement.vo.PurchaseOrderVO;
@@ -12,6 +13,7 @@ import com.zlth.ivd.procurement.vo.ShortageOrderVO;
 import com.zlth.ivd.procurement.service.ProcurementService;
 import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -75,6 +77,38 @@ public class ProcurementController {
         String action = body.getOrDefault("action", "APPROVE");
         String comment = body.getOrDefault("comment", "");
         return Result.success(procurementService.reviewRequisition(id, action, comment));
+    }
+
+    @PutMapping("/requisitions/{id}/submit")
+    @AuditLog(module = "采购管理", action = "提交申领审批")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER", "STOREKEEPER"})
+    public Result<PurchaseRequisitionVO> submitRequisition(@PathVariable Long id) {
+        return Result.success(procurementService.submitRequisition(id));
+    }
+
+    @PutMapping("/requisitions/{id}/cancel")
+    @AuditLog(module = "采购管理", action = "作废申领单")
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
+    public Result<PurchaseRequisitionVO> cancelRequisition(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String reason = body != null ? body.getOrDefault("reason", "用户主动作废") : "用户主动作废";
+        return Result.success(procurementService.cancelRequisition(id, reason));
+    }
+
+    @PostMapping("/requisitions/{id}/pick-and-ship")
+    @AuditLog(module = "采购管理", action = "拣货发货")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
+    public Result<PurchaseRequisitionVO> pickAndShip(@PathVariable Long id,
+                                                     @RequestBody PickAndShipRequest request) {
+        return Result.success(procurementService.pickAndShip(id, request));
+    }
+
+    @PutMapping("/requisitions/{id}/receive")
+    @AuditLog(module = "采购管理", action = "科室签收")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
+    public Result<PurchaseRequisitionVO> receiveRequisition(@PathVariable Long id) {
+        return Result.success(procurementService.receiveRequisition(id));
     }
 
     // ==================== 缺货单 ====================
@@ -144,7 +178,7 @@ public class ProcurementController {
     @PostMapping("/orders/manual")
     @AuditLog(module = "采购管理", action = "手动创建采购订单")
     @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
-    public Result<PurchaseOrder> createManualOrder(@RequestBody com.zlth.ivd.procurement.dto.CreateManualOrderRequest request) {
+    public Result<List<PurchaseOrder>> createManualOrder(@RequestBody @Valid com.zlth.ivd.procurement.dto.CreateManualOrderRequest request) {
         return Result.success(procurementService.createManualOrder(request));
     }
 

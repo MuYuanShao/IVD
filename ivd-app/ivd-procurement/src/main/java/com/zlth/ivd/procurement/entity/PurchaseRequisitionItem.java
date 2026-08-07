@@ -12,7 +12,7 @@ public class PurchaseRequisitionItem {
     private Long id;
     private Long reqId;
     private Integer lineNo;
-    private Integer reagentId;
+    private Long reagentId;
     private String specification;
     private BigDecimal qtyRequested;
     private BigDecimal stockOnHand;

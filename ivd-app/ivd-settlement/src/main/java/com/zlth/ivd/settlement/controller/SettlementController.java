@@ -6,6 +6,7 @@ import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.settlement.entity.SettlementRecord;
 import com.zlth.ivd.settlement.service.SettlementService;
+import com.zlth.ivd.settlement.vo.ConsumptionSettlementVO;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,10 +30,32 @@ public class SettlementController {
         return Result.success(settlementService.listRecords(page, pageSize, settlementType, status));
     }
 
+    /** 科室签收 + 自动结算（科室人员 / 库管员操作） */
+    @PostMapping("/receive")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "DEPT_ADMIN"})
+    public Result<String> receiveAndSettle(@RequestParam Long requisitionId) {
+        settlementService.receiveAndSettleRequisition(requisitionId);
+        return Result.success("签收完成，结算记录已自动生成");
+    }
+
+    /** 一键批量签收：签收所有待签收申领单 */
+    @PostMapping("/receive/batch")
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "DEPT_ADMIN"})
+    public Result<Map<String, Object>> batchReceive() {
+        Map<String, Object> result = settlementService.batchReceiveAndSettle();
+        return Result.success(result);
+    }
+
     @PostMapping("/requisition")
     public Result<String> settleRequisition(@RequestParam Long requisitionId) {
         settlementService.settleRequisition(requisitionId);
         return Result.success("申领结算成功");
+    }
+
+    @PostMapping("/transfer")
+    public Result<String> settleTransfer(@RequestParam Long transferRecordId) {
+        settlementService.settleTransfer(transferRecordId);
+        return Result.success("调拨结算成功");
     }
 
     @PostMapping("/consumption")
@@ -51,6 +74,16 @@ public class SettlementController {
     @GetMapping("/stats")
     public Result<Map<String, Object>> stats() {
         return Result.success(settlementService.getStats());
+    }
+
+    /** 消耗结算明细：消耗数据全量字段展示 */
+    @GetMapping("/consumption-details")
+    public Result<PageVO<ConsumptionSettlementVO>> consumptionDetails(
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) Long reagentId,
+            @RequestParam(required = false) Long deviceId,
+            @RequestParam(required = false) Long warehouseId) {
+        return Result.success(settlementService.getConsumptionDetails(page, pageSize, reagentId, deviceId, warehouseId));
     }
 
     // ── 导入导出 ──

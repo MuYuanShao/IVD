@@ -32,7 +32,7 @@ export function getPoStatusType(s) {
 
 /** 计算采购订单收货百分比 */
 export function getReceivePct(row) {
-  const q = row.quantity || row.qty || 1
-  const r = row.receivedQty || 0
+  const q = row.orderQuantity || 1
+  const r = row.receivedQuantity || 0
   return Math.round((r / q) * 100)
 }

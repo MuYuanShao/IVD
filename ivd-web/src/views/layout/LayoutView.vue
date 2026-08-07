@@ -40,6 +40,10 @@
           <span style="flex:1">证照管理</span>
           <em v-if="!isCollapse && badgeCounts.license" class="menu-badge menu-badge--danger">{{ badgeCounts.license }}</em>
         </el-menu-item>
+        <el-menu-item index="/change-log">
+          <el-icon><Clock /></el-icon>
+          <span style="flex:1">信息变更</span>
+        </el-menu-item>
         <el-menu-item index="/supplier">
           <el-icon><Goods /></el-icon>
           <span style="flex:1">供应商维护</span>
@@ -66,6 +70,14 @@
         <el-menu-item index="/receiving">
           <el-icon><EditPen /></el-icon>
           <span style="flex:1">人工验收</span>
+        </el-menu-item>
+        <el-menu-item index="/pick-and-ship">
+          <el-icon><Goods /></el-icon>
+          <span style="flex:1">拣货发货</span>
+        </el-menu-item>
+        <el-menu-item index="/dept-receive">
+          <el-icon><Checked /></el-icon>
+          <span style="flex:1">科室签收</span>
         </el-menu-item>
         <el-menu-item index="/trace">
           <el-icon><Search /></el-icon>
@@ -198,7 +210,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useProcurementStore } from '@/stores/procurement'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLicenseStore } from '@/stores/license'
-import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, EditPen, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Fold, Expand } from '@element-plus/icons-vue'
+import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, EditPen, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Clock, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -259,12 +271,15 @@ const breadcrumbParent = computed(() => {
     '/purchase': '进销存地基',
     '/inbound': '进销存地基',
     '/receiving': '进销存地基',
+    '/pick-and-ship': '进销存地基',
+    '/dept-receive': '进销存地基',
     '/central': '进销存地基',
     '/dept': '进销存地基',
     '/expiry': '进销存地基',
     '/warehouse': '进销存地基',
     '/catalog': '进销存地基',
     '/license': '进销存地基',
+    '/change-log': '进销存地基',
     '/supplier': '进销存地基',
     '/consumption': '进销存地基',
     '/trace': '进销存地基',
@@ -296,6 +311,7 @@ function doGlobalSearch() {
   else if (/调拨|库存|批次|inventory/.test(q)) router.push('/central')
   else if (/消耗|核销|上机|设备|consumption/.test(q)) router.push('/consumption')
   else if (/追溯|trace|udi|追溯码/.test(q)) router.push('/trace')
+  else if (/签收|收货|receive/.test(q)) router.push('/dept-receive')
   else if (/规则|规则引擎|rules/.test(q)) router.push('/rules')
   else if (/效益|成本|浪费|analytics/.test(q)) router.push('/analytics')
   else if (/审核|audit/.test(q)) router.push('/audit')

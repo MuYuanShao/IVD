@@ -70,4 +70,25 @@ public class CreateReagentRequest {
 
     /** 设备关联策略 */
     private DeviceBindModeEnum deviceBindMode;
+
+    /** 是否启用唯一码管控：0=否 1=是 */
+    private Integer enableUniqueCode;
+
+    /** 是否带量采购：0=否 1=是 */
+    private Integer isVolumeBased;
+
+    /** 带量类型：国采/省采/地市/GPO/其他 */
+    private String volumeType;
+
+    /** 是否医保支付：0=否 1=是 */
+    private Integer isInsurancePayment;
+
+    /** 医保支付类型：甲类/乙类/丙类/自费 */
+    private String insurancePaymentType;
+
+    /** 是否收费：0=否 1=是 */
+    private Integer isChargeable;
+
+    /** 收费编码 */
+    private String chargeCode;
 }

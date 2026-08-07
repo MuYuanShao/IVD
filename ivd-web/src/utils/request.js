@@ -42,17 +42,28 @@ service.interceptors.response.use(
     }
     // 业务错误码
     if (code === 40100) {
+      // 登录接口本身的 40100（用户名或密码错误）直接透传错误消息
+      const isLoginRequest = response.config.url?.includes('/auth/login')
+      if (isLoginRequest) {
+        return Promise.reject(new Error(message || '用户名或密码错误'))
+      }
+      // 其他接口 40100：token 过期/无效，清除 token 并跳转登录页
+      console.warn('[Request] 收到 40100，清除 token 并重定向到登录页')
       localStorage.removeItem('ivd-token')
       window.location.href = '/login'
-      return Promise.reject(new Error('未认证'))
+      return Promise.reject(new Error(message || '登录已过期，请重新登录'))
     }
+    console.error('[Request] 业务错误:', code, message)
     ElMessage.error(message || '请求失败')
     return Promise.reject(new Error(message))
   },
   error => {
+    console.error('[Request] HTTP错误:', error.response?.status, error.message)
     if (error.response?.status === 401 || error.response?.status === 403) {
+      console.warn('[Request] HTTP ' + error.response.status + '，清除 token 并重定向到登录页')
       localStorage.removeItem('ivd-token')
       window.location.href = '/login'
+      return Promise.reject(error)
     }
     ElMessage.error(error.message || '网络异常')
     return Promise.reject(error)

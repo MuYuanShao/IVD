@@ -63,6 +63,9 @@ tmp/
 temp/
 *.tmp
 
+# ---- Middleware Binaries ----
+middleware/minio/minio.exe
+
 # ---- Build Artifacts ----
 BOOT-INF/
 data/

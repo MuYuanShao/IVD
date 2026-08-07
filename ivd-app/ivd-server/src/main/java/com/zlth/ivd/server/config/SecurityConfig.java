@@ -3,6 +3,7 @@ package com.zlth.ivd.server.config;
 import com.zlth.ivd.common.utils.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -58,6 +59,8 @@ public class SecurityConfig {
                             "/actuator/info",
                             "/error"
                     ).permitAll()
+                    // 证照附件预览/下载 — 仅 GET 公开，DELETE/PUT 需认证
+                    .requestMatchers(HttpMethod.GET, "/api/v1/license/*/file/**").permitAll()
                     // 审计接口需认证（人工决策回写涉及敏感操作）
                     .requestMatchers("/api/v1/audit/**").authenticated()
                     // 其他接口均需认证

@@ -147,11 +147,49 @@
         <el-input-number v-model="form.leadTimeDays" :min="1" :max="365" style="width: 100%" />
       </el-form-item>
 
+      <el-divider content-position="left">采购与医保</el-divider>
+
+      <el-form-item label="是否带量">
+        <el-switch v-model="form.isVolumeBased" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
+      </el-form-item>
+
+      <el-form-item label="带量类型">
+        <el-select v-model="form.volumeType" placeholder="请选择带量类型" style="width:100%" :disabled="!form.isVolumeBased">
+          <el-option label="江西牵头生化试剂联盟" value="江西牵头生化试剂联盟" />
+          <el-option label="安徽牵头免疫 / 分子诊断联盟" value="安徽牵头免疫 / 分子诊断联盟" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="是否医保支付">
+        <el-switch v-model="form.isInsurancePayment" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
+      </el-form-item>
+
+      <el-form-item label="医保支付类型">
+        <el-select v-model="form.insurancePaymentType" placeholder="请选择医保支付类型" style="width:100%">
+          <el-option label="甲类" value="甲类" />
+          <el-option label="乙类" value="乙类" />
+          <el-option label="丙类" value="丙类" />
+          <el-option label="自费" value="自费" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="是否收费">
+        <el-switch v-model="form.isChargeable" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
+      </el-form-item>
+
+      <el-form-item label="收费编码">
+        <el-input v-model="form.chargeCode" placeholder="请输入收费编码" maxlength="50" :disabled="!form.isChargeable" />
+      </el-form-item>
+
       <el-form-item label="设备关联策略">
         <el-select v-model="form.deviceBindMode" style="width: 100%">
           <el-option label="强制关联" value="FORCE" />
           <el-option label="柔性关联" value="FLEXIBLE" />
         </el-select>
+      </el-form-item>
+
+      <el-form-item label="唯一码管控">
+        <el-switch v-model="form.enableUniqueCode" active-text="是" inactive-text="否" />
       </el-form-item>
     </el-form>
 
@@ -233,7 +271,14 @@ const form = reactive({
   pricePerUnit: null,
   stabilityDaysAfterOpen: null,
   leadTimeDays: 7,
-  deviceBindMode: 'FORCE'
+  isVolumeBased: 0,
+  volumeType: '',
+  isInsurancePayment: 0,
+  insurancePaymentType: '',
+  isChargeable: 0,
+  chargeCode: '',
+  deviceBindMode: 'FORCE',
+  enableUniqueCode: false
 })
 
 const rules = {
@@ -291,7 +336,14 @@ async function loadDetail(id) {
     form.pricePerUnit = data.pricePerUnit
     form.stabilityDaysAfterOpen = data.stabilityDaysAfterOpen
     form.leadTimeDays = data.leadTimeDays ?? 7
+    form.isVolumeBased = data.isVolumeBased != null ? data.isVolumeBased : 0
+    form.volumeType = data.volumeType || ''
+    form.isInsurancePayment = data.isInsurancePayment != null ? data.isInsurancePayment : 0
+    form.insurancePaymentType = data.insurancePaymentType || ''
+    form.isChargeable = data.isChargeable != null ? data.isChargeable : 0
+    form.chargeCode = data.chargeCode || ''
     form.deviceBindMode = data.deviceBindMode || 'FORCE'
+    form.enableUniqueCode = data.enableUniqueCode != null ? (data.enableUniqueCode === 1 || data.enableUniqueCode === true) : false
   } finally {
     loadingDetail.value = false
   }

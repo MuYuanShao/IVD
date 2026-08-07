@@ -44,19 +44,40 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="reagentName" label="试剂" width="160" />
-        <el-table-column prop="batchNo" label="批号" width="120" />
-        <el-table-column prop="warehouseName" label="所在库" width="100" />
+        <el-table-column prop="hisCode" label="试剂编码" width="110" show-overflow-tooltip />
+        <el-table-column prop="reagentName" label="试剂名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="genericName" label="通用名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="specification" label="规格型号" width="100" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="厂家" width="100" show-overflow-tooltip />
+        <el-table-column prop="distributor" label="配送商" width="100" show-overflow-tooltip />
+        <el-table-column prop="batchNo" label="批号" width="120" show-overflow-tooltip />
+        <el-table-column prop="manufactureDate" label="生产日期" width="100" />
         <el-table-column prop="expiryDate" label="效期" width="100" />
-        <el-table-column label="剩余天数" width="90">
+        <el-table-column label="剩余天数" width="85">
           <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存量" width="80" />
-        <el-table-column label="涉险金额" width="100"><template #default="{row}">¥{{ row.riskAmount || 0 }}</template></el-table-column>
-        <el-table-column label="系统建议" min-width="200">
-          <template #default="{row}">{{ getSuggestion(row) }}</template>
+        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column label="金额" width="100" align="right">
+          <template #default="{row}">{{ row.amount ? '¥' + row.amount.toFixed(2) : '—' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column prop="inboundDate" label="入库日期" width="100" />
+        <el-table-column prop="registrationCertNo" label="注册证号" width="120" show-overflow-tooltip />
+        <el-table-column label="是否带量" width="80" align="center">
+          <template #default="{row}">
+            <el-tag :type="row.isVolumeBased ? 'warning' : 'info'" size="small">{{ row.isVolumeBased ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="volumeType" label="带量类型" width="110" show-overflow-tooltip>
+          <template #default="{row}">{{ row.volumeType || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="是否收费" width="80" align="center">
+          <template #default="{row}">
+            <el-tag :type="row.isChargeable ? 'success' : 'info'" size="small">{{ row.isChargeable ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="insuranceCode" label="医保编码" width="120" show-overflow-tooltip />
+        <el-table-column prop="warehouseName" label="所在库" width="100" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{row}">
             <el-button link type="primary" size="small" @click="openTrace(row)">UDI追溯</el-button>
             <el-button link type="warning" size="small" @click="openTransfer(row, row.warehouseName)">处理</el-button>
@@ -78,14 +99,12 @@ import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useInventoryStore } from '@/stores/inventory'
 import { useECharts } from '@/composables/useECharts'
-import { getRemainingDays, getExpiryTagType, getExpirySuggestion } from '@/utils/inventory'
+import { getRemainingDays, getExpiryTagType } from '@/utils/inventory'
 import TraceDialog from '@/components/TraceDialog.vue'
 import TransferDialog from '@/components/TransferDialog.vue'
 
 const store = useInventoryStore()
 const levelFilter = ref(''), warehouseFilter = ref(null)
-
-function getSuggestion(row) { return getExpirySuggestion(row) }
 
 function fetchData() { store.fetchExpiryAlerts(levelFilter.value === 'urgent' ? 30 : 90, warehouseFilter.value || undefined); store.fetchStats(); store.fetchWarehouses({ pageSize: 50 }) }
 

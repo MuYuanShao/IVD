@@ -30,6 +30,7 @@ const routes = [
       { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/dashboard/DashboardView.vue'), meta: { title: '主任驾驶舱' } },
       { path: 'catalog', name: 'Catalog', component: () => import('@/views/catalog/CatalogList.vue'), meta: { title: '试剂目录' } },
       { path: 'license', name: 'License', component: () => import('@/views/license/LicenseList.vue'), meta: { title: '证照管理' } },
+      { path: 'change-log', name: 'ChangeLog', component: () => import('@/views/license/ChangeLogView.vue'), meta: { title: '信息变更' } },
       { path: 'supplier', name: 'SupplierManage', component: () => import('@/views/license/SupplierManage.vue'), meta: { title: '供应商维护' } },
       // ── 进销存地基 · 采购管理（4 子页，v2 独立路由）──
       { path: 'requisition', name: 'Requisition', component: () => import('@/views/procurement/RequisitionList.vue'), meta: { title: '申领管理', group: '采购管理' } },
@@ -37,6 +38,8 @@ const routes = [
       { path: 'purchase', name: 'Purchase', component: () => import('@/views/procurement/PurchaseList.vue'), meta: { title: '采购订单', group: '采购管理' } },
       { path: 'inbound', name: 'Inbound', component: () => import('@/views/procurement/InboundView.vue'), meta: { title: '扫码验收', group: '采购管理' } },
       { path: 'receiving', name: 'Receiving', component: () => import('@/views/procurement/ReceivingView.vue'), meta: { title: '人工验收', group: '采购管理' } },
+      { path: 'pick-and-ship', name: 'PickAndShip', component: () => import('@/views/procurement/PickAndShipView.vue'), meta: { title: '拣货发货', group: '采购管理' } },
+      { path: 'dept-receive', name: 'DeptReceive', component: () => import('@/views/procurement/DepartmentReceiveView.vue'), meta: { title: '科室签收', group: '采购管理' } },
       // ── 进销存地基 · 三级库管理（4 子页，v2 独立路由）──
       { path: 'central', name: 'CentralWarehouse', component: () => import('@/views/inventory/CentralWarehouse.vue'), meta: { title: '中心库(一级)', group: '三级库' } },
       { path: 'dept', name: 'DeptWarehouse', component: () => import('@/views/inventory/DeptWarehouse.vue'), meta: { title: '科室库(二级)', group: '三级库' } },
@@ -71,20 +74,26 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   // 公开页面直接放行
   if (to.meta.public) {
+    console.log('[Router Guard] 公开页面，直接放行:', to.path)
     return next()
   }
 
   const token = localStorage.getItem('ivd-token')
+  console.log('[Router Guard] 检查认证:', to.path, 'token:', token ? token.substring(0, 30) + '...' : '无')
+
   if (!token) {
     // 未登录，跳转登录页
+    console.warn('[Router Guard] 无 token，重定向到登录页')
     return next({ name: 'Login', query: { redirect: to.fullPath } })
   }
 
   // 已登录，放行
   if (to.name === 'Login') {
+    console.log('[Router Guard] 已登录用户访问登录页，重定向到 Dashboard')
     return next({ name: 'Dashboard' })
   }
 
+  console.log('[Router Guard] 认证通过，放行:', to.path)
   next()
 })
 

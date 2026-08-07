@@ -32,7 +32,7 @@
             AND material_type = #{query.materialType}
         </if>
         <if test="query.approvalStatus != null and query.approvalStatus != ''">
-            AND approval_status = #{query.approvalStatus}
+            AND FIND_IN_SET(approval_status, #{query.approvalStatus})
         </if>
         <if test="query.testGroups != null and query.testGroups != ''">
             AND test_groups LIKE CONCAT('%', #{query.testGroups}, '%')

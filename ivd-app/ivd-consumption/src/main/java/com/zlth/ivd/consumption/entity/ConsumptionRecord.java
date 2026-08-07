@@ -21,6 +21,8 @@ public class ConsumptionRecord {
     private BigDecimal amount;
     private String purpose;             // ROUTINE/BATCH_TEST/EQUIP_MAINT/DEPT_USE/OTHER
     private Long warehouseId;
+    private Long requisitionId;         // 关联申领单ID（拣货发货时写入）
+    private Long fromWarehouseId;       // 调出仓库ID（调拨源仓库）
     private Integer operatorId;
     private String remark;
     private LocalDateTime occurredAt;

@@ -1,6 +1,8 @@
 package com.zlth.ivd.license.service;
 
+import com.zlth.ivd.common.dto.ChangeLogQuery;
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.common.vo.ChangeLogVO;
 import com.zlth.ivd.license.dto.CreateLicenseRequest;
 import com.zlth.ivd.license.dto.LicenseQuery;
 import com.zlth.ivd.license.dto.UpdateLicenseRequest;
@@ -54,4 +56,13 @@ public interface LicenseService {
 
     /** 批量导入证照，返回成功条数 */
     int importBatch(List<CreateLicenseRequest> requests);
+
+    /** 删除证照附件（MinIO + DB 元数据） */
+    void deleteAttachment(Long licenseId, String objectKey, Long operatorId);
+
+    /** 替换证照附件（覆盖上传），返回新 objectKey */
+    String replaceAttachment(Long licenseId, String oldObjectKey, MultipartFile file, Long operatorId);
+
+    /** 分页查询所有变更记录 */
+    PageVO<ChangeLogVO> listChangeLogs(ChangeLogQuery query);
 }

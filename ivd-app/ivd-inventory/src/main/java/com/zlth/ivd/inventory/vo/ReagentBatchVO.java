@@ -20,10 +20,16 @@ public class ReagentBatchVO {
     private String batchNo;
     private Long reagentId;
     private String reagentName;
+    private String genericName;
     private String hisCode;
+    private String specification;
     private String distributor;
     private String manufacturer;
     private String registrationCertNo;
+    private String insuranceCode;
+    private Integer isVolumeBased;
+    private String volumeType;
+    private Integer isChargeable;
     private MaterialTypeEnum materialType;
     private String udiDi;
     private String udiPi;
@@ -32,6 +38,7 @@ public class ReagentBatchVO {
     private BigDecimal stock;
     private String unit;
     private BigDecimal unitPrice;
+    private BigDecimal amount;
     private UdiStatusEnum udiStatus;
     private Long warehouseId;
     private String locationCode;

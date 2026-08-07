@@ -181,8 +181,15 @@
     </el-card>
 
     <!-- 证照明细弹窗 (960px) -->
-    <el-dialog v-model="showDetailDialog" title="证照明细" width="960px" top="5vh" @closed="detailData = null">
-      <template v-if="detailData">
+    <el-dialog v-model="showDetailDialog" title="证照明细" width="960px" top="5vh" @closed="onDetailDialogClosed">
+      <!-- 加载中 -->
+      <div v-if="detailLoading" class="dialog-loading">
+        <el-icon :size="40" class="is-loading"><Loading /></el-icon>
+        <p>加载中...</p>
+      </div>
+
+      <!-- 内容 -->
+      <template v-else-if="detailData">
         <el-descriptions title="基本信息" :column="3" border size="small" style="margin-bottom:20px">
           <el-descriptions-item label="供应商">{{ detailData.supplierName }}</el-descriptions-item>
           <el-descriptions-item label="证照类型">{{ detailData.licenseTypeLabel }}</el-descriptions-item>
@@ -190,7 +197,7 @@
           <el-descriptions-item label="发证机关">{{ detailData.issuingAuthority || '—' }}</el-descriptions-item>
           <el-descriptions-item label="发证日期">{{ detailData.issueDate }}</el-descriptions-item>
           <el-descriptions-item label="有效期至">
-            <el-tag :type="detailData.remainingDays <= 90 ? 'warning' : 'success'" size="small">
+            <el-tag :type="Number(detailData.remainingDays) <= 90 ? 'warning' : 'success'" size="small">
               {{ detailData.expireDate }} ({{ detailData.remainingDays }}天)
             </el-tag>
           </el-descriptions-item>
@@ -217,9 +224,12 @@
               <span class="attachment-meta">{{ formatFileSize(att.size) }} · {{ att.uploadedAt }}</span>
             </div>
             <el-button link type="primary" size="small" @click="previewAttachment(att)">预览</el-button>
+            <el-button link type="warning" size="small" @click="handleReplaceClick(i)">变更</el-button>
+            <el-button link type="danger" size="small" @click="handleDeleteAttachment(att, i)">删除</el-button>
           </div>
         </div>
         <el-empty v-else description="暂无附件" :image-size="40" />
+        <input ref="replaceFileRef" type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" @change="onReplaceFileChange" />
 
         <el-divider content-position="left">变更记录</el-divider>
         <el-timeline v-if="detailData.changeLogs && detailData.changeLogs.length > 0">
@@ -234,7 +244,9 @@
         </el-timeline>
         <el-empty v-else description="暂无变更记录" :image-size="40" />
       </template>
-      <el-skeleton v-else :rows="8" animated />
+
+      <!-- 空数据 -->
+      <el-empty v-else description="暂无数据" :image-size="60" />
     </el-dialog>
 
     <!-- 上传/编辑证照弹窗 -->
@@ -335,7 +347,7 @@
 
 <script setup>
 import { ref, reactive, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Upload, Download, View, Edit, Stamp, OfficeBuilding, Document, Medal, Checked,
   Paperclip, Document as DocIcon, PictureFilled, UploadFilled, InfoFilled, ArrowDown, Loading, ZoomIn
@@ -364,6 +376,11 @@ let barChart = null
 // 明细弹窗
 const showDetailDialog = ref(false)
 const detailData = ref(null)
+const detailLoading = ref(false)
+
+// 附件操作
+const replacingIndex = ref(-1)
+const replaceFileRef = ref(null)
 
 // 上传弹窗
 const showUploadDialog = ref(false)
@@ -476,21 +493,63 @@ function renderCharts() {
   })
 }
 
+function onDetailDialogClosed() {
+  detailData.value = null
+  detailLoading.value = false
+}
+
 async function handleViewDetail(id) {
-  showDetailDialog.value = true; detailData.value = null
-  try { detailData.value = await licenseStore.fetchDetail(id) } catch { ElMessage.error('加载证照明细失败') }
+  if (!id) {
+    console.error('[LicenseList] handleViewDetail: id is null or undefined')
+    ElMessage.warning('证照数据异常，请刷新重试')
+    return
+  }
+  showDetailDialog.value = true
+  detailData.value = null
+  detailLoading.value = true
+  try {
+    const data = await licenseStore.fetchDetail(id)
+    console.log('[LicenseList] detail data received:', data)
+    if (!data) {
+      ElMessage.error('证照明细数据为空')
+      showDetailDialog.value = false
+      return
+    }
+    detailData.value = data
+    await nextTick()
+    console.log('[LicenseList] detailData set, dialog should render now')
+  } catch (e) {
+    console.error('[LicenseList] 加载证照明细失败:', id, e)
+    ElMessage.error('加载证照明细失败')
+    showDetailDialog.value = false
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 function handleEdit(id) {
+  if (!id) {
+    console.error('[LicenseList] handleEdit: id is null or undefined')
+    ElMessage.warning('证照数据异常，请刷新重试')
+    return
+  }
+  showDetailDialog.value = false
   editingLicenseId.value = id
   licenseStore.fetchDetail(id).then(data => {
+    if (!data) {
+      ElMessage.error('加载证照明细失败')
+      return
+    }
     Object.assign(uploadForm, {
       supplierId: data.supplierId, licenseType: data.licenseType,
       certNo: data.certNo, issuingAuthority: data.issuingAuthority || '',
       issueDate: data.issueDate, expireDate: data.expireDate
     })
     showUploadDialog.value = true
-  }).catch(() => ElMessage.error('加载证照明细失败'))
+  }).catch((e) => {
+    console.error('[LicenseList] 加载证照明细失败:', id, e)
+    ElMessage.error('加载证照明细失败')
+  })
 }
 
 async function handleUpload() {
@@ -648,7 +707,7 @@ async function previewAttachment(att) {
     }
   } catch (e) {
     console.error('附件预览失败:', e)
-    ElMessage.error('附件预览失败: ' + (e.message || '未知错误'))
+    // Axios 拦截器已统一弹错误提示，此处不再重复
   } finally {
     previewLoading.value = false
   }
@@ -674,6 +733,62 @@ async function downloadAttachment() {
   }
 }
 
+// ─── 附件操作 ───
+
+async function handleDeleteAttachment(att, index) {
+  if (!detailData.value?.id || !att.objectKey) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除附件「${att.name}」？此操作不可恢复。`,
+      '删除附件',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await licenseStore.deleteAttachment(detailData.value.id, att.objectKey)
+    detailData.value.attachments.splice(index, 1)
+    ElMessage.success('附件已删除')
+  } catch (e) {
+    console.error('删除附件失败:', e)
+  }
+}
+
+function handleReplaceClick(index) {
+  replacingIndex.value = index
+  replaceFileRef.value?.click()
+}
+
+async function onReplaceFileChange(e) {
+  const file = e.target.files?.[0]
+  if (!file || !detailData.value?.id) {
+    replacingIndex.value = -1
+    return
+  }
+  const att = detailData.value.attachments[replacingIndex.value]
+  if (!att) { replacingIndex.value = -1; return }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const newObjectKey = await licenseStore.replaceAttachment(detailData.value.id, att.objectKey, formData)
+    // 更新本地附件元数据
+    att.objectKey = newObjectKey
+    att.name = file.name
+    att.size = file.size
+    att.type = file.name.split('.').pop()?.toLowerCase() || 'unknown'
+    att.uploadedAt = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+    ElMessage.success('附件已替换')
+  } catch (e) {
+    console.error('替换附件失败:', e)
+  } finally {
+    replacingIndex.value = -1
+    replaceFileRef.value.value = ''
+  }
+}
+
 function revokePreviewUrl() {
   if (previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
@@ -685,10 +800,11 @@ function revokePreviewUrl() {
 }
 
 function formatFileSize(bytes) {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']; let i = 0; let size = bytes
-  while (size >= 1024 && i < units.length - 1) { size /= 1024; i++ }
-  return size.toFixed(1) + ' ' + units[i]
+  const size = Number(bytes)
+  if (!size || size < 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']; let i = 0; let n = size
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+  return n.toFixed(1) + ' ' + units[i]
 }
 
 function statusTagType(s) {
@@ -718,5 +834,7 @@ function licenseTypeIcon(type) {
 .attachment-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
 .attachment-meta { font-size: 11px; color: var(--text-tertiary); }
 .preview-container { min-height: 300px; display: flex; align-items: center; justify-content: center; }
+.dialog-loading { text-align: center; padding: 60px 0; color: var(--text-tertiary); }
+.dialog-loading p { margin-top: 12px; font-size: 14px; }
 :deep(.el-table th) { background: var(--bg-page); color: var(--text-secondary); font-weight: 600; }
 </style>

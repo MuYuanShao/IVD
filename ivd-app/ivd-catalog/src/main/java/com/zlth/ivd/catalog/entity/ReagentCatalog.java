@@ -58,6 +58,12 @@ public class ReagentCatalog {
     /** 医保编码 */
     private String insuranceCode;
 
+    /** 是否医保支付：0=否 1=是 */
+    private Integer isInsurancePayment;
+
+    /** 是否启用唯一码管控：0=否 1=是（开启后验收入库时按数量逐盒生成唯一码） */
+    private Integer enableUniqueCode;
+
     /** NMPA 注册证号 */
     private String registrationCertNo;
 
@@ -78,6 +84,21 @@ public class ReagentCatalog {
 
     /** 设备关联策略 */
     private DeviceBindModeEnum deviceBindMode;
+
+    /** 是否带量采购 */
+    private Integer isVolumeBased;
+
+    /** 带量类型: NATIONAL_VOLUME / PROVINCIAL / GPO / NONE */
+    private String volumeType;
+
+    /** 医保支付类型: A类 / B类 / C类 / 自费 */
+    private String insurancePaymentType;
+
+    /** 是否收费 */
+    private Integer isChargeable;
+
+    /** 收费编码 */
+    private String chargeCode;
 
     /** 审批状态 */
     private ApprovalStatusEnum approvalStatus;

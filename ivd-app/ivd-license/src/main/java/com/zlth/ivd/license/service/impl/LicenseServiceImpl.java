@@ -1,18 +1,23 @@
 package com.zlth.ivd.license.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zlth.ivd.common.dto.ChangeLogQuery;
 import com.zlth.ivd.common.dto.PageVO;
+import com.zlth.ivd.common.vo.ChangeLogVO;
 import com.zlth.ivd.common.enums.LicenseStatusEnum;
 import com.zlth.ivd.common.enums.LicenseTypeEnum;
 import com.zlth.ivd.common.exception.BizException;
+import com.zlth.ivd.common.config.MinioProperties;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.license.dto.CreateLicenseRequest;
 import com.zlth.ivd.license.dto.LicenseQuery;
 import com.zlth.ivd.license.dto.UpdateLicenseRequest;
 import com.zlth.ivd.license.entity.LicenseChangeLog;
+import com.zlth.ivd.catalog.mapper.CatalogApprovalLogMapper;
 import com.zlth.ivd.license.entity.SupplierLicense;
 import com.zlth.ivd.license.mapper.LicenseChangeLogMapper;
 import com.zlth.ivd.license.mapper.SupplierLicenseMapper;
@@ -20,25 +25,27 @@ import com.zlth.ivd.license.mapper.SupplierMapper;
 import com.zlth.ivd.license.service.LicenseService;
 import com.zlth.ivd.license.vo.LicenseDetailVO;
 import com.zlth.ivd.license.vo.LicenseVO;
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
+import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
+import io.minio.errors.ErrorResponseException;
+import io.minio.errors.InsufficientDataException;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -61,11 +68,11 @@ public class LicenseServiceImpl implements LicenseService {
     private final SupplierLicenseMapper licenseMapper;
     private final SupplierMapper supplierMapper;
     private final LicenseChangeLogMapper changeLogMapper;
+    private final CatalogApprovalLogMapper catalogApprovalLogMapper;
+    private final MinioClient minioClient;
+    private final MinioProperties minioProps;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    @Value("${ivd.upload.path:data/uploads}")
-    private String uploadBasePath;
 
     @Override
     public PageVO<LicenseVO> listLicenses(LicenseQuery query) {
@@ -240,30 +247,34 @@ public class LicenseServiceImpl implements LicenseService {
             throw new BizException(40400, "证照不存在");
         }
 
-        // 本地存储路径: {ivd.upload.path}/license/{licenseId}/
-        String uploadDir = uploadBasePath + File.separator + "license" + File.separator + licenseId;
-        File dir = new File(uploadDir);
-        if (!dir.isAbsolute()) {
-            dir = new File(System.getProperty("user.dir"), uploadDir);
-        }
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-
-        // 生成唯一文件名（防冲突），并清理路径穿越字符
+        // 生成唯一对象名，并清理路径穿越字符
         String originalName = file.getOriginalFilename();
         String safeName = sanitizeFilename(originalName != null ? originalName : "file");
         String objectKey = System.currentTimeMillis() + "_" + safeName;
 
-        try {
-            File dest = new File(dir, objectKey);
-            file.transferTo(dest);
-        } catch (IOException e) {
-            log.error("附件保存失败: licenseId={}, fileName={}", licenseId, originalName, e);
-            throw new BizException(50000, "附件保存失败: " + e.getMessage());
+        // MinIO 对象路径: license/{licenseId}/{objectKey}
+        String objectName = "license/" + licenseId + "/" + objectKey;
+        String contentType = guessContentType(originalName);
+
+        try (InputStream inputStream = file.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(minioProps.getBucketCert())
+                    .object(objectName)
+                    .stream(inputStream, file.getSize(), -1)
+                    .contentType(contentType)
+                    .build());
+        } catch (ErrorResponseException e) {
+            log.error("MinIO上传失败: licenseId={}, objectKey={}", licenseId, objectKey, e);
+            throw new BizException(50000, "附件上传失败: MinIO服务异常");
+        } catch (InsufficientDataException | IOException e) {
+            log.error("附件数据异常: licenseId={}, fileName={}", licenseId, originalName, e);
+            throw new BizException(50000, "附件上传失败: 文件数据异常");
+        } catch (Exception e) {
+            log.error("MinIO上传未知异常: licenseId={}, objectKey={}", licenseId, objectKey, e);
+            throw new BizException(50000, "附件上传失败: 存储服务异常");
         }
 
-        // 构建附件条目
+        // 构建附件条目（元数据仍存 DB JSON）
         String username = SecurityUtils.getCurrentUsername();
         LicenseDetailVO.AttachmentItem item = LicenseDetailVO.AttachmentItem.builder()
                 .name(originalName != null ? originalName : "file")
@@ -286,7 +297,8 @@ public class LicenseServiceImpl implements LicenseService {
         }
         licenseMapper.updateById(license);
 
-        log.info("证照附件上传成功: licenseId={}, objectKey={}, fileName={}", licenseId, objectKey, originalName);
+        log.info("证照附件上传成功(MinIO): licenseId={}, bucket={}, objectName={}, fileName={}",
+                licenseId, minioProps.getBucketCert(), objectName, originalName);
         return objectKey;
     }
 
@@ -324,6 +336,210 @@ public class LicenseServiceImpl implements LicenseService {
             }
         }
         log.info("[XXL-Job] 证照效期检查完成，处理 {} 条", expiring.size());
+    }
+
+    @Override
+    public void deleteAttachment(Long licenseId, String objectKey, Long operatorId) {
+        SupplierLicense license = licenseMapper.selectById(licenseId);
+        if (license == null) {
+            throw new BizException(40400, "证照不存在");
+        }
+
+        List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
+        LicenseDetailVO.AttachmentItem target = attachments.stream()
+                .filter(a -> objectKey.equals(a.getObjectKey()))
+                .findFirst()
+                .orElse(null);
+        if (target == null) {
+            throw new BizException(40400, "附件不存在");
+        }
+
+        // 1. 删除 MinIO 对象
+        String objectName = "license/" + licenseId + "/" + objectKey;
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(minioProps.getBucketCert())
+                    .object(objectName)
+                    .build());
+        } catch (ErrorResponseException e) {
+            log.warn("MinIO删除附件失败(对象可能已不存在): licenseId={}, objectKey={}", licenseId, objectKey, e);
+        } catch (Exception e) {
+            log.error("MinIO删除附件异常: licenseId={}, objectKey={}", licenseId, objectKey, e);
+            throw new BizException(50000, "附件删除失败: 存储服务异常");
+        }
+
+        // 2. 从 JSON 中移除
+        attachments.remove(target);
+        try {
+            license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+        } catch (Exception e) {
+            log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
+            throw new BizException(50000, "附件信息保存失败");
+        }
+        licenseMapper.updateById(license);
+
+        // 3. 记录变更日志
+        String operatorName = SecurityUtils.getCurrentUsername();
+        String note = String.format("{\"fileName\":\"%s\",\"objectKey\":\"%s\"}", target.getName(), target.getObjectKey());
+        insertChangeLog(licenseId, "DELETE_ATTACHMENT", null, null, operatorId, operatorName, note);
+
+        log.info("证照附件已删除: licenseId={}, objectKey={}, fileName={}", licenseId, objectKey, target.getName());
+    }
+
+    @Override
+    public String replaceAttachment(Long licenseId, String oldObjectKey, MultipartFile file, Long operatorId) {
+        SupplierLicense license = licenseMapper.selectById(licenseId);
+        if (license == null) {
+            throw new BizException(40400, "证照不存在");
+        }
+
+        List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
+        LicenseDetailVO.AttachmentItem oldItem = attachments.stream()
+                .filter(a -> oldObjectKey.equals(a.getObjectKey()))
+                .findFirst()
+                .orElse(null);
+        if (oldItem == null) {
+            throw new BizException(40400, "附件不存在");
+        }
+
+        String oldFileName = oldItem.getName();
+
+        // 1. 上传新文件到 MinIO
+        String originalName = file.getOriginalFilename();
+        String safeName = sanitizeFilename(originalName != null ? originalName : "file");
+        String newObjectKey = System.currentTimeMillis() + "_" + safeName;
+        String newObjectName = "license/" + licenseId + "/" + newObjectKey;
+        String contentType = guessContentType(originalName);
+
+        try (InputStream inputStream = file.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(minioProps.getBucketCert())
+                    .object(newObjectName)
+                    .stream(inputStream, file.getSize(), -1)
+                    .contentType(contentType)
+                    .build());
+        } catch (ErrorResponseException e) {
+            log.error("MinIO替换上传失败: licenseId={}, newObjectKey={}", licenseId, newObjectKey, e);
+            throw new BizException(50000, "附件替换失败: MinIO服务异常");
+        } catch (InsufficientDataException | IOException e) {
+            log.error("附件数据异常: licenseId={}, fileName={}", licenseId, originalName, e);
+            throw new BizException(50000, "附件替换失败: 文件数据异常");
+        } catch (Exception e) {
+            log.error("MinIO替换上传未知异常: licenseId={}, newObjectKey={}", licenseId, newObjectKey, e);
+            throw new BizException(50000, "附件替换失败: 存储服务异常");
+        }
+
+        // 2. 更新元数据
+        String username = SecurityUtils.getCurrentUsername();
+        oldItem.setName(originalName != null ? originalName : "file");
+        oldItem.setObjectKey(newObjectKey);
+        oldItem.setSize(file.getSize());
+        oldItem.setType(getFileExtension(originalName));
+        oldItem.setUploadedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        oldItem.setUploadedBy(username != null ? username : "管理员");
+
+        // 3. 删除 MinIO 旧对象
+        String oldObjectName = "license/" + licenseId + "/" + oldObjectKey;
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(minioProps.getBucketCert())
+                    .object(oldObjectName)
+                    .build());
+        } catch (ErrorResponseException e) {
+            log.warn("MinIO删除旧附件失败(对象可能已不存在): licenseId={}, oldObjectKey={}", licenseId, oldObjectKey, e);
+        } catch (Exception e) {
+            log.error("MinIO删除旧附件异常: licenseId={}, oldObjectKey={}", licenseId, oldObjectKey, e);
+            // 新文件已上传成功，旧文件删除失败不阻断流程
+        }
+
+        // 4. 写回 DB
+        try {
+            license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+        } catch (Exception e) {
+            log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
+            throw new BizException(50000, "附件信息保存失败");
+        }
+        licenseMapper.updateById(license);
+
+        // 5. 记录变更日志
+        String operatorName = SecurityUtils.getCurrentUsername();
+        String note = String.format("{\"oldFileName\":\"%s\",\"newFileName\":\"%s\",\"oldKey\":\"%s\",\"newKey\":\"%s\"}",
+                oldFileName, oldItem.getName(), oldObjectKey, newObjectKey);
+        insertChangeLog(licenseId, "REPLACE_ATTACHMENT", null, null, operatorId, operatorName, note);
+
+        log.info("证照附件已替换: licenseId={}, oldKey={} -> newKey={}, newFile={}",
+                licenseId, oldObjectKey, newObjectKey, originalName);
+        return newObjectKey;
+    }
+
+    @Override
+    public PageVO<ChangeLogVO> listChangeLogs(ChangeLogQuery query) {
+        String module = query.getModule();
+        boolean queryLicense = module == null || module.isEmpty() || "LICENSE".equalsIgnoreCase(module);
+        boolean queryCatalog = module == null || module.isEmpty() || "CATALOG".equalsIgnoreCase(module);
+
+        List<ChangeLogVO> merged = new ArrayList<>();
+        long total = 0;
+
+        if (queryLicense) {
+            Page<ChangeLogVO> page = new Page<>(query.getPage(), query.getPageSize());
+            IPage<ChangeLogVO> result = changeLogMapper.findAllWithLicense(page, query);
+            for (ChangeLogVO vo : result.getRecords()) {
+                vo.setModule("LICENSE");
+                vo.setModuleLabel("证照管理");
+                vo.setChangeTypeLabel(changeTypeLabel(vo.getChangeType()));
+                if (vo.getLicenseType() != null && !vo.getLicenseType().isEmpty()) {
+                    try {
+                        vo.setLicenseTypeLabel(LicenseTypeEnum.valueOf(vo.getLicenseType()).getLabel());
+                    } catch (IllegalArgumentException e) {
+                        vo.setLicenseTypeLabel(vo.getLicenseType());
+                    }
+                }
+            }
+            merged.addAll(result.getRecords());
+            total += result.getTotal();
+        }
+
+        if (queryCatalog) {
+            Page<ChangeLogVO> page = new Page<>(query.getPage(), query.getPageSize());
+            IPage<ChangeLogVO> result = catalogApprovalLogMapper.findAllWithReagent(page, query);
+            for (ChangeLogVO vo : result.getRecords()) {
+                vo.setModule("CATALOG");
+                vo.setModuleLabel("试剂目录");
+                vo.setChangeTypeLabel(catalogChangeTypeLabel(vo.getChangeType()));
+                vo.setNote(vo.getNote()); // change_reason already mapped as note
+                if (vo.getReviewStatus() != null) {
+                    vo.setReviewStatusLabel(switch (vo.getReviewStatus()) {
+                        case "PENDING" -> "待审批";
+                        case "APPROVED" -> "已通过";
+                        case "REJECTED" -> "已驳回";
+                        default -> vo.getReviewStatus();
+                    });
+                }
+            }
+            merged.addAll(result.getRecords());
+            total += result.getTotal();
+        }
+
+        // 多模块时按时间倒序排序并截取
+        if (queryLicense && queryCatalog) {
+            merged.sort((a, b) -> {
+                if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                if (a.getCreatedAt() == null) return 1;
+                if (b.getCreatedAt() == null) return -1;
+                return b.getCreatedAt().compareTo(a.getCreatedAt());
+            });
+            // 截取当前页
+            int start = (query.getPage() - 1) * query.getPageSize();
+            int end = Math.min(start + query.getPageSize(), merged.size());
+            if (start < merged.size()) {
+                merged = merged.subList(start, end);
+            } else {
+                merged = new ArrayList<>();
+            }
+        }
+
+        return new PageVO<>(total, query.getPage(), query.getPageSize(), merged);
     }
 
     // ─── 私有方法 ───
@@ -385,20 +601,13 @@ public class LicenseServiceImpl implements LicenseService {
     public void downloadAttachment(Long licenseId, String objectKey, HttpServletResponse response) {
         // 防止路径穿越攻击
         String safeKey = sanitizeFilename(objectKey);
-        String relativePath = uploadBasePath + File.separator + "license" + File.separator + licenseId + File.separator + safeKey;
-        Path path = Paths.get(relativePath);
-        if (!path.isAbsolute()) {
-            path = Paths.get(System.getProperty("user.dir"), relativePath);
-        }
-        // 二次校验：确保规范化后的路径仍在预期的上传目录内
-        Path uploadDir = Paths.get(uploadBasePath).toAbsolutePath().normalize();
-        if (!path.toAbsolutePath().normalize().startsWith(uploadDir)) {
-            log.warn("路径穿越攻击检测: licenseId={}, objectKey={}", licenseId, objectKey);
+        if (!safeKey.equals(objectKey)) {
+            log.warn("附件下载路径穿越攻击检测: licenseId={}, objectKey={}", licenseId, objectKey);
             throw new BizException(40400, "附件文件不存在");
         }
-        if (!Files.exists(path)) {
-            throw new BizException(40400, "附件文件不存在");
-        }
+
+        // MinIO 对象路径
+        String objectName = "license/" + licenseId + "/" + safeKey;
 
         // 从附件记录中获取原始文件名
         SupplierLicense license = licenseMapper.selectById(licenseId);
@@ -419,13 +628,23 @@ public class LicenseServiceImpl implements LicenseService {
                 "inline; filename=\"" + URLEncoder.encode(originalName, StandardCharsets.UTF_8) + "\"");
         response.setHeader("Cache-Control", "max-age=86400");
 
-        try (FileInputStream fis = new FileInputStream(path.toFile());
+        try (GetObjectResponse getResponse = minioClient.getObject(GetObjectArgs.builder()
+                .bucket(minioProps.getBucketCert())
+                .object(objectName)
+                .build());
+             InputStream is = getResponse;
              OutputStream os = response.getOutputStream()) {
-            StreamUtils.copy(fis, os);
+            StreamUtils.copy(is, os);
             os.flush();
-        } catch (IOException e) {
-            log.error("下载附件失败: {}", relativePath, e);
+        } catch (ErrorResponseException e) {
+            log.warn("附件不存在: licenseId={}, objectKey={}", licenseId, objectKey);
+            throw new BizException(40400, "附件文件不存在");
+        } catch (InsufficientDataException | IOException e) {
+            log.error("附件流式传输失败: licenseId={}, objectKey={}", licenseId, objectKey, e);
             throw new BizException(50000, "附件读取失败");
+        } catch (Exception e) {
+            log.error("MinIO下载未知异常: licenseId={}, objectKey={}", licenseId, objectKey, e);
+            throw new BizException(50000, "附件下载失败: 存储服务异常");
         }
     }
 
@@ -497,7 +716,29 @@ public class LicenseServiceImpl implements LicenseService {
             case "UPDATE" -> "变更";
             case "FREEZE" -> "冻结";
             case "UNFREEZE" -> "解冻";
+            case "DELETE_ATTACHMENT" -> "删除附件";
+            case "REPLACE_ATTACHMENT" -> "变更附件";
             default -> type;
+        };
+    }
+
+    private String catalogChangeTypeLabel(String type) {
+        return switch (type) {
+            case "CREATE" -> "新增试剂";
+            case "UPDATE" -> "编辑试剂";
+            case "DELETE" -> "删除试剂";
+            case "DISABLE" -> "停用试剂";
+            default -> type;
+        };
+    }
+
+    /** 审批状态中文标签 */
+    private String reviewStatusLabel(String status) {
+        return switch (status) {
+            case "PENDING" -> "待审批";
+            case "APPROVED" -> "已通过";
+            case "REJECTED" -> "已驳回";
+            default -> status;
         };
     }
 }

@@ -11,6 +11,8 @@ export function getRequisitionItems(reqId) { return request({ url: `/procurement
 export function createRequisition(data) { return request({ url: '/procurement/requisitions', method: 'post', data }) }
 export function getRequisitionStats() { return request({ url: '/procurement/requisitions/stats', method: 'get' }) }
 export function reviewRequisition(id, data) { return request({ url: `/procurement/requisitions/${id}/review`, method: 'put', data }) }
+export function submitRequisition(id) { return request({ url: `/procurement/requisitions/${id}/submit`, method: 'put' }) }
+export function cancelRequisition(id, reason) { return request({ url: `/procurement/requisitions/${id}/cancel`, method: 'put', data: { reason } }) }
 
 // ── 缺货单 ──
 export function getShortageList(params) { return request({ url: '/procurement/shortages', method: 'get', params }) }
@@ -34,6 +36,15 @@ export function receiveOrder(data) {
 }
 export function receiveDirect(data) {
   return request({ url: '/procurement/receive/direct', method: 'post', data })
+}
+
+// ── 拣货发货 ──
+export function pickAndShip(requisitionId, data) {
+  return request({
+    url: `/procurement/requisitions/${requisitionId}/pick-and-ship`,
+    method: 'post',
+    data
+  })
 }
 
 // ── 智能补货 ──

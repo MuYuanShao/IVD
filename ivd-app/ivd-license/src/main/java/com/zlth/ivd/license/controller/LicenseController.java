@@ -1,10 +1,12 @@
 package com.zlth.ivd.license.controller;
 
 import com.zlth.ivd.common.annotation.AuditLog;
+import com.zlth.ivd.common.dto.ChangeLogQuery;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
 import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.common.utils.SecurityUtils;
+import com.zlth.ivd.common.vo.ChangeLogVO;
 import com.zlth.ivd.license.dto.CreateLicenseRequest;
 import com.zlth.ivd.license.dto.LicenseQuery;
 import com.zlth.ivd.license.dto.UpdateLicenseRequest;
@@ -97,6 +99,35 @@ public class LicenseController {
                                    @PathVariable String objectKey,
                                    HttpServletResponse response) {
         licenseService.downloadAttachment(id, objectKey, response);
+    }
+
+    /** 删除证照附件 */
+    @DeleteMapping("/{id}/file/{objectKey}")
+    @AuditLog(module = "证照管理", action = "删除附件")
+    @RequireRole("SYSTEM_ADMIN")
+    public Result<Void> deleteAttachment(@PathVariable Long id,
+                                         @PathVariable String objectKey) {
+        Long operatorId = SecurityUtils.getCurrentUserId();
+        licenseService.deleteAttachment(id, objectKey, operatorId);
+        return Result.success();
+    }
+
+    /** 替换证照附件（覆盖上传） */
+    @PutMapping("/{id}/file/{objectKey}")
+    @AuditLog(module = "证照管理", action = "替换附件")
+    @RequireRole("SYSTEM_ADMIN")
+    public Result<String> replaceAttachment(@PathVariable Long id,
+                                            @PathVariable String objectKey,
+                                            @RequestParam("file") MultipartFile file) {
+        Long operatorId = SecurityUtils.getCurrentUserId();
+        String newObjectKey = licenseService.replaceAttachment(id, objectKey, file, operatorId);
+        return Result.success(newObjectKey);
+    }
+
+    /** 分页查询所有变更记录（信息变更菜单） */
+    @GetMapping("/change-logs")
+    public Result<PageVO<ChangeLogVO>> listChangeLogs(ChangeLogQuery query) {
+        return Result.success(licenseService.listChangeLogs(query));
     }
 
     private static final List<String> EXPORT_HEADERS = List.of(

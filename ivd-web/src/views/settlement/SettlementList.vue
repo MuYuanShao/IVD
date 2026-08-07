@@ -19,7 +19,7 @@
       <el-table :data="records" stripe v-loading="loading" style="width:100%">
         <el-table-column prop="settlementNo" label="结算单号" width="180" />
         <el-table-column label="结算类型" width="100">
-          <template #default="{row}"><el-tag :type="row.settlementType==='REQUISITION'?'':'success'" size="small">{{ row.settlementType==='REQUISITION'?'申领结算':'消耗结算' }}</el-tag></template>
+          <template #default="{row}"><el-tag :type="getSettlementTagType(row.settlementType)" size="small">{{ getSettlementTypeLabel(row.settlementType) }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="sourceId" label="源单据ID" width="100" />
         <el-table-column prop="quantity" label="数量" width="80" />
@@ -40,7 +40,7 @@
 
     <el-dialog v-model="showSettleDialog" title="手动结算" width="400px">
       <el-form label-width="80px">
-        <el-form-item label="结算类型"><el-select v-model="settleForm.type" style="width:100%"><el-option label="申领结算" value="REQUISITION" /><el-option label="消耗结算" value="CONSUMPTION" /></el-select></el-form-item>
+        <el-form-item label="结算类型"><el-select v-model="settleForm.type" style="width:100%"><el-option label="申领结算" value="REQUISITION" /><el-option label="消耗结算" value="CONSUMPTION" /><el-option label="调拨结算" value="TRANSFER" /></el-select></el-form-item>
         <el-form-item label="源单据ID"><el-input-number v-model="settleForm.sourceId" :min="1" style="width:100%" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="showSettleDialog=false">取消</el-button><el-button type="primary" @click="doSettle">确认结算</el-button></template>
@@ -50,7 +50,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getSettlementList, getSettlementStats, settleRequisition, settleConsumption, reverseSettlement } from '@/api/settlement'
+import { getSettlementList, getSettlementStats, settleRequisition, settleConsumption, settleTransfer, reverseSettlement } from '@/api/settlement'
 import { ElMessageBox } from 'element-plus'
 
 const page = ref(1), pageSize = ref(10)
@@ -70,10 +70,23 @@ async function fetchStats() { try { stats.value = await getSettlementStats() || 
 async function doSettle() {
   try {
     if (settleForm.value.type === 'REQUISITION') await settleRequisition(settleForm.value.sourceId)
+    else if (settleForm.value.type === 'TRANSFER') await settleTransfer(settleForm.value.sourceId)
     else await settleConsumption(settleForm.value.sourceId)
     showSettleDialog.value = false
     fetchRecords(); fetchStats()
   } catch {}
+}
+
+function getSettlementTagType(type) {
+  if (type === 'REQUISITION') return ''
+  if (type === 'TRANSFER') return 'warning'
+  return 'success'
+}
+
+function getSettlementTypeLabel(type) {
+  if (type === 'REQUISITION') return '申领结算'
+  if (type === 'TRANSFER') return '调拨结算'
+  return '消耗结算'
 }
 
 async function doReverse(row) {

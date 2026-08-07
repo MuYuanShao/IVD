@@ -13,7 +13,7 @@ public class ShortageOrderItem {
     private Long shortageOrderId;
     private Integer lineNo;
     private Long reqItemId;
-    private Integer reagentId;
+    private Long reagentId;
     private BigDecimal qtyShortage;
     private BigDecimal estUnitPrice;
 

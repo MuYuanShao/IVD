@@ -2,6 +2,7 @@ package com.zlth.ivd.server;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * IVD 智慧实验室管理系统 — 一期 MVP 启动入口
@@ -13,6 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @since 2026-07-01
  */
 @SpringBootApplication(scanBasePackages = "com.zlth.ivd")
+@EnableScheduling
 public class IvdApplication {
 
     public static void main(String[] args) {

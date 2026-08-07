@@ -55,8 +55,8 @@ ALTER TABLE `warehouse`
     ADD COLUMN `status`          TINYINT      NOT NULL DEFAULT 1  COMMENT '状态: 1启用 | 0停用' AFTER `sort_order`,
     ADD COLUMN `remark`          VARCHAR(512) DEFAULT NULL  COMMENT '备注' AFTER `status`;
 
--- 4. 种子数据: 默认系统管理员 (密码: IVD@2026 → BCrypt)
+-- 4. 种子数据: 默认系统管理员 (密码: admin123 → BCrypt)
 INSERT IGNORE INTO `sys_user` (`username`, `real_name`, `password`, `role`, `status`)
 VALUES ('admin', '系统管理员',
-        '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh',
+        '$2a$10$HsLsPerX7BO.5G/T6WN.9.NAFN9JApD38KOVsojtmjw5S0Z.auxE6',
         'SYSTEM_ADMIN', 1);

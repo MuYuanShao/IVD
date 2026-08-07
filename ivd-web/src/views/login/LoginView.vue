@@ -79,19 +79,43 @@ const rules = {
 }
 
 async function handleLogin() {
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
+  console.log('[LoginView] 开始登录流程, username:', form.username)
+
+  // 确保表单已挂载
+  if (!formRef.value) {
+    console.error('[LoginView] formRef 为空，页面未就绪')
+    ElMessage.error('页面未就绪，请刷新后重试')
+    return
+  }
+
+  const valid = await formRef.value.validate().catch((err) => {
+    console.error('[LoginView] 表单验证失败:', err)
+    return false
+  })
+  if (!valid) {
+    console.warn('[LoginView] 表单验证未通过')
+    return
+  }
 
   loading.value = true
 
   try {
     await authStore.login(form.username, form.password)
+    console.log('[LoginView] authStore.login 完成')
     ElMessage.success('登录成功')
 
     const redirect = route.query.redirect || '/dashboard'
-    router.push(redirect)
-  } catch {
-    ElMessage.error('用户名或密码错误')
+    console.log('[LoginView] 准备跳转到:', redirect, 'route.query:', route.query)
+    router.push(redirect).then(() => {
+      console.log('[LoginView] router.push 成功:', redirect)
+    }).catch((err) => {
+      console.error('[LoginView] router.push 失败:', err)
+      ElMessage.warning('页面跳转异常，请手动刷新或重新登录')
+      loading.value = false
+    })
+  } catch (err) {
+    console.error('[LoginView] 登录失败:', err)
+    ElMessage.error(err?.message || '登录失败，请检查用户名和密码')
   } finally {
     loading.value = false
   }

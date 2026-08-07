@@ -13,7 +13,8 @@ import lombok.Getter;
 public enum SettlementTypeEnum {
 
     REQUISITION("REQUISITION", "申领结算"),
-    CONSUMPTION("CONSUMPTION", "领用结算");
+    CONSUMPTION("CONSUMPTION", "领用结算"),
+    TRANSFER("TRANSFER", "调拨结算");
 
     @EnumValue
     private final String code;

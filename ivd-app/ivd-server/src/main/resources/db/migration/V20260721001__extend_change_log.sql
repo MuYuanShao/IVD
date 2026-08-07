@@ -1,0 +1,5 @@
+-- 证照变更记录表 — 扩展 change_type ENUM 以支持附件操作
+-- 新增: DELETE_ATTACHMENT(删除附件), REPLACE_ATTACHMENT(变更附件)
+ALTER TABLE license_change_log
+    MODIFY COLUMN change_type ENUM('CREATE','RENEW','UPDATE','FREEZE','UNFREEZE','DELETE_ATTACHMENT','REPLACE_ATTACHMENT')
+    NOT NULL COMMENT '变更类型';

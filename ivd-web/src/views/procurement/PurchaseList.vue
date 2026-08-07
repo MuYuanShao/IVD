@@ -108,16 +108,9 @@
     </el-dialog>
 
     <!-- 手动创建采购单弹窗 -->
-    <el-dialog v-model="showManualPODialog" title="新建采购单" width="1100px" top="4vh" @closed="resetManualPO" @open="loadReagents">
+    <el-dialog v-model="showManualPODialog" title="新建采购单" width="1100px" top="4vh" @closed="resetManualPO" @open="loadReagentsAndSuppliers">
       <el-form ref="manualPOFormRef" :model="manualPOForm" :rules="manualPORules" label-width="90px">
         <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="供应商" prop="supplierId">
-              <el-select v-model="manualPOForm.supplierId" placeholder="请选择供应商" style="width:100%">
-                <el-option v-for="s in suppliers" :key="s.value" :label="s.label" :value="s.value" />
-              </el-select>
-            </el-form-item>
-          </el-col>
           <el-col :span="12">
             <el-form-item label="下单日期" prop="orderDate">
               <el-date-picker v-model="manualPOForm.orderDate" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
@@ -138,6 +131,13 @@
             <template #default="{row, $index}">
               <el-select v-model="row.reagentId" placeholder="搜索/选择试剂" filterable style="width:100%" size="small" @change="onReagentChange($index, $event)">
                 <el-option v-for="r in reagentOptions" :key="r.value" :label="r.label" :value="r.value" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="供应商" width="130">
+            <template #default="{row}">
+              <el-select v-model="row.supplierId" placeholder="选择供应商" filterable style="width:100%" size="small" clearable>
+                <el-option v-for="s in suppliers" :key="s.value" :label="s.label" :value="s.value" />
               </el-select>
             </template>
           </el-table-column>
@@ -174,14 +174,30 @@
       </el-form>
       <template #footer>
         <el-button @click="showManualPODialog = false">取消</el-button>
-        <el-button type="primary" :loading="manualPOLoading" @click="submitManualPO">确认创建</el-button>
+        <el-button type="primary" :loading="manualPOLoading" @click="submitManualPO" :disabled="!canSubmitPO">确认创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 采购单拆分结果弹窗 -->
+    <el-dialog v-model="showPOResultDialog" title="采购单已按供应商拆分" width="550px" align-center @closed="fetchData">
+      <el-table :data="createdPOs" stripe size="small" max-height="300">
+        <el-table-column label="#" type="index" width="50" />
+        <el-table-column prop="poNo" label="订单号" width="200" />
+        <el-table-column label="供应商" min-width="180">
+          <template #default="{row}">
+            {{ getSupplierName(row.supplierId) }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button type="primary" @click="showPOResultDialog = false">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Plus, Download, MagicStick, Refresh, Delete } from '@element-plus/icons-vue'
@@ -223,8 +239,17 @@ onBeforeUnmount(() => { clearTimeout(searchTimer) })
 async function loadSuppliers() {
   try {
     const list = await getSuppliers()
-    if (list && list.length) suppliers.value = list.map(s => ({ value: s.id, label: s.name }))
-  } catch (e) { console.error('加载供应商列表失败:', e) }
+    if (list && list.length) {
+      suppliers.value = list.map(s => ({ value: s.id, label: s.name }))
+    } else {
+      suppliers.value = []
+      ElMessage.warning('未获取到供应商列表，请检查供应商数据')
+    }
+  } catch (e) {
+    console.error('加载供应商列表失败:', e)
+    suppliers.value = []
+    ElMessage.error('加载供应商列表失败，请刷新页面重试')
+  }
 }
 
 function handleExport() { ElMessage.success('采购报表生成中，即将下载...') }
@@ -262,11 +287,14 @@ async function doBatchCreatePO() {
 
 // ── 手动采购单 ──
 const showManualPODialog = ref(false), manualPOLoading = ref(false)
+const showPOResultDialog = ref(false)
+const createdPOs = ref([])
 const manualPOFormRef = ref(null)
 const getToday = () => new Date().toISOString().slice(0, 10)
 const createEmptyItem = () => ({
   reagentId: null,
   reagentName: '',
+  supplierId: null,
   specification: '',
   manufacturer: '',
   registrationCertNo: '',
@@ -274,14 +302,12 @@ const createEmptyItem = () => ({
   quantity: 1
 })
 const manualPOForm = reactive({
-  supplierId: null,
   orderDate: getToday(),
   settlementMode: '调拨结算',
   remark: '',
   items: [createEmptyItem()]
 })
 const manualPORules = {
-  supplierId: [{ required: true, message: '请选择供应商', trigger: 'change' }],
   orderDate: [{ required: true, message: '请选择下单日期', trigger: 'change' }]
 }
 const suppliers = ref([])
@@ -289,7 +315,7 @@ const reagentOptions = ref([])
 
 async function loadReagents() {
   try {
-    const res = await getCatalogList({ page: 1, pageSize: 200 })
+    const res = await getCatalogList({ page: 1, pageSize: 500, approvalStatus: 'APPROVED' })
     const list = res?.records || res?.data?.records || []
     reagentOptions.value = list.map(r => ({
       value: r.id,
@@ -297,10 +323,16 @@ async function loadReagents() {
       genericName: r.genericName,
       specification: r.specification,
       manufacturer: r.manufacturer,
+      distributor: r.distributor,
       registrationCertNo: r.registrationCertNo,
       pricePerUnit: r.pricePerUnit
     }))
   } catch (e) { console.error('加载试剂列表失败:', e) }
+}
+
+/** 打开手动采购弹窗时同步加载试剂和供应商 */
+async function loadReagentsAndSuppliers() {
+  await Promise.all([loadReagents(), loadSuppliers()])
 }
 
 function onReagentChange(idx, reagentId) {
@@ -312,8 +344,27 @@ function onReagentChange(idx, reagentId) {
     item.manufacturer = found.manufacturer || ''
     item.registrationCertNo = found.registrationCertNo || ''
     item.unitPrice = found.pricePerUnit
+    // 自动匹配试剂目录中的配送商到供应商列表
+    if (!item.supplierId && found.distributor) {
+      const matchedSupplier = suppliers.value.find(s =>
+        s.label === found.distributor || s.label.includes(found.distributor) || found.distributor.includes(s.label)
+      )
+      if (matchedSupplier) {
+        item.supplierId = matchedSupplier.value
+      }
+    }
+    // 选择试剂后自动追加一行空行
+    const isLastRow = idx === manualPOForm.items.length - 1
+    if (isLastRow) {
+      manualPOForm.items.push(createEmptyItem())
+    }
   }
 }
+
+// 至少有一个试剂被选中且采购数量 > 1 时允许创建
+const canSubmitPO = computed(() => {
+  return manualPOForm.items.some(i => i.reagentId && i.quantity >= 1)
+})
 
 function addManualItem() { manualPOForm.items.push(createEmptyItem()) }
 function removeManualItem(idx) { if (manualPOForm.items.length > 1) manualPOForm.items.splice(idx, 1) }
@@ -327,26 +378,38 @@ async function submitManualPO() {
   manualPOLoading.value = true
   try {
     const payload = {
-      supplierId: manualPOForm.supplierId,
       orderDate: manualPOForm.orderDate,
       settlementMode: manualPOForm.settlementMode,
       remark: manualPOForm.remark,
       items: manualPOForm.items.filter(i => i.reagentId).map(i => ({
         reagentId: i.reagentId,
+        supplierId: i.supplierId || null,
         quantity: i.quantity
       }))
     }
-    await store.doCreateManualOrder(payload)
-    ElMessage.success('采购单已创建')
+    const result = await store.doCreateManualOrder(payload)
+    createdPOs.value = Array.isArray(result) ? result : []
     showManualPODialog.value = false
-    fetchData()
-  } catch (e) { console.error('创建采购单失败:', e) } finally { manualPOLoading.value = false }
+    if (createdPOs.value.length > 0) {
+      showPOResultDialog.value = true
+    } else {
+      ElMessage.warning('未生成采购单，请检查供应商设置')
+    }
+  } catch (e) {
+    console.error('创建采购单失败:', e)
+    ElMessage.error('创建采购单失败，请检查明细数据或联系管理员')
+  } finally { manualPOLoading.value = false }
+}
+
+function getSupplierName(supplierId) {
+  if (!supplierId) return '未指定供应商'
+  const s = suppliers.value.find(s => s.value === supplierId)
+  return s ? s.label : `供应商#${supplierId}`
 }
 
 function resetManualPO() {
   manualPOFormRef.value?.resetFields()
   Object.assign(manualPOForm, {
-    supplierId: null,
     orderDate: getToday(),
     settlementMode: '调拨结算',
     remark: '',

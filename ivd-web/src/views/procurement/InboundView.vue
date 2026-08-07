@@ -210,7 +210,7 @@ async function handleScanInput() {
     const checks = defaultChecks.map(c => ({ ...c }))
 
     try {
-      const catalogRes = await getCatalogList({ udiDi: parsed.udiDi, pageSize: 5 })
+      const catalogRes = await getCatalogList({ udiDi: parsed.udiDi, pageSize: 5, approvalStatus: 'APPROVED' })
       const catalogs = catalogRes?.records || []
       if (catalogs.length > 0) {
         const cat = catalogs[0]

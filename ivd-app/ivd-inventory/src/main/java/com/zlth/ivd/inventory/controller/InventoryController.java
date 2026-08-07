@@ -34,9 +34,10 @@ public class InventoryController {
             @RequestParam(required = false) Long warehouseId,
             @RequestParam(required = false) String hisCode, @RequestParam(required = false) String reagentName,
             @RequestParam(required = false) String distributor, @RequestParam(required = false) String manufacturer,
-            @RequestParam(required = false) String registrationCertNo) {
+            @RequestParam(required = false) String registrationCertNo,
+            @RequestParam(required = false) Integer level) {
         return Result.success(inventoryService.listBatches(page, pageSize, keyword, status, warehouseId,
-                hisCode, reagentName, distributor, manufacturer, registrationCertNo));
+                hisCode, reagentName, distributor, manufacturer, registrationCertNo, level));
     }
 
     @GetMapping("/warehouses")
@@ -45,19 +46,20 @@ public class InventoryController {
     }
 
     @GetMapping("/fefo")
-    public Result<List<ReagentBatch>> fefoRecommendations(@RequestParam(required = false) Long reagentId, @RequestParam(required = false) Long warehouseId) {
+    public Result<List<Map<String, Object>>> fefoRecommendations(@RequestParam(required = false) Long reagentId, @RequestParam(required = false) Long warehouseId) {
         return Result.success(inventoryService.getFefoRecommendations(reagentId, warehouseId));
     }
 
     @GetMapping("/expiry-alerts")
-    public Result<List<ReagentBatch>> expiryAlerts(@RequestParam(defaultValue = "90") int days,
+    public Result<List<Map<String, Object>>> expiryAlerts(@RequestParam(defaultValue = "90") int days,
                                                     @RequestParam(required = false) Long warehouseId) {
         return Result.success(inventoryService.getExpiryAlerts(days, warehouseId));
     }
 
     @GetMapping("/stats")
-    public Result<Map<String, Long>> stats(@RequestParam(required = false) Long warehouseId) {
-        return Result.success(inventoryService.getStats(warehouseId));
+    public Result<Map<String, Long>> stats(@RequestParam(required = false) Long warehouseId,
+                                           @RequestParam(required = false) Integer level) {
+        return Result.success(inventoryService.getStats(warehouseId, level));
     }
 
     @PostMapping("/transfer")
@@ -71,6 +73,18 @@ public class InventoryController {
     @GetMapping("/trace")
     public Result<Map<String, Object>> trace(@RequestParam String udiDi, @RequestParam(required = false) String lotNo) {
         return Result.success(inventoryService.traceUdi(udiDi, lotNo));
+    }
+
+    /** 试剂 UDI 数据聚合：试剂信息 + 全部批次的 UDI-DI / UDI-PI / 唯一码 */
+    @GetMapping("/udi/reagent/{reagentId}")
+    public Result<Map<String, Object>> reagentUdiData(@PathVariable Long reagentId) {
+        return Result.success(inventoryService.getReagentUdiData(reagentId));
+    }
+
+    /** 单个唯一码追溯 */
+    @GetMapping("/udi/unique-code/{uniqueCode}")
+    public Result<Map<String, Object>> uniqueCodeTrace(@PathVariable String uniqueCode) {
+        return Result.success(inventoryService.getUniqueCodeTrace(uniqueCode));
     }
 
     /** 患者关联追溯 */
@@ -109,7 +123,7 @@ public class InventoryController {
     public void export(@RequestParam(defaultValue = "xlsx") String format,
                        @RequestParam(required = false) Long warehouseId,
                        HttpServletResponse response) {
-        PageVO<ReagentBatchVO> result = inventoryService.listBatches(1, 10000, null, null, warehouseId, null, null, null, null, null);
+        PageVO<ReagentBatchVO> result = inventoryService.listBatches(1, 10000, null, null, warehouseId, null, null, null, null, null, null);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ReagentBatchVO batch : result.getRecords()) {
             Map<String, Object> row = new LinkedHashMap<>();

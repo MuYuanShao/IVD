@@ -43,3 +43,18 @@ export function getSuppliers() {
 export function uploadAttachment(id, formData) {
   return request({ url: `/license/${id}/upload`, method: 'post', data: formData })
 }
+
+/** 删除证照附件 */
+export function deleteAttachment(licenseId, objectKey) {
+  return request({ url: `/license/${licenseId}/file/${encodeURIComponent(objectKey)}`, method: 'delete' })
+}
+
+/** 替换证照附件（覆盖上传） */
+export function replaceAttachment(licenseId, objectKey, formData) {
+  return request({ url: `/license/${licenseId}/file/${encodeURIComponent(objectKey)}`, method: 'put', data: formData })
+}
+
+/** 分页查询变更记录 */
+export function getChangeLogs(params) {
+  return request({ url: '/license/change-logs', method: 'get', params })
+}

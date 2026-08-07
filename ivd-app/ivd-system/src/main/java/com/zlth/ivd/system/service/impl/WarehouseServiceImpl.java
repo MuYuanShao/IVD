@@ -181,6 +181,7 @@ public class WarehouseServiceImpl implements WarehouseService {
             vo.setCode(w.getCode());
             vo.setLevel(w.getLevel());
             vo.setParentId(w.getParentId());
+            vo.setDeptId(w.getDeptId());
             return vo;
         }).collect(Collectors.toList());
     }

@@ -1,34 +1,56 @@
 @echo off
-chcp 936 >nul
+chcp 65001 >nul
 title IVD Launcher
 set "IVD_ROOT=%~dp0"
 
 echo.
-echo ==========================================
+echo ============================================
 echo   IVD Smart Lab System v1.0.0-mvp
-echo ==========================================
+echo ============================================
 echo.
 
-echo [1/2] Starting backend on port 8080 (background)...
-cscript //nologo "%IVD_ROOT%launch-hidden.vbs" "%IVD_ROOT%start-backend.bat" "D:\IVD\ivd-app\ivd-server\launcher.log"
+:: ── Backend ────────────────────────────────
+echo [1/3] Starting backend on port 8080 ...
+start "IVD Backend :8080" /MIN cmd /c "%IVD_ROOT%start-backend.bat"
+echo   Backend starting in minimized window
 
-echo [2/2] Waiting 10s for backend to initialize...
-timeout /t 10 /nobreak >nul
+:: ── Frontend ───────────────────────────────
+echo [2/3] Starting frontend on port 5173 ...
+start "IVD Frontend :5173" /MIN cmd /c "%IVD_ROOT%start-frontend.bat"
+echo   Frontend starting in minimized window
 
-echo [2/2] Starting frontend on port 5173 (background)...
-cscript //nologo "%IVD_ROOT%launch-hidden.vbs" "%IVD_ROOT%start-frontend.bat" "D:\IVD\ivd-web\launcher.log"
-
+:: ── Wait for backend, then health check ────
 echo.
-echo ==========================================
+echo [3/3] Waiting for backend to be ready ...
+set /a COUNT=0
+:waitloop
+timeout /t 2 /nobreak >nul
+set /a COUNT+=2
+curl -s http://localhost:8080/actuator/health 2>nul | find "UP" >nul
+if %errorlevel% equ 0 goto :ready
+if %COUNT% geq 60 goto :timeout
+echo   waiting ... (%COUNT%s)
+goto :waitloop
+
+:timeout
+echo.
+echo   WARNING: Backend did not start within 60s.
+echo   Check the backend window for errors.
+goto :done
+
+:ready
+echo.
+echo ============================================
+echo   All services started successfully!
+echo.
 echo   Frontend : http://localhost:5173
 echo   Backend  : http://localhost:8080
 echo   API Docs : http://localhost:8080/swagger-ui.html
-echo ==========================================
+echo ============================================
 echo.
-echo Services are running in background (no windows).
+echo   Close the backend/frontend windows to stop,
+echo   or run stop.bat
 echo.
-echo   stop-backend.bat   — stop backend
-echo   stop-frontend.bat  — stop frontend
-echo.
-echo You can close this window.
-pause >nul
+
+:done
+pause

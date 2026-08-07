@@ -2,7 +2,7 @@ package com.zlth.ivd.common.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.zlth.ivd.common.config.SafeLongSerializer;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
@@ -36,9 +36,9 @@ public class JacksonConfig {
                     new LocalDateTimeSerializer(DateTimeFormatter.ofPattern(DATETIME_PATTERN)));
             builder.modules(module);
             builder.simpleDateFormat(DATETIME_PATTERN);
-            // Snowflake Long ID 全局序列化为 String，防止前端 JS 精度丢失
-            builder.serializerByType(Long.class, ToStringSerializer.instance);
-            builder.serializerByType(Long.TYPE, ToStringSerializer.instance);
+            // Long 安全序列化：超大值（Snowflake ID）→ String 防精度丢失；小数值 → Number
+            builder.serializerByType(Long.class, new SafeLongSerializer());
+            builder.serializerByType(Long.TYPE, new SafeLongSerializer());
         };
     }
 }

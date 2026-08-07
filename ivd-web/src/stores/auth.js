@@ -19,7 +19,15 @@ export const useAuthStore = defineStore('auth', () => {
   const deptId = computed(() => user.value?.deptId || null)
   const deptName = computed(() => user.value?.deptName || '')
   const roleLabel = computed(() => {
-    const map = { ADMIN: '系统管理员', USER: '操作员', AUDITOR: '审核员' }
+    const map = {
+      SYSTEM_ADMIN: '系统管理员',
+      STOREKEEPER: '库管员',
+      DEPT_ADMIN: '科室管理员',
+      LAB_TECH: '检验技师',
+      AUDITOR: '审核员',
+      ADMIN: '系统管理员',
+      USER: '操作员'
+    }
     return map[role.value] || role.value || '检验科主任'
   })
 
@@ -28,8 +36,14 @@ export const useAuthStore = defineStore('auth', () => {
   /** 登录 */
   async function login(username, password) {
     loading.value = true
+    console.log('[Auth Store] 开始登录:', username)
     try {
       const data = await loginApi({ username, password })
+      if (!data || !data.accessToken) {
+        console.error('[Auth Store] 服务器返回数据异常:', data)
+        throw new Error('服务器返回数据异常')
+      }
+      console.log('[Auth Store] 登录成功，保存 token:', data.accessToken.substring(0, 30) + '...')
       token.value = data.accessToken
       refreshTokenVal.value = data.refreshToken
       user.value = {
@@ -42,6 +56,9 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.setItem('ivd-token', data.accessToken)
       localStorage.setItem('ivd-refresh-token', data.refreshToken)
       return data
+    } catch (err) {
+      console.error('[Auth Store] 登录失败:', err.message || err)
+      throw err
     } finally {
       loading.value = false
     }

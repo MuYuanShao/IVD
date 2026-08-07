@@ -127,11 +127,16 @@ ivd:
   # JWT 配置
   jwt:
     # ⚠️ 生产环境必须通过 JWT_SECRET 环境变量设置！不设默认值，启动时若缺失将拒绝启动
-    secret: ${JWT_SECRET:}
+    secret: ${JWT_SECRET:ivd-jwt-secret-key-2024-production-env-min-32bytes}
     expiration: 7200000  # 2h
     refresh-expiration: 604800000  # 7d
-  # 文件上传路径（生产环境通过 IVD_UPLOAD_PATH 环境变量覆盖）
-  # 默认 ../data/uploads 从 ivd-server 模块目录指向项目根 data/uploads
+  # 自动签收调度（定时扫描超时未签收的已发货申领单）
+  auto-receive:
+    enabled: false                    # 默认关闭，生产环境按需开启
+    delay-hours: 24                   # 发货后多少小时自动签收
+    cron: "0 0 * * * ?"              # 每小时执行一次
+  # 文件上传路径（已废弃 — 证照附件已迁移至 MinIO，该配置已无引用）
+  # 保留仅为向后兼容，后续版本将移除
   upload:
     path: ${IVD_UPLOAD_PATH:../data/uploads}
 

@@ -1,16 +1,24 @@
 @echo off
-chcp 936 >nul
+chcp 65001 >nul
 title IVD Frontend :5173
 
-echo.
-echo ==========================================
-echo   IVD Frontend (Vite)
-echo   Port: 5173
-echo ==========================================
-echo.
-echo Starting Vite dev server in background...
-echo Log: D:\IVD\ivd-web\frontend.log
+cd /d D:\IVD\ivd-web
+
+if not exist "node_modules" (
+    echo [ERROR] node_modules not found. Run: npm install
+    pause
+    exit /b 1
+)
+
+echo ============================================
+echo   IVD Frontend — Vue 3 + Vite
+echo   Port: 5173  |  Log: frontend.log
+echo ============================================
 echo.
 
-cd /d D:\IVD\ivd-web
+echo Starting Vite dev server ...
 npm run dev > "D:\IVD\ivd-web\frontend.log" 2>&1
+
+echo.
+echo Frontend stopped.
+pause

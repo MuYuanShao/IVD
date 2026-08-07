@@ -63,8 +63,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     return expiryAlerts.value
   }
 
-  async function fetchStats(warehouseId) {
-    const data = await getInventoryStats(warehouseId)
+  async function fetchStats(warehouseId, level) {
+    const data = await getInventoryStats(warehouseId, level)
     Object.assign(stats.value, data)
     return data
   }

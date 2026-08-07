@@ -125,6 +125,13 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         entity.setStabilityDaysAfterOpen(request.getStabilityDaysAfterOpen());
         entity.setLeadTimeDays(request.getLeadTimeDays() != null ? request.getLeadTimeDays() : 7);
         entity.setDeviceBindMode(request.getDeviceBindMode() != null ? request.getDeviceBindMode() : DeviceBindModeEnum.FORCE);
+        entity.setEnableUniqueCode(request.getEnableUniqueCode() != null ? request.getEnableUniqueCode() : 0);
+        entity.setIsVolumeBased(request.getIsVolumeBased() != null ? request.getIsVolumeBased() : 0);
+        entity.setVolumeType(request.getVolumeType());
+        entity.setIsInsurancePayment(request.getIsInsurancePayment() != null ? request.getIsInsurancePayment() : 0);
+        entity.setInsurancePaymentType(request.getInsurancePaymentType());
+        entity.setIsChargeable(request.getIsChargeable() != null ? request.getIsChargeable() : 0);
+        entity.setChargeCode(request.getChargeCode());
         entity.setApprovalStatus(ApprovalStatusEnum.DRAFT);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
@@ -189,6 +196,18 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
                     "new", request.getDeviceBindMode().getCode()));
             entity.setDeviceBindMode(request.getDeviceBindMode());
         }
+        if (request.getEnableUniqueCode() != null && !request.getEnableUniqueCode().equals(entity.getEnableUniqueCode())) {
+            changes.put("enableUniqueCode", Map.of("old", entity.getEnableUniqueCode(),
+                    "new", request.getEnableUniqueCode()));
+            entity.setEnableUniqueCode(request.getEnableUniqueCode());
+        }
+
+        applyIfChanged("isVolumeBased", entity.getIsVolumeBased(), request.getIsVolumeBased(), entity::setIsVolumeBased, changes);
+        applyIfChanged("volumeType", entity.getVolumeType(), request.getVolumeType(), entity::setVolumeType, changes);
+        applyIfChanged("isInsurancePayment", entity.getIsInsurancePayment(), request.getIsInsurancePayment(), entity::setIsInsurancePayment, changes);
+        applyIfChanged("insurancePaymentType", entity.getInsurancePaymentType(), request.getInsurancePaymentType(), entity::setInsurancePaymentType, changes);
+        applyIfChanged("isChargeable", entity.getIsChargeable(), request.getIsChargeable(), entity::setIsChargeable, changes);
+        applyIfChanged("chargeCode", entity.getChargeCode(), request.getChargeCode(), entity::setChargeCode, changes);
 
         if (changes.isEmpty()) {
             log.info("试剂编辑无变更: id={}", id);
@@ -393,6 +412,13 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         vo.setPricePerUnit(entity.getPricePerUnit());
         vo.setStabilityDaysAfterOpen(entity.getStabilityDaysAfterOpen());
         vo.setLeadTimeDays(entity.getLeadTimeDays());
+        vo.setEnableUniqueCode(entity.getEnableUniqueCode());
+        vo.setIsVolumeBased(entity.getIsVolumeBased());
+        vo.setVolumeType(entity.getVolumeType());
+        vo.setIsInsurancePayment(entity.getIsInsurancePayment());
+        vo.setInsurancePaymentType(entity.getInsurancePaymentType());
+        vo.setIsChargeable(entity.getIsChargeable());
+        vo.setChargeCode(entity.getChargeCode());
 
         if (entity.getDeviceBindMode() != null) {
             vo.setDeviceBindMode(entity.getDeviceBindMode().getCode());

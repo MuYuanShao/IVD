@@ -33,67 +33,69 @@
       </el-col>
     </el-row>
 
+    <!-- 工具栏：搜索 -->
     <el-card shadow="never" style="margin-bottom:16px">
-      <template #header><span class="card-title">📋 检验科库存清单</span></template>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-        <el-input v-model="search" placeholder="搜索试剂/批号" :prefix-icon="SearchIcon" clearable style="width:180px" @keyup.enter="fetchData" />
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <el-input v-model="search" placeholder="搜索批号/UDI" :prefix-icon="SearchIcon" clearable style="width:180px" @keyup.enter="fetchData" />
         <el-input v-model="filterHisCode" placeholder="商品编码" clearable style="width:130px" @keyup.enter="fetchData" />
         <el-input v-model="filterReagentName" placeholder="商品名称" clearable style="width:150px" @keyup.enter="fetchData" />
         <el-input v-model="filterDistributor" placeholder="配送商" clearable style="width:130px" @keyup.enter="fetchData" />
         <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="fetchData" />
         <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="fetchData" />
-        <el-button type="primary" size="small" @click="fetchData">查询</el-button>
-        <el-button size="small" @click="resetFilters">重置</el-button>
-        <el-button type="danger" size="small" @click="handleUrgentReq">🚨 紧急请领</el-button>
+        <el-button type="primary" @click="fetchData">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+        <el-button type="danger" @click="handleUrgentReq">🚨 紧急请领</el-button>
       </div>
+    </el-card>
+
+    <el-card shadow="never">
       <el-table :data="store.deptBatches" stripe v-loading="store.deptLoading" style="width:100%">
-        <el-table-column prop="reagentName" label="试剂" width="140" />
-        <el-table-column prop="batchNo" label="批号" width="120" />
+        <el-table-column prop="hisCode" label="试剂编码" width="110" show-overflow-tooltip />
+        <el-table-column prop="reagentName" label="试剂名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="genericName" label="通用名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="specification" label="规格型号" width="100" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="厂家" width="100" show-overflow-tooltip />
+        <el-table-column prop="distributor" label="配送商" width="100" show-overflow-tooltip />
+        <el-table-column prop="batchNo" label="批号" width="120" show-overflow-tooltip />
+        <el-table-column prop="manufactureDate" label="生产日期" width="100" />
         <el-table-column prop="expiryDate" label="效期" width="100" />
-        <el-table-column label="剩余天数" width="90">
+        <el-table-column label="剩余天数" width="85">
           <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存量" width="80" />
-        <el-table-column prop="safetyStock" label="安全库存" width="90" />
-        <el-table-column prop="location" label="库位" width="80" />
-        <el-table-column label="可支撑天数" width="100">
-          <template #default="{row}"><span :style="{ color: row.supportDays < 7 ? 'var(--ivd-danger)' : '' }">{{ row.supportDays || '—' }} 天</span></template>
+        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column label="金额" width="100" align="right">
+          <template #default="{row}">{{ row.amount ? '¥' + row.amount.toFixed(2) : '—' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column prop="inboundDate" label="入库日期" width="100" />
+        <el-table-column prop="registrationCertNo" label="注册证号" width="120" show-overflow-tooltip />
+        <el-table-column label="是否带量" width="80" align="center">
           <template #default="{row}">
-            <el-tag :type="(row.stock||0) < (row.safetyStock||1) ? 'danger' : 'success'" size="small">
-              {{ (row.stock||0) < (row.safetyStock||1) ? '库存不足' : '正常' }}
-            </el-tag>
+            <el-tag :type="row.isVolumeBased ? 'warning' : 'info'" size="small">{{ row.isVolumeBased ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column prop="volumeType" label="带量类型" width="110" show-overflow-tooltip>
+          <template #default="{row}">{{ row.volumeType || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="是否收费" width="80" align="center">
+          <template #default="{row}">
+            <el-tag :type="row.isChargeable ? 'success' : 'info'" size="small">{{ row.isChargeable ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="insuranceCode" label="医保编码" width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{row}">
             <el-button link type="primary" size="small" @click="openTrace(row)">UDI追溯</el-button>
             <el-button link type="success" size="small" @click="openTransfer(row, '检验科库')">下发组库</el-button>
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
-
-    <el-card shadow="never">
-      <template #header><span class="card-title">📝 近期请领记录</span></template>
-      <el-table :data="store.deptRequisitions" stripe v-loading="store.deptReqLoading" style="width:100%">
-        <el-table-column prop="reqNo" label="请领单号" width="180" />
-        <el-table-column prop="reagentName" label="试剂" width="140" />
-        <el-table-column prop="qty" label="数量" width="80" />
-        <el-table-column prop="source" label="来源" width="100" />
-        <el-table-column prop="applicant" label="申请人" width="90" />
-        <el-table-column label="状态" width="90">
-          <template #default="{row}"><el-tag size="small" :type="row.status==='已完成'?'success':'warning'">{{ row.status }}</el-tag></template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="100" />
-      </el-table>
       <el-pagination
-        v-model:current-page="reqPage" v-model:page-size="reqPageSize" :total="store.deptReqTotal"
+        v-model:current-page="page" v-model:page-size="pageSize" :total="store.deptTotal"
         :page-sizes="[10,20,50]" layout="total,sizes,prev,pager,next,jumper"
-        style="margin-top:16px;justify-content:flex-end" @change="fetchReqData"
+        style="margin-top:16px;justify-content:flex-end" @change="fetchData"
       />
     </el-card>
+
 
     <TraceDialog v-model="showTraceDialog" :initial-search="traceSearch" />
     <TransferDialog v-model="showTransferDialog" :source-name="sourceName" :max-qty="maxQty" :warehouse-options="targetWarehouses" :loading="transferLoading" @submit="doSubmitTransfer" />
@@ -113,7 +115,7 @@ import TransferDialog from '@/components/TransferDialog.vue'
 
 const router = useRouter()
 const store = useInventoryStore()
-const reqPage = ref(1), reqPageSize = ref(10)
+const page = ref(1), pageSize = ref(10)
 const search = ref('')
 const filterHisCode = ref(''), filterReagentName = ref('')
 const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
@@ -121,7 +123,7 @@ const lowStockAlert = ref(null)
 
 function fetchData() {
   store.fetchDeptInventory({
-    page: 1, pageSize: 50,
+    page: page.value, pageSize: pageSize.value,
     keyword: search.value || undefined,
     hisCode: filterHisCode.value || undefined,
     reagentName: filterReagentName.value || undefined,
@@ -143,10 +145,6 @@ function resetFilters() {
 }
 
 function handleUrgentReq() { router.push('/requisition?urgency=URGENT') }
-
-function fetchReqData() {
-  store.fetchDeptRequisitions({ page: reqPage.value, pageSize: reqPageSize.value })
-}
 
 // ── ECharts ──
 const pieRef = ref(null), barRef = ref(null)
@@ -186,7 +184,7 @@ function populateChartData() {
   safetyBarData.value = safetyBarLabels.value.map(() => Math.floor(Math.random() * 16) + 80)
 }
 
-onMounted(() => { fetchData(); fetchReqData(); populateChartData(); nextTick(() => { pieChart.refresh?.(); barChart.refresh?.() }) })
+onMounted(() => { fetchData(); populateChartData(); nextTick(() => { pieChart.refresh?.(); barChart.refresh?.() }) })
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')

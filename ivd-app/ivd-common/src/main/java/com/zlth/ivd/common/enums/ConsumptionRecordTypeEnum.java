@@ -13,7 +13,8 @@ import lombok.Getter;
 public enum ConsumptionRecordTypeEnum {
 
     INBOUND("INBOUND", "入库"),
-    CONSUME("CONSUME", "消耗");
+    CONSUME("CONSUME", "消耗"),
+    TRANSFER("TRANSFER", "调拨");
 
     @EnumValue
     private final String code;

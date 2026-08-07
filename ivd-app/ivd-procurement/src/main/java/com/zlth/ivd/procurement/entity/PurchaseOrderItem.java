@@ -12,7 +12,8 @@ public class PurchaseOrderItem {
     private Long id;
     private Long poId;
     private Integer lineNo;
-    private Integer reagentId;
+    private Long reagentId;
+    private Integer supplierId;
     private String materialType;            // REAGENT/CALIBRATOR/QC_MATERIAL/CONSUMABLE/OTHER
     @TableField("order_quantity")
     private BigDecimal qtyOrdered;
@@ -20,5 +21,7 @@ public class PurchaseOrderItem {
     private BigDecimal amount;
     @TableField("received_quantity")
     private BigDecimal qtyReceived;
+    @Version
+    private Integer version;
     private LocalDateTime createdAt;
 }

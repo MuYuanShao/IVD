@@ -24,15 +24,15 @@
       </template>
       <el-table :data="store.fefoList" stripe style="width:100%">
         <el-table-column type="index" label="FEFO优先级" width="100" />
-        <el-table-column prop="code" label="编码" width="120" />
-        <el-table-column prop="name" label="名称" width="160" />
+        <el-table-column prop="hisCode" label="试剂编码" width="110" show-overflow-tooltip />
+        <el-table-column prop="reagentName" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="batchNo" label="批号" width="120" />
         <el-table-column prop="expiryDate" label="有效期" width="100" />
-        <el-table-column label="剩余天数" width="90">
+        <el-table-column label="剩余天数" width="85">
           <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存量" width="80" />
-        <el-table-column prop="location" label="库位" width="80" />
+        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column prop="location" label="库位" width="80" show-overflow-tooltip />
         <el-table-column label="状态" width="100">
           <template #default="{row}">
             <el-tag :type="getRemainingDays(row.expiryDate) <= 30 ? 'danger' : getRemainingDays(row.expiryDate) <= 90 ? 'warning' : 'success'" size="small">
@@ -40,7 +40,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column label="操作" width="120">
           <template #default="{row}">
             <el-button link type="primary" size="small" @click="openTrace(row)">UDI追溯</el-button>
             <el-button link type="success" size="small" @click="openTransfer(row, groups.find(g=>g.value===selectedGroup)?.label || '组库')">出库</el-button>
@@ -61,26 +61,51 @@
         <el-input v-model="filterDistributor" placeholder="配送商" clearable style="width:130px" @keyup.enter="applyFilter" />
         <el-input v-model="filterManufacturer" placeholder="厂家" clearable style="width:130px" @keyup.enter="applyFilter" />
         <el-input v-model="filterRegistrationCert" placeholder="注册证号" clearable style="width:140px" @keyup.enter="applyFilter" />
-        <el-button type="primary" size="small" @click="applyFilter">查询</el-button>
-        <el-button size="small" @click="resetFilters">重置</el-button>
+        <el-button type="primary" @click="applyFilter">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
       </div>
-      <el-table :data="filteredDetailList" stripe style="width:100%">
-        <el-table-column prop="code" label="编码" width="100" />
-        <el-table-column prop="name" label="名称" width="140" />
-        <el-table-column prop="spec" label="规格" width="90" />
-        <el-table-column prop="model" label="型号" width="90" />
-        <el-table-column label="单价(¥)" width="80"><template #default="{row}">{{ row.unitPrice }}</template></el-table-column>
-        <el-table-column prop="unit" label="单位" width="60" />
-        <el-table-column prop="qty" label="数量" width="70" />
-        <el-table-column label="金额(¥)" width="90"><template #default="{row}">{{ row.amount }}</template></el-table-column>
-        <el-table-column prop="manufacturer" label="厂家" width="120" />
-        <el-table-column prop="supplier" label="配送商" width="110" />
-        <el-table-column prop="productionDate" label="生产日期" width="100" />
-        <el-table-column prop="expiryDate" label="有效期" width="100" />
-        <el-table-column prop="batchNo" label="批号" width="110" />
+      <el-table :data="filteredList" stripe style="width:100%">
+        <el-table-column prop="hisCode" label="试剂编码" width="110" show-overflow-tooltip />
+        <el-table-column prop="reagentName" label="试剂名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="genericName" label="通用名称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="specification" label="规格型号" width="100" show-overflow-tooltip />
+        <el-table-column prop="manufacturer" label="厂家" width="100" show-overflow-tooltip />
+        <el-table-column prop="distributor" label="配送商" width="100" show-overflow-tooltip />
+        <el-table-column prop="batchNo" label="批号" width="120" show-overflow-tooltip />
+        <el-table-column prop="manufactureDate" label="生产日期" width="100" />
+        <el-table-column prop="expiryDate" label="效期" width="100" />
+        <el-table-column label="剩余天数" width="85">
+          <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column label="金额" width="100" align="right">
+          <template #default="{row}">{{ row.amount ? '¥' + row.amount.toFixed(2) : '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="inboundDate" label="入库日期" width="100" />
+        <el-table-column prop="registrationCertNo" label="注册证号" width="120" show-overflow-tooltip />
+        <el-table-column label="是否带量" width="80" align="center">
+          <template #default="{row}">
+            <el-tag :type="row.isVolumeBased ? 'warning' : 'info'" size="small">{{ row.isVolumeBased ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="volumeType" label="带量类型" width="110" show-overflow-tooltip>
+          <template #default="{row}">{{ row.volumeType || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="是否收费" width="80" align="center">
+          <template #default="{row}">
+            <el-tag :type="row.isChargeable ? 'success' : 'info'" size="small">{{ row.isChargeable ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="insuranceCode" label="医保编码" width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{row}">
+            <el-button link type="primary" size="small" @click="openTrace(row)">UDI追溯</el-button>
+            <el-button link type="success" size="small" @click="openTransfer(row, groups.find(g=>g.value===selectedGroup)?.label || '组库')">出库</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);background:#f0fdf4;padding:8px 16px;border-radius:8px;">
-        共 <strong>{{ filteredDetailList.length }}</strong> 种试剂 · <strong>{{ totalBoxes }}</strong> 盒 · 库存金额 <strong>¥{{ totalAmount }}</strong>
+        共 <strong>{{ filteredList.length }}</strong> 种试剂 · <strong>{{ totalBoxes }}</strong> 盒 · 库存金额 <strong>¥{{ totalAmount }}</strong>
       </div>
     </el-card>
 
@@ -105,14 +130,12 @@ const groups = [
 ]
 
 const currentGroupLeader = computed(() => groups.find(g => g.value === selectedGroup.value)?.leader || '—')
-const totalBoxes = computed(() => fefoDetailList.value.reduce((sum, r) => sum + (r.qty || 0), 0))
-const totalAmount = computed(() => fefoDetailList.value.reduce((sum, r) => sum + (r.amount || 0), 0))
+const totalBoxes = computed(() => filteredList.value.reduce((sum, r) => sum + (Number(r.stock) || 0), 0))
+const totalAmount = computed(() => filteredList.value.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2))
 
 // ── 搜索过滤 ──
 const filterHisCode = ref(''), filterReagentName = ref('')
 const filterDistributor = ref(''), filterManufacturer = ref(''), filterRegistrationCert = ref('')
-
-const fefoDetailList = ref([])
 
 function fetchData() { store.fetchFefo(null, selectedGroup.value) }
 
@@ -120,17 +143,17 @@ function handleGroupChange() { fetchData() }
 
 onMounted(() => { fetchData() })
 
-// ── 客户端过滤（对接后端后可由 API 参数替代）──
-const filteredDetailList = computed(() => {
-  let list = fefoDetailList.value
+// ── 客户端过滤 ──
+const filteredList = computed(() => {
+  let list = store.fefoList
   const hc = filterHisCode.value?.trim().toLowerCase()
   const rn = filterReagentName.value?.trim().toLowerCase()
   const db = filterDistributor.value?.trim().toLowerCase()
   const mf = filterManufacturer.value?.trim().toLowerCase()
   const rc = filterRegistrationCert.value?.trim().toLowerCase()
-  if (hc) list = list.filter(r => (r.code || '').toLowerCase().includes(hc))
-  if (rn) list = list.filter(r => (r.name || '').toLowerCase().includes(rn))
-  if (db) list = list.filter(r => (r.supplier || '').toLowerCase().includes(db))
+  if (hc) list = list.filter(r => (r.hisCode || '').toLowerCase().includes(hc))
+  if (rn) list = list.filter(r => (r.reagentName || '').toLowerCase().includes(rn))
+  if (db) list = list.filter(r => (r.distributor || '').toLowerCase().includes(db))
   if (mf) list = list.filter(r => (r.manufacturer || '').toLowerCase().includes(mf))
   if (rc) list = list.filter(r => (r.registrationCertNo || '').toLowerCase().includes(rc))
   return list

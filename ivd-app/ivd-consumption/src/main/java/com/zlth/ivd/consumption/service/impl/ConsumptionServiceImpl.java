@@ -20,8 +20,10 @@ import com.zlth.ivd.inventory.entity.ReagentBatch;
 import com.zlth.ivd.inventory.mapper.DeviceBatchLoadMapper;
 import com.zlth.ivd.inventory.mapper.DeviceMapper;
 import com.zlth.ivd.inventory.mapper.ReagentBatchMapper;
+import com.zlth.ivd.udi.service.UniqueCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +43,8 @@ public class ConsumptionServiceImpl implements ConsumptionService {
     private final DeviceMapper deviceMapper;
     private final DeviceBatchLoadMapper loadMapper;
     private final ReagentCatalogMapper catalogMapper;
+    private final UniqueCodeService uniqueCodeService;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public PageVO<ConsumptionRecordVO> listRecords(int page, int pageSize, String recordType, Long deviceId, Long reagentId) {
@@ -105,6 +109,8 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         record.setRecordType(ConsumptionRecordTypeEnum.CONSUME.getCode());
         record.setBatchNo(batch.getBatchNo());
         record.setReagentId(batch.getReagentId());
+        // 结算库房 = 操作人所在科室的二级库；若操作人无科室或无对应二级库，回退到批次所在库房
+        record.setWarehouseId(resolveSettlementWarehouseId(operatorId, batch.getWarehouseId()));
         record.setDeviceId(deviceId);
         record.setQuantity(qty);
         record.setUnitPrice(batch.getUnitPrice());
@@ -115,6 +121,12 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         record.setOccurredAt(LocalDateTime.now());
         recordMapper.insert(record);
         log.info("消耗记录: batchId={}, deviceId={}, qty={}, purpose={}", batchId, deviceId, qty, purpose);
+
+        // 唯一码全流程流转：标记已消耗
+        int codeCount = qty.intValue();
+        if (codeCount > 0) {
+            uniqueCodeService.consumeUniqueCodes(batchId, codeCount);
+        }
     }
 
     /**
@@ -130,9 +142,8 @@ public class ConsumptionServiceImpl implements ConsumptionService {
             batch.setStock(batch.getStock().subtract(qty));
             if (batch.getStock().compareTo(BigDecimal.ZERO) <= 0) {
                 batch.setUdiStatus(UdiStatusEnum.CONSUMED);
-            } else {
-                batch.setUdiStatus(UdiStatusEnum.IN_USE);
             }
+            // 部分消耗后仍有库存 → 保持 IN_STOCK，不改为 IN_USE（IN_USE 仅用于设备装载场景）
 
             int updated = batchMapper.updateById(batch);
             if (updated > 0) {
@@ -144,6 +155,29 @@ public class ConsumptionServiceImpl implements ConsumptionService {
             log.warn("库存扣减乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
         }
         throw new BizException(50000, "库存扣减失败：超过最大重试次数");
+    }
+
+    /**
+     * 消耗结算库房 = 操作人所在科室的二级库（level=2）
+     * 若操作人无科室或科室无对应二级库，则回退到批次所在库房
+     */
+    private Long resolveSettlementWarehouseId(Integer operatorId, Long fallbackWarehouseId) {
+        try {
+            String sql = """
+                SELECT w.id FROM warehouse w
+                INNER JOIN sys_user u ON w.dept_id = u.dept_id
+                WHERE u.id = ? AND w.level = 2 AND w.status = 1
+                LIMIT 1
+                """;
+            List<Long> ids = jdbcTemplate.queryForList(sql, Long.class, operatorId);
+            if (ids != null && !ids.isEmpty()) {
+                log.debug("消耗结算库房: 操作人 userId={} → 二级库 warehouseId={}", operatorId, ids.get(0));
+                return ids.get(0);
+            }
+        } catch (Exception e) {
+            log.warn("查询操作人二级库失败, userId={}, 回退到批次库房: {}", operatorId, e.getMessage());
+        }
+        return fallbackWarehouseId;
     }
 
     @Override

@@ -17,7 +17,8 @@ public enum RequisitionStatusEnum {
     REVIEWED("REVIEWED", "已审核"),
     PICKING("PICKING", "拣选中"),
     PARTIAL_FULFILLED("PARTIAL_FULFILLED", "部分发货"),
-    FULFILLED("FULFILLED", "已完成"),
+    SHIPPED("SHIPPED", "待签收"),
+    FULFILLED("FULFILLED", "已签收"),
     SHORTAGE_PENDING("SHORTAGE_PENDING", "缺货待采"),
     CANCELLED("CANCELLED", "已取消");
 

@@ -3,6 +3,7 @@ package com.zlth.ivd.procurement.service;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.procurement.dto.CreateManualOrderRequest;
 import com.zlth.ivd.procurement.dto.DirectReceiveRequest;
+import com.zlth.ivd.procurement.dto.PickAndShipRequest;
 import com.zlth.ivd.procurement.dto.ReceiveItemRequest;
 import com.zlth.ivd.procurement.entity.*;
 import com.zlth.ivd.procurement.vo.PurchaseOrderVO;
@@ -25,6 +26,14 @@ public interface ProcurementService {
     PurchaseRequisitionVO getRequisitionDetail(Long id);
     List<PurchaseRequisitionItem> getRequisitionItems(Long reqId);
     PurchaseRequisitionVO reviewRequisition(Long id, String action, String comment);
+    PurchaseRequisitionVO submitRequisition(Long id);
+    PurchaseRequisitionVO cancelRequisition(Long id, String reason);
+
+    // ── 拣货发货 ──
+    PurchaseRequisitionVO pickAndShip(Long requisitionId, PickAndShipRequest request);
+
+    // ── 科室签收 ──
+    PurchaseRequisitionVO receiveRequisition(Long id);
 
     // ── 缺货单 ──
     PageVO<ShortageOrderVO> listShortages(int page, int pageSize, String status, String keyword);
@@ -36,7 +45,7 @@ public interface ProcurementService {
     PageVO<PurchaseOrderVO> listOrders(int page, int pageSize, String status, String keyword);
     PurchaseOrderVO getOrderDetail(Long id);
     PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String settlementMode, String remark);
-    PurchaseOrder createManualOrder(CreateManualOrderRequest request);
+    List<PurchaseOrder> createManualOrder(CreateManualOrderRequest request);
 
     // ── 验收 ──
     void receiveOrder(ReceiveItemRequest request);

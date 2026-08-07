@@ -23,7 +23,7 @@ public class DirectReceiveRequest {
     @Data
     public static class DirectReceiveItem {
         /** 试剂ID */
-        private Integer reagentId;
+        private Long reagentId;
         /** 收货数量 */
         private BigDecimal qtyReceived;
         /** 批号 */
@@ -34,5 +34,7 @@ public class DirectReceiveRequest {
         private LocalDate expiryDate;
         /** 单价 */
         private BigDecimal unitPrice;
+        /** UDI-DI */
+        private String udiDi;
     }
 }

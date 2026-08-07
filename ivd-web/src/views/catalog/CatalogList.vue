@@ -123,13 +123,27 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="manufacturer" label="厂家" width="120" />
-        <el-table-column prop="distributor" label="配送商" width="120" />
-        <el-table-column prop="registrationCertNo" label="注册证号" width="140" />
-        <el-table-column prop="specification" label="规格" width="100" />
-        <el-table-column prop="testsPerKit" label="标称测试数" width="100" />
+        <el-table-column prop="manufacturer" label="厂家" width="100" />
+        <el-table-column prop="distributor" label="配送商" width="100" />
+        <el-table-column prop="registrationCertNo" label="注册证号" width="130" />
+        <el-table-column prop="specification" label="规格" width="80" />
+        <el-table-column prop="testsPerKit" label="测试数" width="70" />
         <el-table-column prop="pricePerUnit" label="单价(¥)" width="90">
           <template #default="{ row }">{{ formatMoney(row.pricePerUnit) }}</template>
+        </el-table-column>
+        <el-table-column label="带量类型" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.isVolumeBased ? 'warning' : 'info'">
+              {{ row.isVolumeBased ? (row.volumeType || '—') : '非带量' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="医保支付类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.isInsurancePayment ? 'success' : 'info'">
+              {{ row.isInsurancePayment ? (row.insurancePaymentType || '—') : '非医保' }}
+            </el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="审批状态" width="90">
           <template #default="{ row }">
@@ -141,7 +155,9 @@
           <template #default="{ row }">
             <el-button link type="primary" size="small" :icon="Edit" @click="handleEdit(row.id)">编辑</el-button>
             <el-button link type="primary" size="small" :icon="View" @click="handleViewDetail(row)">查看</el-button>
-            <el-button link type="warning" size="small" :icon="DocumentChecked" @click="handleSubmitApproval(row)">提交审批</el-button>
+            <el-button
+              v-if="row.approvalStatus === 'DRAFT' || row.approvalStatus === 'REJECTED'"
+              link type="warning" size="small" :icon="DocumentChecked" @click="handleSubmitApproval(row)">提交审批</el-button>
             <el-popconfirm title="确认删除该试剂？" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button link type="danger" size="small" :icon="Delete">删除</el-button>

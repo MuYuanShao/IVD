@@ -1,5 +1,6 @@
 package com.zlth.ivd.procurement.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
@@ -12,13 +13,13 @@ import java.util.List;
  */
 public class CreateManualOrderRequest {
 
-    @NotNull(message = "供应商ID不能为空")
     private Integer supplierId;
 
     private String orderDate;
     private String expectedDeliveryDate;
     private String settlementMode;
     private String remark;
+    @Valid
     private List<ManualOrderItem> items;
 
     public Integer getSupplierId() { return supplierId; }
@@ -44,12 +45,16 @@ public class CreateManualOrderRequest {
      */
     public static class ManualOrderItem {
         @NotNull(message = "试剂ID不能为空")
-        private Integer reagentId;
+        private Long reagentId;
+        private Integer supplierId;
         @NotNull(message = "采购数量不能为空")
         private BigDecimal quantity;
 
-        public Integer getReagentId() { return reagentId; }
-        public void setReagentId(Integer reagentId) { this.reagentId = reagentId; }
+        public Long getReagentId() { return reagentId; }
+        public void setReagentId(Long reagentId) { this.reagentId = reagentId; }
+
+        public Integer getSupplierId() { return supplierId; }
+        public void setSupplierId(Integer supplierId) { this.supplierId = supplierId; }
 
         public BigDecimal getQuantity() { return quantity; }
         public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }

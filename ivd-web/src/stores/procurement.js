@@ -6,7 +6,8 @@ import {
   getOrderList, getOrderDetail, getOrderStats,
   createRequisition, createOrderFromShortage, createManualOrder, getSmartReplenish,
   reviewRequisition,
-  receiveOrder
+  receiveOrder,
+  pickAndShip
 } from '@/api/procurement'
 import { ElMessage } from 'element-plus'
 
@@ -67,6 +68,17 @@ export const useProcurementStore = defineStore('procurement', () => {
     await reviewRequisition(id, { action, comment })
   }
 
+  async function doPickAndShip(requisitionId, data) {
+    reqLoading.value = true
+    try {
+      const result = await pickAndShip(requisitionId, data)
+      ElMessage.success('拣货发货完成')
+      return result
+    } finally {
+      reqLoading.value = false
+    }
+  }
+
   // ========== 缺货 ==========
   async function fetchShortages(params = {}) {
     shLoading.value = true
@@ -111,9 +123,10 @@ export const useProcurementStore = defineStore('procurement', () => {
   }
 
   async function doCreateManualOrder(data) {
-    await createManualOrder(data)
+    const result = await createManualOrder(data)
     await fetchOrders()
     await fetchOrderStats()
+    return result
   }
 
   // ========== 智能补货 ==========
@@ -178,7 +191,7 @@ export const useProcurementStore = defineStore('procurement', () => {
     orders, poTotal, poLoading, poStats,
     replenishSuggestions, replenishLoading,
     inboundItems, lastScanResult, currentOrder, receiveLoading,
-    fetchRequisitions, fetchRequisitionStats, fetchRequisitionDetail, doCreateRequisition, doReviewRequisition,
+    fetchRequisitions, fetchRequisitionStats, fetchRequisitionDetail, doCreateRequisition, doReviewRequisition, doPickAndShip,
     fetchShortages, fetchShortageStats, fetchShortageDetail, doCreateOrderFromShortage,
     fetchOrders, fetchOrderStats, fetchOrderDetail, doCreateManualOrder,
     fetchSmartReplenish,

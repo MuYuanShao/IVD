@@ -23,8 +23,8 @@ export function getExpiryAlerts(days = 90, warehouseId) {
 }
 
 /** 库存统计（total/expiring30/expiring90） */
-export function getInventoryStats(warehouseId) {
-  return request({ url: '/inventory/stats', method: 'get', params: { warehouseId } })
+export function getInventoryStats(warehouseId, level) {
+  return request({ url: '/inventory/stats', method: 'get', params: { warehouseId, level } })
 }
 
 /** 调拨批次 */
@@ -35,6 +35,16 @@ export function transferBatch(batchId, targetWarehouseId, qty, urgency = 'NORMAL
 /** UDI 追溯 */
 export function traceUdi(udiDi, lotNo) {
   return request({ url: '/inventory/trace', method: 'get', params: { udiDi, lotNo } })
+}
+
+/** 试剂 UDI 数据聚合：试剂信息 + 全部批次的 UDI-DI / UDI-PI / 唯一码 */
+export function getReagentUdiData(reagentId) {
+  return request({ url: `/inventory/udi/reagent/${reagentId}`, method: 'get' })
+}
+
+/** 单个唯一码追溯 */
+export function getUniqueCodeTrace(uniqueCode) {
+  return request({ url: `/inventory/udi/unique-code/${uniqueCode}`, method: 'get' })
 }
 
 /** 患者关联追溯 */
