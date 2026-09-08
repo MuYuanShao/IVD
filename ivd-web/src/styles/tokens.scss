@@ -1,0 +1,132 @@
+// Scoped tokens keep the mock workspace independent from existing business pages.
+.scm-theme {
+  --scm-primary: #009688;
+  --scm-primary-soft: #e9f7f5;
+  --scm-accent: #2ec4b6;
+  --scm-orange: #e8913c;
+  --scm-teal: #23aaa1;
+  --scm-purple: #8a7ac8;
+  --scm-blue: #528dce;
+  --scm-text: #303e46;
+  --scm-muted: #7b898e;
+  --scm-border: #e8edef;
+  --scm-background: #f3f6f7;
+  --scm-surface: #fff;
+  --scm-radius: 6px;
+  --scm-gap: 16px;
+  --scm-shadow: 0 2px 9px rgba(34, 61, 70, 0.035);
+  --scm-content-width: 1200px;
+  --ivd-primary: var(--scm-primary);
+  --ivd-primary-light: #2ec4b6;
+  --ivd-primary-dark: #00796b;
+  --el-color-primary: var(--scm-primary);
+  --el-color-primary-light-3: #4db6ac;
+  --el-color-primary-light-5: #80cbc4;
+  --el-color-primary-light-7: #b2dfdb;
+  --el-color-primary-light-8: #cceae7;
+  --el-color-primary-light-9: #e9f7f5;
+  --el-color-primary-dark-2: #00796b;
+  --el-text-color-primary: var(--scm-text);
+  --el-border-color: #dde5e7;
+  --el-border-color-light: var(--scm-border);
+  --el-border-radius-base: 4px;
+  --el-font-size-base: 13px;
+  --el-font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-family: var(--el-font-family);
+  color: var(--scm-text);
+  font-size: 13px;
+  line-height: 1.5;
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  button,
+  input {
+    font: inherit;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--scm-primary);
+    outline-offset: 3px;
+  }
+  .scm-panel {
+    background: var(--scm-surface);
+    border: 1px solid var(--scm-border);
+    border-radius: var(--scm-radius);
+    box-shadow: var(--scm-shadow);
+    min-width: 0;
+  }
+  .scm-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 49px;
+    padding: 10px 16px;
+    gap: 8px;
+    border-bottom: 1px solid var(--scm-border);
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+  .scm-muted {
+    color: var(--scm-muted);
+    font-size: 12px;
+  }
+  .el-table {
+    --el-table-header-bg-color: #f7f9fa;
+    --el-table-row-hover-bg-color: #f0f9f7;
+  }
+  .el-table th.el-table__cell {
+    background: #f7f9fa;
+    color: #66767e;
+    font-size: 12px;
+  }
+  .el-table .cell {
+    line-height: 21px;
+  }
+  .el-table td.el-table__cell {
+    padding: 11px 0;
+  }
+  .el-button.is-link {
+    font-weight: 400;
+  }
+  .el-menu {
+    --el-menu-active-color: var(--scm-primary);
+    --el-menu-hover-bg-color: var(--scm-primary-soft);
+  }
+  .el-tag--success {
+    --el-tag-text-color: #258b64;
+    --el-tag-border-color: #c1e5d5;
+    --el-tag-bg-color: #eef8f3;
+  }
+  .el-tag--warning {
+    --el-tag-text-color: #b67425;
+    --el-tag-border-color: #f0d9b7;
+    --el-tag-bg-color: #fff7eb;
+  }
+  .el-tag {
+    font-weight: 400;
+  }
+  .el-pagination .el-pager li.is-active {
+    color: #fff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}

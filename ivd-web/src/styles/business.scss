@@ -1,0 +1,44 @@
+// Shared page styling only; table/form data and existing workflow components stay intact.
+.scm-business {
+  .page-container {
+    padding: 0;
+  }
+  .el-card {
+    --el-card-border-color: var(--scm-border);
+    --el-card-border-radius: var(--scm-radius);
+    box-shadow: var(--scm-shadow);
+  }
+  .el-card__header {
+    padding: 14px 16px;
+  }
+  .el-card__body {
+    padding: 16px;
+  }
+  .page-title h2 {
+    font-size: 18px;
+    color: var(--scm-text);
+  }
+  .toolbar-card {
+    margin-bottom: var(--scm-gap);
+  }
+  .el-tabs__nav-wrap::after {
+    background-color: var(--scm-border);
+  }
+  .el-tabs__item {
+    font-size: 13px;
+  }
+  .el-input,
+  .el-select,
+  .el-textarea {
+    --el-input-focus-border-color: var(--scm-primary);
+  }
+  .el-table {
+    font-size: 12px;
+  }
+  .el-table__body-wrapper {
+    max-width: 100%;
+  }
+  .el-dialog {
+    --el-dialog-border-radius: var(--scm-radius);
+  }
+}

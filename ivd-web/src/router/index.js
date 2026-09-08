@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { workspaceRoute } from './workspace'
+import { withBusinessLayout } from './business'
 
 /**
  * IVD 一期 MVP 路由配置
@@ -16,6 +18,7 @@ import { createRouter, createWebHistory } from 'vue-router'
  *   驾驶舱      — /dashboard
  */
 const routes = [
+  workspaceRoute,
   {
     path: '/login',
     name: 'Login',
@@ -65,7 +68,7 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: routes.map(withBusinessLayout)
 })
 
 /**
