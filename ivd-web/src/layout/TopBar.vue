@@ -2,10 +2,10 @@
   <el-header class="scm-topbar" height="66px">
     <div class="topbar-inner">
       <router-link :to="homePath" class="brand" aria-label="IVD 首页">
-        <span class="brand-mark">IVD<span>+</span></span>
+        <span class="brand-mark">IVD</span>
         <span class="brand-name"
-          >医用耗材精益管理平台<small
-            >LEAN MEDICAL SUPPLY MANAGEMENT</small
+          >检验试剂精益管理平台<small
+            >LEAN LABORATORY REAGENT MANAGEMENT</small
           ></span
         >
       </router-link>
@@ -102,11 +102,6 @@ const { menus, activeGroup, isDemo, homePath } = useWorkspaceNavigation()
     sans-serif;
   color: var(--scm-primary);
   letter-spacing: -2px;
-}
-.brand-mark span {
-  color: var(--scm-orange);
-  font-size: 21px;
-  vertical-align: top;
 }
 .brand-name {
   font-size: 14px;
