@@ -30,6 +30,8 @@ public class PurchaseRequisitionVO {
     private LocalDateTime reviewTime;
     private String reviewComment;
     private String remark;
+    private Long researchProjectId;
+    private String researchProjectName;
 
     /** 汇总字段 */
     private Integer totalQty;

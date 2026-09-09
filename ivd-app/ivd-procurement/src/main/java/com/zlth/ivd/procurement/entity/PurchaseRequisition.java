@@ -23,6 +23,8 @@ public class PurchaseRequisition {
     private LocalDateTime reviewTime;
     private String reviewComment;
     private String remark;
+    private Long researchProjectId;
+    private String researchProjectName;
 
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

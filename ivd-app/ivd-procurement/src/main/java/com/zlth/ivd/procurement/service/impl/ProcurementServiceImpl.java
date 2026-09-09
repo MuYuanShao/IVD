@@ -13,15 +13,14 @@ import com.zlth.ivd.common.enums.UdiStatusEnum;
 import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.catalog.entity.ReagentCatalog;
-import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
+import com.zlth.ivd.catalog.service.CatalogReferenceService;
 import com.zlth.ivd.consumption.entity.ConsumptionRecord;
-import com.zlth.ivd.consumption.mapper.ConsumptionRecordMapper;
+import com.zlth.ivd.consumption.service.ProcurementConsumptionService;
 import com.zlth.ivd.license.entity.Supplier;
-import com.zlth.ivd.license.mapper.SupplierMapper;
+import com.zlth.ivd.license.service.SupplierReferenceService;
 import com.zlth.ivd.inventory.entity.ReagentBatch;
 import com.zlth.ivd.inventory.entity.Warehouse;
-import com.zlth.ivd.inventory.mapper.ReagentBatchMapper;
-import com.zlth.ivd.inventory.mapper.WarehouseMapper;
+import com.zlth.ivd.inventory.service.ProcurementInventoryService;
 import com.zlth.ivd.procurement.dto.CreateManualOrderRequest;
 import com.zlth.ivd.procurement.dto.DirectReceiveRequest;
 import com.zlth.ivd.procurement.dto.PickAndShipRequest;
@@ -32,10 +31,10 @@ import com.zlth.ivd.procurement.vo.PurchaseRequisitionVO;
 import com.zlth.ivd.procurement.vo.ShortageOrderVO;
 import com.zlth.ivd.procurement.mapper.*;
 import com.zlth.ivd.procurement.service.ProcurementService;
+import com.zlth.ivd.system.service.ResearchProjectService;
 import com.zlth.ivd.system.entity.SysDept;
 import com.zlth.ivd.system.entity.SysUser;
-import com.zlth.ivd.system.mapper.SysDeptMapper;
-import com.zlth.ivd.system.mapper.SysUserMapper;
+import com.zlth.ivd.system.service.ProcurementOrgService;
 import com.zlth.ivd.udi.service.UniqueCodeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,51 +55,47 @@ public class ProcurementServiceImpl implements ProcurementService {
     private static final Logger log = LoggerFactory.getLogger(ProcurementServiceImpl.class);
 
     private final PurchaseRequisitionMapper reqMapper;
+    private final ResearchProjectService researchProjectService;
     private final PurchaseRequisitionItemMapper reqItemMapper;
     private final ShortageOrderMapper shortageMapper;
     private final ShortageOrderItemMapper shortageItemMapper;
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper orderItemMapper;
-    private final ReagentBatchMapper batchMapper;
-    private final ReagentCatalogMapper catalogMapper;
-    private final ConsumptionRecordMapper consumptionMapper;
+    private final ProcurementInventoryService inventoryService;
+    private final CatalogReferenceService catalogService;
+    private final ProcurementConsumptionService consumptionService;
     private final SmartReplenishSuggestionMapper suggestionMapper;
-    private final SysDeptMapper sysDeptMapper;
-    private final SysUserMapper sysUserMapper;
-    private final WarehouseMapper warehouseMapper;
+    private final ProcurementOrgService orgService;
     private final UniqueCodeService uniqueCodeService;
-    private final SupplierMapper supplierMapper;
+    private final SupplierReferenceService supplierService;
 
-    public ProcurementServiceImpl(PurchaseRequisitionMapper reqMapper,
+    public ProcurementServiceImpl(ResearchProjectService researchProjectService, PurchaseRequisitionMapper reqMapper,
                                   PurchaseRequisitionItemMapper reqItemMapper,
                                   ShortageOrderMapper shortageMapper,
                                   ShortageOrderItemMapper shortageItemMapper,
                                   PurchaseOrderMapper orderMapper,
                                   PurchaseOrderItemMapper orderItemMapper,
-                                  ReagentBatchMapper batchMapper,
-                                  ReagentCatalogMapper catalogMapper,
-                                  ConsumptionRecordMapper consumptionMapper,
+                                  ProcurementInventoryService inventoryService,
+                                  CatalogReferenceService catalogService,
+                                  ProcurementConsumptionService consumptionService,
                                   SmartReplenishSuggestionMapper suggestionMapper,
-                                  SysDeptMapper sysDeptMapper,
-                                  SysUserMapper sysUserMapper,
-                                  WarehouseMapper warehouseMapper,
+                                  ProcurementOrgService orgService,
                                   UniqueCodeService uniqueCodeService,
-                                  SupplierMapper supplierMapper) {
+                                  SupplierReferenceService supplierService) {
         this.reqMapper = reqMapper;
+        this.researchProjectService = researchProjectService;
         this.reqItemMapper = reqItemMapper;
         this.shortageMapper = shortageMapper;
         this.shortageItemMapper = shortageItemMapper;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
-        this.batchMapper = batchMapper;
-        this.catalogMapper = catalogMapper;
-        this.consumptionMapper = consumptionMapper;
+        this.inventoryService = inventoryService;
+        this.catalogService = catalogService;
+        this.consumptionService = consumptionService;
         this.suggestionMapper = suggestionMapper;
-        this.sysDeptMapper = sysDeptMapper;
-        this.sysUserMapper = sysUserMapper;
-        this.warehouseMapper = warehouseMapper;
+        this.orgService = orgService;
         this.uniqueCodeService = uniqueCodeService;
-        this.supplierMapper = supplierMapper;
+        this.supplierService = supplierService;
     }
 
     // ── 申领单 ──
@@ -139,6 +134,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         for (PurchaseRequisition req : p.getRecords()) {
             PurchaseRequisitionVO vo = new PurchaseRequisitionVO();
             vo.setId(req.getId()); vo.setReqNo(req.getReqNo());
+            vo.setResearchProjectId(req.getResearchProjectId()); vo.setResearchProjectName(req.getResearchProjectName());
             vo.setFromDeptId(req.getFromDeptId() != null ? req.getFromDeptId().intValue() : null);
             vo.setDeptName(deptNameMap.getOrDefault(req.getFromDeptId(), "科室#" + req.getFromDeptId()));
             vo.setToWarehouseId(req.getToWarehouseId() != null ? req.getToWarehouseId().intValue() : null);
@@ -163,6 +159,7 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseRequisition createRequisition(PurchaseRequisition req) {
+        req.setResearchProjectName(researchProjectService.requireActiveName(req.getResearchProjectId()));
         String no = "REQ-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-" +
                 String.format("%03d", System.currentTimeMillis() % 1000);
         req.setReqNo(no);
@@ -171,11 +168,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         req.setApplicantId(SecurityUtils.getCurrentUserId());
         // 根据申领科室解析目标科室库（toWarehouseId），前端未传入时自动匹配
         if (req.getToWarehouseId() == null && req.getFromDeptId() != null) {
-            LambdaQueryWrapper<Warehouse> whQw = new LambdaQueryWrapper<>();
-            whQw.eq(Warehouse::getDeptId, req.getFromDeptId())
-                .eq(Warehouse::getLevel, 2)
-                .eq(Warehouse::getStatus, 1);
-            Warehouse deptWh = warehouseMapper.selectOne(whQw);
+            Warehouse deptWh = inventoryService.findActiveDeptWarehouse(req.getFromDeptId());
             if (deptWh != null) {
                 req.setToWarehouseId(deptWh.getId());
                 log.info("自动匹配目标库房: deptId={} → warehouseId={} ({})",
@@ -194,7 +187,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
             if (!reagentIds.isEmpty()) {
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog c : catalogs) catalogMap.put(c.getId(), c);
             }
@@ -251,7 +244,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             if (!reagentIds.isEmpty()) {
                 Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+        List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog c : catalogs) catalogMap.put(c.getId(), c);
                 for (PurchaseRequisitionItem item : items) {
@@ -284,7 +277,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             Set<Long> reagentIds = items.stream().map(PurchaseRequisitionItem::getReagentId).filter(Objects::nonNull).collect(Collectors.toSet());
             if (!reagentIds.isEmpty()) {
                 Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog c : catalogs) catalogMap.put(c.getId(), c);
                 for (PurchaseRequisitionItem item : items) {
@@ -302,19 +295,16 @@ public class ProcurementServiceImpl implements ProcurementService {
         }
 
         // 查询科室和用户名称
-        String deptName = req.getFromDeptId() != null
-                ? sysDeptMapper.selectById(req.getFromDeptId()) != null
-                    ? sysDeptMapper.selectById(req.getFromDeptId()).getDeptName()
-                    : "科室#" + req.getFromDeptId()
-                : "-";
-        String applicantName = req.getApplicantId() != null
-                ? sysUserMapper.selectById(req.getApplicantId()) != null
-                    ? sysUserMapper.selectById(req.getApplicantId()).getRealName()
-                    : "用户#" + req.getApplicantId()
-                : "-";
+        SysDept dept = req.getFromDeptId() != null ? orgService.findDept(req.getFromDeptId()) : null;
+        String deptName = dept != null ? dept.getDeptName()
+                : req.getFromDeptId() != null ? "科室#" + req.getFromDeptId() : "-";
+        SysUser applicant = req.getApplicantId() != null ? orgService.findUser(req.getApplicantId()) : null;
+        String applicantName = applicant != null ? applicant.getRealName()
+                : req.getApplicantId() != null ? "用户#" + req.getApplicantId() : "-";
 
         PurchaseRequisitionVO vo = new PurchaseRequisitionVO();
         vo.setId(req.getId()); vo.setReqNo(req.getReqNo());
+        vo.setResearchProjectId(req.getResearchProjectId()); vo.setResearchProjectName(req.getResearchProjectName());
         vo.setFromDeptId(req.getFromDeptId() != null ? req.getFromDeptId().intValue() : null);
         vo.setDeptName(deptName);
         vo.setToWarehouseId(req.getToWarehouseId() != null ? req.getToWarehouseId().intValue() : null);
@@ -490,20 +480,14 @@ public class ProcurementServiceImpl implements ProcurementService {
         // 回退到申领单的 toWarehouseId
         Long defaultTargetWarehouseId = req.getToWarehouseId();
         if (defaultTargetWarehouseId != null) {
-            List<ConsumptionRecord> transferRecords = consumptionMapper.selectList(
-                    new LambdaQueryWrapper<ConsumptionRecord>()
-                            .eq(ConsumptionRecord::getRequisitionId, id)
-                            .eq(ConsumptionRecord::getRecordType, ConsumptionRecordTypeEnum.TRANSFER.getCode()));
+            List<ConsumptionRecord> transferRecords = consumptionService.findTransferRecords(id);
             if (transferRecords != null && !transferRecords.isEmpty()) {
                 for (ConsumptionRecord tr : transferRecords) {
                     // 每笔 transfer record 可能有不同的目标仓库，逐笔解析
                     Long trTargetWarehouseId = tr.getWarehouseId() != null
                             ? tr.getWarehouseId() : defaultTargetWarehouseId;
                     // 从源仓库查找对应的批次（即使库存已清零，批次记录仍存在）
-                    ReagentBatch sourceBatch = batchMapper.selectOne(
-                            new LambdaQueryWrapper<ReagentBatch>()
-                                    .eq(ReagentBatch::getBatchNo, tr.getBatchNo())
-                                    .eq(ReagentBatch::getWarehouseId, tr.getFromWarehouseId()));
+                    ReagentBatch sourceBatch = inventoryService.findBatch(tr.getBatchNo(), tr.getFromWarehouseId());
                     if (sourceBatch == null) {
                         log.warn("签收入库: 找不到源批次 batchNo={}, fromWarehouseId={}，跳过",
                                 tr.getBatchNo(), tr.getFromWarehouseId());
@@ -539,7 +523,7 @@ public class ProcurementServiceImpl implements ProcurementService {
     private ReagentBatch deductSourceBatchStock(Long batchId, BigDecimal qty) {
         int maxRetries = 3;
         for (int i = 0; i < maxRetries; i++) {
-            ReagentBatch sourceBatch = batchMapper.selectById(batchId);
+            ReagentBatch sourceBatch = inventoryService.getBatch(batchId);
             if (sourceBatch == null) throw new BizException(40400, "批次不存在");
             if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
 
@@ -548,8 +532,8 @@ public class ProcurementServiceImpl implements ProcurementService {
                 sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
             }
 
-            int updated = batchMapper.updateById(sourceBatch);
-            if (updated > 0) return sourceBatch;
+            boolean updated = inventoryService.updateBatch(sourceBatch);
+            if (updated) return sourceBatch;
             if (i == maxRetries - 1) throw new BizException(50000, "拣货扣减失败：超过最大重试次数");
             log.warn("拣货扣减乐观锁冲突，重试 ({}/{})", i + 1, maxRetries);
         }
@@ -565,15 +549,12 @@ public class ProcurementServiceImpl implements ProcurementService {
     private Long upsertTargetBatch(ReagentBatch sourceBatch, Long targetWarehouseId, BigDecimal qty) {
         int maxRetries = 3;
         for (int i = 0; i < maxRetries; i++) {
-            LambdaQueryWrapper<ReagentBatch> targetQw = new LambdaQueryWrapper<>();
-            targetQw.eq(ReagentBatch::getWarehouseId, targetWarehouseId)
-                    .eq(ReagentBatch::getBatchNo, sourceBatch.getBatchNo());
-            ReagentBatch targetBatch = batchMapper.selectOne(targetQw);
+            ReagentBatch targetBatch = inventoryService.findBatch(sourceBatch.getBatchNo(), targetWarehouseId);
 
             if (targetBatch != null) {
                 targetBatch.setStock(targetBatch.getStock().add(qty));
-                int updated = batchMapper.updateById(targetBatch);
-                if (updated > 0) return targetBatch.getId();
+                boolean updated = inventoryService.updateBatch(targetBatch);
+                if (updated) return targetBatch.getId();
                 if (i == maxRetries - 1) throw new BizException(50000, "拣货入库失败：超过最大重试次数");
                 log.warn("拣货入库乐观锁冲突，重试 ({}/{})", i + 1, maxRetries);
             } else {
@@ -595,7 +576,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                 newBatch.setLocationCode(sourceBatch.getLocationCode());
                 newBatch.setCreatedAt(LocalDateTime.now());
                 newBatch.setUpdatedAt(LocalDateTime.now());
-                batchMapper.insert(newBatch);
+                inventoryService.createBatch(newBatch);
                 return newBatch.getId();
             }
         }
@@ -622,7 +603,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         record.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
         record.setOccurredAt(LocalDateTime.now());
         record.setCreatedAt(LocalDateTime.now());
-        consumptionMapper.insert(record);
+        consumptionService.appendRecord(record);
     }
 
     // ── 缺货单 ──
@@ -650,7 +631,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         Set<Long> reagentIds = allItems.stream().map(ShortageOrderItem::getReagentId).collect(Collectors.toSet());
         Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
         if (!reagentIds.isEmpty()) {
-            List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+            List<ReagentCatalog> catalogs = catalogService.findByIds(
                     reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
             for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
         }
@@ -664,7 +645,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, String> shortageSupplierNameMap = new HashMap<>();
         if (!shortageSupplierIds.isEmpty()) {
-            List<Supplier> suppliers = supplierMapper.selectBatchIds(shortageSupplierIds);
+        List<Supplier> suppliers = supplierService.findByIds(shortageSupplierIds);
             for (Supplier s : suppliers) shortageSupplierNameMap.put(s.getId(), s.getName());
         }
 
@@ -718,7 +699,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             if (!reagentIds.isEmpty()) {
                 Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+        List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog c : catalogs) catalogMap.put(c.getId(), c);
                 for (ShortageOrderItem item : items) {
@@ -751,11 +732,9 @@ public class ProcurementServiceImpl implements ProcurementService {
         if (items == null) items = Collections.emptyList();
 
         // 查询科室名称
-        String deptName = so.getFromDeptId() != null
-                ? sysDeptMapper.selectById(so.getFromDeptId()) != null
-                    ? sysDeptMapper.selectById(so.getFromDeptId()).getDeptName()
-                    : "科室#" + so.getFromDeptId()
-                : "-";
+        SysDept shortageDept = so.getFromDeptId() != null ? orgService.findDept(so.getFromDeptId()) : null;
+        String deptName = shortageDept != null ? shortageDept.getDeptName()
+                : so.getFromDeptId() != null ? "科室#" + so.getFromDeptId() : "-";
 
         ShortageOrderVO vo = new ShortageOrderVO();
         vo.setId(so.getId()); vo.setShortageNo(so.getShortageNo());
@@ -766,7 +745,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         vo.setStatus(so.getStatus()); vo.setUrgency(so.getUrgency());
         vo.setSuggestedSupplierId(so.getSuggestedSupplierId() != null ? so.getSuggestedSupplierId().intValue() : null);
         if (so.getSuggestedSupplierId() != null) {
-            Supplier supplier = supplierMapper.selectById(Long.valueOf(so.getSuggestedSupplierId()));
+            Supplier supplier = supplierService.findById(Long.valueOf(so.getSuggestedSupplierId()));
             vo.setSuggestedSupplier(supplier != null ? supplier.getName() : "供应商#" + so.getSuggestedSupplierId());
         } else {
             vo.setSuggestedSupplier("-");
@@ -780,7 +759,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             Set<Long> reagentIds = items.stream().map(ShortageOrderItem::getReagentId).collect(Collectors.toSet());
             Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
             if (!reagentIds.isEmpty()) {
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
             }
@@ -819,11 +798,8 @@ public class ProcurementServiceImpl implements ProcurementService {
             // BUGFIX 1: 从 reagent_batch 查询真实库存，而非使用申领创建时初始化的 ZERO
             BigDecimal stock = BigDecimal.ZERO;
             if (item.getReagentId() != null) {
-                LambdaQueryWrapper<ReagentBatch> stockQw = new LambdaQueryWrapper<>();
-                stockQw.eq(ReagentBatch::getReagentId, item.getReagentId().longValue())
-                       .eq(ReagentBatch::getWarehouseId, targetWarehouseId)
-                       .eq(ReagentBatch::getUdiStatus, UdiStatusEnum.IN_STOCK);
-                List<ReagentBatch> batches = batchMapper.selectList(stockQw);
+                List<ReagentBatch> batches = inventoryService.findInStockBatches(
+                        item.getReagentId().longValue(), targetWarehouseId);
                 if (batches != null && !batches.isEmpty()) {
                     stock = batches.stream()
                         .map(b -> b.getStock() != null ? b.getStock() : BigDecimal.ZERO)
@@ -889,7 +865,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         Set<Long> reagentIds = allItems.stream().map(PurchaseOrderItem::getReagentId).collect(Collectors.toSet());
         Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
         if (!reagentIds.isEmpty()) {
-            List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+            List<ReagentCatalog> catalogs = catalogService.findByIds(
                     reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
             for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
         }
@@ -947,7 +923,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         vo.setId(po.getId()); vo.setPoNo(po.getPoNo());
         vo.setSupplierId(po.getSupplierId());
         if (po.getSupplierId() != null) {
-            Supplier supplier = supplierMapper.selectById(Long.valueOf(po.getSupplierId()));
+            Supplier supplier = supplierService.findById(Long.valueOf(po.getSupplierId()));
             vo.setSupplierName(supplier != null ? supplier.getName() : "供应商#" + po.getSupplierId());
         } else {
             vo.setSupplierName("-");
@@ -966,7 +942,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             Set<Long> reagentIds = items.stream().map(PurchaseOrderItem::getReagentId).collect(Collectors.toSet());
             Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
             if (!reagentIds.isEmpty()) {
-                List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+                List<ReagentCatalog> catalogs = catalogService.findByIds(
                         reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
                 for (ReagentCatalog cat : catalogs) catalogMap.put(cat.getId(), cat);
             }
@@ -1058,14 +1034,14 @@ public class ProcurementServiceImpl implements ProcurementService {
                 .collect(Collectors.toSet());
         Map<Long, ReagentCatalog> allCatalogMap = new HashMap<>();
         if (!allReagentIds.isEmpty()) {
-            List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(allReagentIds);
+            List<ReagentCatalog> catalogs = catalogService.findByIds(allReagentIds);
             for (ReagentCatalog c : catalogs) allCatalogMap.put(c.getId(), c);
         }
 
         // 1. 从试剂目录的 distributor 字段解析缺失的 supplierId
         //    ReagentCatalog.distributor 存的是配送商名称，需要反查 Supplier 表得到 ID
         Map<String, Integer> supplierNameToId = new HashMap<>();
-        List<Supplier> allSuppliers = supplierMapper.selectList(new LambdaQueryWrapper<>());
+        List<Supplier> allSuppliers = supplierService.findAll();
         for (Supplier s : allSuppliers) {
             if (s.getName() != null) supplierNameToId.put(s.getName().trim(), s.getId().intValue());
             if (s.getShortName() != null) supplierNameToId.put(s.getShortName().trim(), s.getId().intValue());
@@ -1209,16 +1185,13 @@ public class ProcurementServiceImpl implements ProcurementService {
             Long savedBatchId = null;
             int batchRetries = 3;
             for (int attempt = 0; attempt < batchRetries; attempt++) {
-                ReagentBatch existing = batchMapper.selectOne(
-                        new LambdaQueryWrapper<ReagentBatch>()
-                                .eq(ReagentBatch::getBatchNo, request.getBatchNo())
-                                .eq(ReagentBatch::getWarehouseId, warehouseId));
+                ReagentBatch existing = inventoryService.findBatch(request.getBatchNo(), warehouseId);
                 if (existing != null) {
                     // 追加库存
                     existing.setStock(existing.getStock().add(qty));
                     existing.setUdiStatus(UdiStatusEnum.IN_STOCK);
-                    int batchUpdated = batchMapper.updateById(existing);
-                    if (batchUpdated > 0) {
+                    boolean batchUpdated = inventoryService.updateBatch(existing);
+                    if (batchUpdated) {
                         savedBatchId = existing.getId();
                         log.info("批次库存追加: batchNo={}, addQty={}, newStock={}", request.getBatchNo(), qty, existing.getStock());
                         break;
@@ -1243,7 +1216,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     batch.setWarehouseId(warehouseId);
                     batch.setCreatedAt(LocalDateTime.now());
                     batch.setUpdatedAt(LocalDateTime.now());
-                    batchMapper.insert(batch);
+                    inventoryService.createBatch(batch);
                     savedBatchId = batch.getId();
                     log.info("新批次入库: batchNo={}, reagentId={}, qty={}", request.getBatchNo(), item.getReagentId(), qty);
                     break;
@@ -1264,10 +1237,10 @@ public class ProcurementServiceImpl implements ProcurementService {
             cr.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
             cr.setOccurredAt(LocalDateTime.now());
             cr.setCreatedAt(LocalDateTime.now());
-            consumptionMapper.insert(cr);
+            consumptionService.appendRecord(cr);
 
             // 按入库数量生成唯一码（仅当试剂目录开启唯一码管控时）
-            ReagentCatalog catalog = catalogMapper.selectById(item.getReagentId().longValue());
+            ReagentCatalog catalog = catalogService.findById(item.getReagentId().longValue());
             if (catalog != null && catalog.getEnableUniqueCode() != null && catalog.getEnableUniqueCode() == 1) {
                 int codeCount = qty.intValue();
                 uniqueCodeService.generateAndSave(codeCount, savedBatchId,
@@ -1351,7 +1324,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             // 查试剂目录获取单价
             BigDecimal unitPrice = item.getUnitPrice();
             if (unitPrice == null) {
-                ReagentCatalog catalog = catalogMapper.selectById(item.getReagentId().longValue());
+                ReagentCatalog catalog = catalogService.findById(item.getReagentId().longValue());
                 unitPrice = catalog != null ? catalog.getPricePerUnit() : BigDecimal.ZERO;
             }
 
@@ -1377,14 +1350,11 @@ public class ProcurementServiceImpl implements ProcurementService {
             if (item.getBatchNo() != null && !item.getBatchNo().isBlank()) {
                 Long savedBatchId;
                 // BUGFIX: 按 warehouseId + batchNo 限定范围（同 Bug 7）
-                ReagentBatch existing = batchMapper.selectOne(
-                        new LambdaQueryWrapper<ReagentBatch>()
-                                .eq(ReagentBatch::getBatchNo, item.getBatchNo())
-                                .eq(ReagentBatch::getWarehouseId, warehouseId));
+                ReagentBatch existing = inventoryService.findBatch(item.getBatchNo(), warehouseId);
                 if (existing != null) {
                     existing.setStock(existing.getStock().add(qty));
                     existing.setUdiStatus(UdiStatusEnum.IN_STOCK);
-                    batchMapper.updateById(existing);
+                    inventoryService.updateBatch(existing);
                     savedBatchId = existing.getId();
                 } else {
                     ReagentBatch batch = new ReagentBatch();
@@ -1401,7 +1371,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     batch.setWarehouseId(warehouseId);
                     batch.setCreatedAt(LocalDateTime.now());
                     batch.setUpdatedAt(LocalDateTime.now());
-                    batchMapper.insert(batch);
+                    inventoryService.createBatch(batch);
                     savedBatchId = batch.getId();
                 }
 
@@ -1419,10 +1389,10 @@ public class ProcurementServiceImpl implements ProcurementService {
                 cr.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
                 cr.setOccurredAt(LocalDateTime.now());
                 cr.setCreatedAt(LocalDateTime.now());
-                consumptionMapper.insert(cr);
+                consumptionService.appendRecord(cr);
 
                 // 按入库数量生成唯一码（仅当试剂目录开启唯一码管控时）
-                ReagentCatalog catForCode = catalogMapper.selectById(item.getReagentId().longValue());
+                ReagentCatalog catForCode = catalogService.findById(item.getReagentId().longValue());
                 if (catForCode != null && catForCode.getEnableUniqueCode() != null && catForCode.getEnableUniqueCode() == 1) {
                     int codeCount = qty.intValue();
                     uniqueCodeService.generateAndSave(codeCount, savedBatchId,
@@ -1500,7 +1470,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         Set<Long> reagentIds = allItems.stream().map(PurchaseRequisitionItem::getReagentId).collect(Collectors.toSet());
         Map<Long, ReagentCatalog> catalogMap = new HashMap<>();
         if (!reagentIds.isEmpty()) {
-            List<ReagentCatalog> catalogs = catalogMapper.selectBatchIds(
+            List<ReagentCatalog> catalogs = catalogService.findByIds(
                     reagentIds.stream().map(Long::valueOf).collect(Collectors.toList()));
             for (ReagentCatalog c : catalogs) catalogMap.put(c.getId(), c);
         }
@@ -1546,7 +1516,7 @@ public class ProcurementServiceImpl implements ProcurementService {
     public List<Map<String, Object>> getSmartReplenishSuggestions(int days) {
         // 1. 当前库存：按试剂汇总 reagent_batch.stock
         Map<Long, BigDecimal> stockMap = new HashMap<>();
-        List<ReagentBatch> batches = batchMapper.selectList(new LambdaQueryWrapper<>());
+        List<ReagentBatch> batches = inventoryService.listAllBatches();
         for (ReagentBatch b : batches) {
             if (b.getReagentId() != null && b.getStock() != null) {
                 stockMap.merge(b.getReagentId(), b.getStock(), BigDecimal::add);
@@ -1557,9 +1527,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         Map<Long, BigDecimal> consumptionMap = new HashMap<>();
         Map<Long, BigDecimal> recentMap = new HashMap<>();
         LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<ConsumptionRecord> records = consumptionMapper.selectList(
-                new LambdaQueryWrapper<ConsumptionRecord>()
-                        .eq(ConsumptionRecord::getRecordType, "CONSUME"));
+        List<ConsumptionRecord> records = consumptionService.findConsumptionRecords();
         for (ConsumptionRecord r : records) {
             if (r.getReagentId() != null && r.getQuantity() != null) {
                 consumptionMap.merge(r.getReagentId(), r.getQuantity(), BigDecimal::add);
@@ -1594,7 +1562,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                     : totalConsumed.divide(BigDecimal.valueOf(Math.max(days, 1)), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal safetyStock = dailyRate.multiply(BigDecimal.TEN);
 
-            ReagentCatalog cat = catalogMapper.selectById(reagentId);
+            ReagentCatalog cat = catalogService.findById(reagentId);
             if (cat == null) continue;
 
             SmartReplenishSuggestion s = new SmartReplenishSuggestion();
@@ -1706,7 +1674,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             poi.setMaterialType("REAGENT");
             poi.setQtyOrdered(orderQty);
 
-            ReagentCatalog cat = catalogMapper.selectById(reagentId);
+            ReagentCatalog cat = catalogService.findById(reagentId);
             BigDecimal unitPrice = (cat != null && cat.getPricePerUnit() != null)
                     ? cat.getPricePerUnit() : BigDecimal.ZERO;
             poi.setUnitPrice(unitPrice);
@@ -1742,14 +1710,14 @@ public class ProcurementServiceImpl implements ProcurementService {
     /** 批量查询科室名称 */
     private Map<Long, String> batchGetDeptNames(Set<Long> deptIds) {
         if (deptIds.isEmpty()) return Collections.emptyMap();
-        List<SysDept> depts = sysDeptMapper.selectBatchIds(deptIds);
+        List<SysDept> depts = orgService.findDepts(deptIds);
         return depts.stream().collect(Collectors.toMap(SysDept::getId, SysDept::getDeptName, (a, b) -> a));
     }
 
     /** 批量查询供应商名称 */
     private Map<Integer, String> batchGetSupplierNames(Set<Integer> supplierIds) {
         if (supplierIds.isEmpty()) return Collections.emptyMap();
-        List<Supplier> suppliers = supplierMapper.selectBatchIds(
+        List<Supplier> suppliers = supplierService.findByIds(
                 supplierIds.stream().map(Long::valueOf).collect(Collectors.toList()));
         return suppliers.stream()
                 .collect(Collectors.toMap(s -> s.getId().intValue(), Supplier::getName, (a, b) -> a));
@@ -1758,7 +1726,7 @@ public class ProcurementServiceImpl implements ProcurementService {
     /** 批量查询用户真实姓名 */
     private Map<Long, String> batchGetUserNames(Set<Long> userIds) {
         if (userIds.isEmpty()) return Collections.emptyMap();
-        List<SysUser> users = sysUserMapper.selectBatchIds(userIds);
+        List<SysUser> users = orgService.findUsers(userIds);
         return users.stream().collect(Collectors.toMap(SysUser::getId, SysUser::getRealName, (a, b) -> a));
     }
 }

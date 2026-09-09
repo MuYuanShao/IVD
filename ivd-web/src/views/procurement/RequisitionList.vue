@@ -38,12 +38,13 @@
         <!-- 行展开：内嵌试剂清单明细 -->
         <el-table-column type="expand">
           <template #default="{row}">
-            <div style="padding:12px 20px">
-              <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">
+            <div class="expanded-requisition-detail">
+              <div class="expanded-detail-heading">
                 申领试剂清单 — 共 {{ (expandItems[row.id] || []).length }} 项
               </div>
               <el-table
                 :data="expandItems[row.id] || []"
+                class="expanded-detail-table"
                 size="small" border
                 v-loading="expandLoading[row.id]"
                 empty-text="暂无试剂明细"
@@ -71,6 +72,33 @@
                   </template>
                 </el-table-column>
               </el-table>
+              <div class="expanded-detail-cards">
+                <article
+                  v-for="item in (expandItems[row.id] || [])"
+                  :key="item.id"
+                  class="expanded-detail-card"
+                >
+                  <div class="detail-card-heading">
+                    <strong>{{ item.reagentName || '—' }}</strong>
+                    <span>{{ item.genericName || '—' }}</span>
+                  </div>
+                  <div class="detail-card-grid">
+                    <div><span>规格型号</span><strong>{{ item.specification || '—' }}</strong></div>
+                    <div><span>厂家</span><strong>{{ item.manufacturer || '—' }}</strong></div>
+                    <div><span>单位</span><strong>{{ item.unit || '—' }}</strong></div>
+                    <div><span>单价</span><strong>{{ item.unitPrice != null ? '¥' + Number(item.unitPrice).toFixed(2) : '—' }}</strong></div>
+                    <div><span>申请数量</span><strong>{{ item.qtyRequested || 0 }}</strong></div>
+                    <div><span>申请金额</span><strong>{{ item.amount != null ? '¥' + Number(item.amount).toFixed(2) : '—' }}</strong></div>
+                    <div><span>已发货</span><strong class="value-success">{{ item.qtyFulfilled || 0 }}</strong></div>
+                    <div><span>缺货</span><strong :class="{ 'value-danger': (item.qtyShortage || 0) > 0 }">{{ item.qtyShortage || 0 }}</strong></div>
+                  </div>
+                </article>
+                <el-empty
+                  v-if="!expandLoading[row.id] && !(expandItems[row.id] || []).length"
+                  description="暂无试剂明细"
+                  :image-size="48"
+                />
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -124,29 +152,42 @@
     />
 
     <!-- 新建申领弹窗 -->
-    <el-dialog v-model="showNewReqDialog" title="新建申领" width="1100px" top="3vh" @closed="resetNewReq">
-      <el-form ref="newReqFormRef" :model="newReqForm" :rules="newReqRules" label-width="100px">
-        <el-form-item label="申领科室" prop="deptId">
-          <el-select v-model="newReqForm.deptId" placeholder="请选择申领科室" style="width:100%">
-            <el-option v-for="d in deptOptions" :key="d.value" :label="d.label" :value="d.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="紧急程度" prop="urgency">
-          <el-radio-group v-model="newReqForm.urgency">
-            <el-radio-button value="NORMAL">常规申领</el-radio-button>
-            <el-radio-button value="URGENT">紧急申领</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="添加方式">
-          <el-radio-group v-model="addMode" size="small">
-            <el-radio-button value="single">单个添加</el-radio-button>
-            <el-radio-button value="batch">批量选择</el-radio-button>
-          </el-radio-group>
+    <el-dialog
+      v-model="showNewReqDialog"
+      class="new-requisition-dialog"
+      title="新建申领"
+      width="min(96vw, 1600px)"
+      top="2vh"
+      @closed="resetNewReq"
+    >
+      <el-form ref="newReqFormRef" :model="newReqForm" :rules="newReqRules" label-width="86px" class="new-req-form">
+        <div class="req-config-grid">
+          <el-form-item label="申领科室" prop="deptId" class="req-dept-field">
+            <el-select v-model="newReqForm.deptId" placeholder="请选择申领科室" style="width:100%">
+              <el-option v-for="d in deptOptions" :key="d.value" :label="d.label" :value="d.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="紧急程度" prop="urgency">
+            <el-radio-group v-model="newReqForm.urgency">
+              <el-radio-button value="NORMAL">常规申领</el-radio-button>
+              <el-radio-button value="URGENT">紧急申领</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="添加方式">
+            <el-radio-group v-model="addMode">
+              <el-radio-button value="single">单个添加</el-radio-button>
+              <el-radio-button value="batch">批量选择</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+        </div>
+
+        <el-form-item label="科研项目" prop="researchProjectId">
+          <ResearchProjectSelect v-model="newReqForm.researchProjectId" :open="showNewReqDialog" />
         </el-form-item>
 
         <!-- 单个添加：选择试剂 + 数量 → 加入清单 -->
         <template v-if="addMode === 'single'">
-          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+          <div class="single-add-toolbar">
             <el-select
               v-model="pendingReagent"
               placeholder="搜索并选择试剂…"
@@ -185,7 +226,7 @@
           />
         </template>
 
-        <el-divider content-position="left">
+        <el-divider content-position="left" class="req-list-divider">
           申领试剂清单
           <span v-if="newReqItems.length" style="font-weight:400;font-size:12px;color:var(--text-tertiary);margin-left:8px">
             共 {{ newReqItems.length }} 项 · 合计 ¥{{ totalNewReqAmount.toFixed(2) }}
@@ -193,7 +234,14 @@
         </el-divider>
 
         <!-- 试剂清单表格（两种模式共用） -->
-        <el-table :data="newReqItems" size="small" border max-height="360" empty-text="请添加申领试剂">
+        <el-table
+          :data="newReqItems"
+          class="new-req-table"
+          size="small"
+          border
+          max-height="calc(94vh - 365px)"
+          empty-text="请添加申领试剂"
+        >
           <el-table-column prop="reagentName" label="试剂名称" min-width="120" show-overflow-tooltip />
           <el-table-column prop="genericName" label="通用名称" min-width="120" show-overflow-tooltip />
           <el-table-column prop="specification" label="规格型号" min-width="85" show-overflow-tooltip />
@@ -223,8 +271,8 @@
           </el-table-column>
         </el-table>
 
-        <el-form-item label="备注" style="margin-top:12px">
-          <el-input v-model="newReqForm.remark" type="textarea" :rows="2" placeholder="选填" />
+        <el-form-item label="备注" class="req-remark-field">
+          <el-input v-model="newReqForm.remark" type="textarea" :rows="1" resize="none" placeholder="选填" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -248,6 +296,7 @@ import { getRequisitionItems } from '@/api/procurement'
 import RequisitionDetailDialog from '@/components/RequisitionDetailDialog.vue'
 import PickAndShipDialog from '@/components/PickAndShipDialog.vue'
 import ReagentPicker from '@/components/ReagentPicker.vue'
+import ResearchProjectSelect from '@/components/ResearchProjectSelect.vue'
 
 const route = useRoute()
 const store = useProcurementStore()
@@ -313,7 +362,7 @@ const totalNewReqAmount = computed(() => {
   return newReqItems.value.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
 })
 
-const newReqForm = reactive({ deptId: null, urgency: 'NORMAL', remark: '' })
+const newReqForm = reactive({ deptId: null, urgency: 'NORMAL', remark: '', researchProjectId: null })
 const newReqRules = { deptId: [{ required: true, message: '请选择申领科室', trigger: 'change' }] }
 const deptOptions = ref([])
 const reagentOptions = ref([])
@@ -482,6 +531,7 @@ async function submitNewReq() {
     const items = newReqItems.value.map(i => ({ reagentId: i.reagentId, qtyRequested: i.qtyRequested || 1 }))
     await store.doCreateRequisition({
       fromDeptId: newReqForm.deptId,
+      researchProjectId: newReqForm.researchProjectId || null,
       urgency: newReqForm.urgency,
       remark: newReqForm.remark,
       items
@@ -538,7 +588,7 @@ async function handlePickAndShipSubmit(data) {
 
 function resetNewReq() {
   newReqFormRef.value?.resetFields()
-  Object.assign(newReqForm, { deptId: null, urgency: 'NORMAL', remark: '' })
+  Object.assign(newReqForm, { deptId: null, urgency: 'NORMAL', remark: '', researchProjectId: null })
   addMode.value = 'single'
   newReqItems.value = []
   pendingReagent.value = null
@@ -546,4 +596,223 @@ function resetNewReq() {
   batchSelected.value = []
 }
 </script>
+
+<style scoped>
+.expanded-requisition-detail {
+  box-sizing: border-box;
+  width: min(100%, calc(100vw - var(--layout-aside-width, 230px) - 180px));
+  max-width: 100%;
+  padding: 12px 16px 14px;
+  overflow: hidden;
+}
+
+.expanded-detail-heading {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.expanded-detail-table {
+  width: 100%;
+}
+
+.expanded-detail-table :deep(.el-table__cell) {
+  padding: 7px 0;
+}
+
+.expanded-detail-cards {
+  display: none;
+}
+
+.expanded-detail-card {
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+}
+
+.detail-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-lighter);
+}
+
+.detail-card-heading strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-card-heading span {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+}
+
+.detail-card-grid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-right: 1px solid var(--el-border-color-extra-light);
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+}
+
+.detail-card-grid span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.detail-card-grid strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-card-grid .value-success {
+  color: var(--ivd-primary);
+}
+
+.detail-card-grid .value-danger {
+  color: var(--ivd-danger);
+}
+
+@media (max-width: 1200px) {
+  .expanded-detail-table {
+    display: none;
+  }
+
+  .expanded-detail-cards {
+    display: grid;
+    gap: 10px;
+  }
+}
+
+:global(.new-requisition-dialog) {
+  height: 94vh;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:global(.new-requisition-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+  margin-right: 0;
+  padding: 16px 22px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+:global(.new-requisition-dialog .el-dialog__title) {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+:global(.new-requisition-dialog .el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 22px 8px;
+}
+
+:global(.new-requisition-dialog .el-dialog__footer) {
+  flex: 0 0 auto;
+  padding: 10px 22px 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.new-req-form :deep(.el-form-item) {
+  margin-bottom: 10px;
+}
+
+.req-config-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) auto auto;
+  gap: 10px 20px;
+  align-items: start;
+}
+
+.single-add-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+}
+
+.req-list-divider {
+  margin: 14px 0 12px;
+}
+
+.new-req-table :deep(.el-table__cell) {
+  padding: 6px 0;
+}
+
+.req-remark-field {
+  margin-top: 10px;
+  margin-bottom: 0 !important;
+}
+
+.req-remark-field :deep(.el-textarea__inner) {
+  min-height: 36px !important;
+  line-height: 22px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+@media (max-width: 1100px) {
+  .req-config-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .req-dept-field {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .expanded-requisition-detail {
+    width: calc(100vw - 160px);
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  :global(.new-requisition-dialog) {
+    width: 98vw !important;
+  }
+
+  .req-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .req-dept-field {
+    grid-column: auto;
+  }
+
+  .single-add-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>
 

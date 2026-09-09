@@ -2,11 +2,10 @@
   RequisitionDetailDialog.vue — 申领明细弹窗（共用）
   被 RequisitionList (查看明细) 和 ShortageList (查看来源申领) 共用
 
-  重构：明细数据从独立的 /requisitions/{reqId}/items 接口获取，
-  直接查询 purchase_requisition_item 表，不与申领总表混合。
+  从 /requisitions/{reqId} 详情接口读取明细和科研项目名称快照。
 -->
 <template>
-  <el-dialog :model-value="modelValue" title="申领明细" width="1100px" align-center @update:model-value="$emit('update:modelValue', $event)">
+  <el-dialog :model-value="modelValue" title="申领明细" width="min(1100px, 94vw)" align-center @update:model-value="$emit('update:modelValue', $event)">
     <!-- 申领头信息（来自列表行数据） -->
     <el-descriptions :column="3" border size="small" style="margin-bottom:16px">
       <el-descriptions-item label="申领单号">{{ reqNo }}</el-descriptions-item>
@@ -14,9 +13,11 @@
       <el-descriptions-item label="状态">
         <el-tag size="small">{{ status }}</el-tag>
       </el-descriptions-item>
+      <el-descriptions-item label="科研项目" :span="3">{{ loading ? '加载中…' : error ? '读取失败' : detail?.researchProjectName || '无' }}</el-descriptions-item>
     </el-descriptions>
 
-    <!-- 明细表（独立查询 purchase_requisition_item） -->
+    <el-alert v-if="error" :title="error" type="error" :closable="false"><el-button link type="primary" @click="loadDetail">重试</el-button></el-alert>
+    <!-- 通过详情接口同时读取项目快照及明细，避免列表属性过期。 -->
     <el-table
       v-loading="loading"
       :data="items"
@@ -51,8 +52,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
-import { getRequisitionItems } from '@/api/procurement'
+import { ref, watch, onBeforeUnmount } from 'vue'
+import { getRequisitionDetail } from '@/api/procurement'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -66,18 +67,21 @@ defineEmits(['update:modelValue'])
 
 const items = ref([])
 const loading = ref(false)
+const detail = ref(null), error = ref('')
+let loadVersion = 0
 
-watch(() => props.modelValue, async (open) => {
-  if (open && props.reqId) {
-    loading.value = true
-    items.value = []
-    try {
-      items.value = await getRequisitionItems(props.reqId) || []
-    } catch (e) {
-      console.error('获取申领明细失败:', e)
-    } finally {
-      loading.value = false
-    }
-  }
+async function loadDetail() {
+  const current = ++loadVersion
+  loading.value = true; items.value = []; detail.value = null; error.value = ''
+  try {
+    const data = await getRequisitionDetail(props.reqId)
+    if (current === loadVersion) { detail.value = data; items.value = data.items || [] }
+  } catch (e) { if (current === loadVersion) error.value = e.message || '读取申领详情失败' }
+  finally { if (current === loadVersion) loading.value = false }
+}
+watch(() => [props.modelValue, props.reqId], ([open, id]) => {
+  if (open && id) loadDetail()
+  else { ++loadVersion; loading.value = false }
 })
+onBeforeUnmount(() => { ++loadVersion })
 </script>
