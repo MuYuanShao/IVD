@@ -1,0 +1,16 @@
+CREATE TABLE sys_user(id BIGINT PRIMARY KEY,dept_id BIGINT,role VARCHAR(40),status INT,is_deleted INT);
+CREATE TABLE warehouse(id BIGINT PRIMARY KEY,dept_id BIGINT,name VARCHAR(100));
+CREATE TABLE reagent_catalog(id BIGINT PRIMARY KEY,generic_name VARCHAR(100),manufacturer VARCHAR(100),his_code VARCHAR(40),specification VARCHAR(100),is_deleted INT);
+CREATE TABLE reagent_batch(id BIGINT PRIMARY KEY,reagent_id BIGINT,stock DECIMAL(10,2),unit VARCHAR(20),warehouse_id BIGINT,expiry_date DATE,udi_status VARCHAR(40),batch_no VARCHAR(40),location_code VARCHAR(40));
+CREATE TABLE consumption_record(id BIGINT PRIMARY KEY,record_type VARCHAR(20),warehouse_id BIGINT,from_warehouse_id BIGINT,amount DECIMAL(12,2),occurred_at TIMESTAMP);
+CREATE TABLE purchase_requisition(id BIGINT PRIMARY KEY,req_no VARCHAR(40),from_dept_id BIGINT,status VARCHAR(40),created_at TIMESTAMP);
+CREATE TABLE purchase_requisition_item(id BIGINT PRIMARY KEY,req_id BIGINT,qty_requested DECIMAL(10,2),qty_fulfilled DECIMAL(10,2),amount DECIMAL(12,2));
+CREATE TABLE shortage_order(id BIGINT PRIMARY KEY,from_dept_id BIGINT,status VARCHAR(40));
+INSERT INTO sys_user VALUES(1,NULL,'SYSTEM_ADMIN',1,0),(2,10,'LAB_TECH',1,0),(3,20,'LAB_TECH',1,0),(4,NULL,'LAB_TECH',1,0),(5,NULL,'SYSTEM_ADMIN',0,0),(6,30,'LAB_TECH',1,0);
+INSERT INTO warehouse VALUES(100,10,'检验科库'),(200,20,'急诊科库');
+INSERT INTO reagent_catalog VALUES(1,'试剂A','生产厂A','A001','1ml',0),(2,'物料B','生产厂B','B001','5ml',1);
+INSERT INTO reagent_batch VALUES(9007199254740993,1,1.25,'盒',100,'2026-09-07','IN_STOCK','LOT-A','A01'),(2,1,3,'盒',100,'2026-09-08','PENDING_UDI','LOT-B','A02'),(3,2,9,'支',200,'2026-10-01','IN_STOCK','LOT-C','B01'),(4,1,0,'盒',100,'2026-08-01','EXPIRED','LOT-D','A03');
+INSERT INTO consumption_record VALUES(1,'INBOUND',100,NULL,12.34,'2026-09-08 00:00:00'),(2,'CONSUME',100,NULL,3.21,'2026-09-08 12:00:00'),(3,'TRANSFER',200,100,5.25,'2026-09-08 13:00:00'),(4,'CONSUME',200,NULL,999,'2026-09-08 14:00:00'),(5,'INBOUND',100,NULL,NULL,'2026-09-07 10:00:00'),(6,'INBOUND',100,NULL,88,'2026-09-09 00:00:00');
+INSERT INTO purchase_requisition VALUES(1,'REQ-A',10,'PICKING','2026-09-01 00:00:00'),(2,'REQ-B',10,'FULFILLED','2026-09-01 01:00:00'),(3,'REQ-C',20,'PENDING_REVIEW','2026-09-01 02:00:00');
+INSERT INTO purchase_requisition_item VALUES(1,1,1,1,12.50),(2,1,20,0,32.50),(3,2,10,10,100),(4,3,1,0,NULL);
+INSERT INTO shortage_order VALUES(1,10,'PENDING_PROCUREMENT'),(2,20,'PURCHASING'),(3,10,'CLOSED');

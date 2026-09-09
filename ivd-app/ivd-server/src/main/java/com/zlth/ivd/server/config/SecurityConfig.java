@@ -1,6 +1,9 @@
 package com.zlth.ivd.server.config;
 
 import com.zlth.ivd.common.utils.JwtTokenProvider;
+import com.zlth.ivd.common.dto.Result;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpMethod;
@@ -35,6 +38,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -46,6 +50,12 @@ public class SecurityConfig {
             // 无状态会话
             .sessionManagement(session -> session
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // Missing/expired authentication is 401; authenticated access denial is 403.
+            .exceptionHandling(errors -> errors
+                    .authenticationEntryPoint((request, response, exception) ->
+                            writeSecurityError(response, HttpServletResponse.SC_UNAUTHORIZED, Result.unauthorized()))
+                    .accessDeniedHandler((request, response, exception) ->
+                            writeSecurityError(response, HttpServletResponse.SC_FORBIDDEN, Result.forbidden())))
             // 请求权限
             .authorizeHttpRequests(auth -> auth
                     // 公开接口
@@ -71,6 +81,13 @@ public class SecurityConfig {
                     UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private void writeSecurityError(HttpServletResponse response, int status, Result<?> body) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getOutputStream(), body);
     }
 
     /**

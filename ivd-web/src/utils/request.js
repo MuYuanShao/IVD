@@ -54,18 +54,19 @@ service.interceptors.response.use(
       return Promise.reject(new Error(message || '登录已过期，请重新登录'))
     }
     console.error('[Request] 业务错误:', code, message)
-    ElMessage.error(message || '请求失败')
+    if (!response.config.silentError) ElMessage.error(message || '请求失败')
     return Promise.reject(new Error(message))
   },
   error => {
+    if (error.code === 'ERR_CANCELED') return Promise.reject(error)
     console.error('[Request] HTTP错误:', error.response?.status, error.message)
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       console.warn('[Request] HTTP ' + error.response.status + '，清除 token 并重定向到登录页')
       localStorage.removeItem('ivd-token')
       window.location.href = '/login'
       return Promise.reject(error)
     }
-    ElMessage.error(error.message || '网络异常')
+    if (!error.config?.silentError) ElMessage.error(error.response?.data?.message || error.message || '网络异常')
     return Promise.reject(error)
   }
 )

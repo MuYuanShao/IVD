@@ -2,12 +2,15 @@
   <section class="scm-panel product-panel">
     <div class="scm-panel-heading">
       <h2>
-        {{ title }} <span class="scm-muted">共 {{ filtered.length }} 项</span>
+        {{ title }}
+        <span class="scm-muted">{{
+          error ? '数据未获取' : `共 ${displayTotal} 项`
+        }}</span>
       </h2>
       <div class="table-tools">
         <el-input
           v-model="query"
-          placeholder="搜索产品名称 / 注册证持有人"
+          :placeholder="`搜索产品名称 / ${holderLabel}`"
           clearable
           :prefix-icon="Search"
           aria-label="搜索商品"
@@ -17,11 +20,19 @@
         ></el-button>
       </div>
     </div>
+    <el-alert v-if="error" type="error" :title="error" :closable="false"
+      ><el-button link type="primary" @click="emit('retry')"
+        >重新加载批次</el-button
+      ></el-alert
+    >
     <el-table
+      v-loading="loading"
       :data="paged"
       row-key="id"
       style="width: 100%"
-      empty-text="未找到匹配的商品，请调整搜索条件"
+      :empty-text="
+        error ? '数据未获取，请重试' : '未找到匹配的商品，请调整搜索条件'
+      "
     >
       <el-table-column
         label="产品名称"
@@ -33,11 +44,13 @@
           ><el-button link type="primary" @click="selected = row">{{
             row.name
           }}</el-button
-          ><small class="product-code">{{ row.id }}</small></template
+          ><small class="product-code">{{
+            row.code || row.id
+          }}</small></template
         >
       </el-table-column>
       <el-table-column
-        label="注册证持有人"
+        :label="holderLabel"
         prop="holder"
         min-width="220"
         show-overflow-tooltip
@@ -64,15 +77,16 @@
     </el-table>
     <div class="table-footer">
       <span class="scm-muted"
-        >展示 {{ filtered.length ? (page - 1) * pageSize + 1 : 0 }}–{{
-          Math.min(page * pageSize, filtered.length)
+        >展示 {{ paged.length ? (page - 1) * pageSize + 1 : 0 }}–{{
+          paged.length ? Math.min(page * pageSize, displayTotal) : 0
         }}
         项</span
       >
       <el-pagination
         v-model:current-page="page"
         :page-size="pageSize"
-        :total="filtered.length"
+        :total="displayTotal"
+        :disabled="loading"
         layout="prev, pager, next"
         size="small"
         background
@@ -90,7 +104,7 @@
           v-for="[key, label] in detailFields"
           :key="key"
           :label="label"
-          >{{ selected[key] }}</el-descriptions-item
+          >{{ selected[key] ?? '未维护' }}</el-descriptions-item
         >
       </el-descriptions>
     </el-dialog>
@@ -104,15 +118,21 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   pageSize: { type: Number, default: 5 },
   showMore: { type: Boolean, default: false },
+  remote: { type: Boolean, default: false },
+  total: { type: Number, default: 0 },
+  currentPage: { type: Number, default: 1 },
+  loading: Boolean,
+  error: String,
+  holderLabel: { type: String, default: '注册证持有人' },
 })
-const emit = defineEmits(['more'])
+const emit = defineEmits(['more', 'search', 'page-change', 'retry'])
 const query = ref('')
 const page = ref(1)
 const selected = ref(null)
-const detailFields = [
-  ['id', '产品编号'],
+const detailFields = computed(() => [
+  ['id', props.remote ? '批次ID' : '产品编号'],
   ['name', '产品名称'],
-  ['holder', '注册证持有人'],
+  ['holder', props.holderLabel],
   ['specification', '规格型号'],
   ['expiry', '有效期'],
   ['batch', '批号'],
@@ -120,7 +140,10 @@ const detailFields = [
   ['unit', '单位'],
   ['department', '所属库房'],
   ['location', '库位'],
-]
+])
+const displayTotal = computed(() =>
+  props.remote ? props.total : filtered.value.length,
+)
 const filtered = computed(() =>
   props.items.filter((item) =>
     `${item.name} ${item.holder} ${item.id}`
@@ -129,13 +152,30 @@ const filtered = computed(() =>
   ),
 )
 const paged = computed(() =>
-  filtered.value.slice(
-    (page.value - 1) * props.pageSize,
-    page.value * props.pageSize,
-  ),
+  props.remote
+    ? props.items
+    : filtered.value.slice(
+        (page.value - 1) * props.pageSize,
+        page.value * props.pageSize,
+      ),
 )
-watch([query, () => props.items, () => props.pageSize], () => {
-  page.value = 1
+watch(query, (value) => {
+  selected.value = null
+  if (props.remote) emit('search', value)
+  else page.value = 1
+})
+watch(
+  () => props.currentPage,
+  (value) => {
+    page.value = value
+  },
+)
+watch(page, (value) => {
+  if (props.remote && value !== props.currentPage) emit('page-change', value)
+})
+watch([() => props.items, () => props.pageSize], () => {
+  selected.value = null
+  if (!props.remote) page.value = 1
 })
 </script>
 <style scoped>

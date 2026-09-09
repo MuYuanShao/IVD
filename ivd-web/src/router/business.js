@@ -42,7 +42,7 @@ export function withBusinessLayout(route) {
     ...(child.name === 'Dashboard'
       ? {
           component: () => import('@/views/workspace/DashboardView.vue'),
-          meta: { ...child.meta, title: '首页', mock: true },
+            meta: { ...child.meta, title: '首页', mock: false },
         }
       : {}),
   }))

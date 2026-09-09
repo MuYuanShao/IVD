@@ -9,6 +9,7 @@
     <description>Spring Boot 启动模块，聚合所有业务模块</description>
 
     <dependencies>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
         <!-- 聚合所有业务模块 -->
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-common</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-catalog</artifactId></dependency>

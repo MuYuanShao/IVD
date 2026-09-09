@@ -30,7 +30,7 @@ import {
 } from '@element-plus/icons-vue'
 const props = defineProps({
   title: String,
-  value: { type: Number, required: true },
+  value: { type: Number, default: null },
   precision: { type: Number, default: 0 },
   prefix: String,
   unit: String,
@@ -46,10 +46,12 @@ const icons = {
   outbound: Upload,
 }
 const formattedValue = computed(() =>
-  props.value.toLocaleString('zh-CN', {
-    minimumFractionDigits: props.precision,
-    maximumFractionDigits: props.precision,
-  }),
+  props.value == null
+    ? '—'
+    : props.value.toLocaleString('zh-CN', {
+        minimumFractionDigits: props.precision,
+        maximumFractionDigits: props.precision,
+      }),
 )
 </script>
 <style scoped>

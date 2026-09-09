@@ -1,5 +1,43 @@
 <template>
   <div class="workspace-dashboard">
+    <div v-if="!isDemo" class="scm-panel data-status" aria-live="polite">
+      <span v-if="data"
+        >{{ data.scope }} · {{ data.businessDate }} · {{ data.timezone }} ·
+        更新于 {{ data.generatedAt.replace('T', ' ') }}</span
+      >
+      <span v-else>{{ loading ? '正在读取业务台账' : '业务数据未获取' }}</span>
+      <el-button :loading="loading" @click="refresh">刷新数据</el-button>
+    </div>
+    <el-alert
+      v-if="error"
+      type="error"
+      :closable="false"
+      :title="error"
+      :description="
+        data
+          ? '本次读取失败，以下为上次成功结果，请刷新重试。'
+          : '业务数据未获取，不显示占位统计。'
+      "
+      show-icon
+    />
+    <el-alert
+      v-if="!isDemo && data"
+      type="info"
+      :closable="false"
+      title="统计口径：入库为外部验收入库，出库为内部调拨；消耗单独统计。不同商品单位不可相加，顶部数量按记录笔数展示。"
+    />
+    <el-alert
+      v-if="
+        !isDemo &&
+        data &&
+        (data.metrics.unpricedRecords ||
+          data.trend.some((row) => row.unpricedRecords))
+      "
+      type="warning"
+      :closable="false"
+      title="存在未记录金额的流水，相应金额显示为 —，请核对业务台账。"
+    />
+    <el-skeleton v-if="!isDemo && loading && !data" :rows="8" animated />
     <el-row :gutter="16" class="statistics-row">
       <el-col
         v-for="item in statistics"
@@ -10,12 +48,15 @@
         ><statistic-card v-bind="item" @select="navigate(item.path)"
       /></el-col>
     </el-row>
-    <el-row :gutter="16" class="dashboard-columns">
+    <el-row v-if="isDemo || data" :gutter="16" class="dashboard-columns">
       <el-col :xs="24" :sm="12" :md="7" class="dashboard-column">
         <section class="scm-panel">
           <div class="scm-panel-heading">
             <h2>
-              待办事项 <span class="todo-count">{{ todos.length }}</span>
+              待办事项
+              <span class="todo-count">{{
+                isDemo ? todos.length : data.todoTotal
+              }}</span>
             </h2>
             <el-button
               link
@@ -25,6 +66,9 @@
             ></el-button>
           </div>
           <todo-list :items="todos" @select="openTodo" />
+          <p v-if="!isDemo" class="scm-muted todo-explanation">
+            按创建时间展示最早6单；进度为已足量发货明细项占比。
+          </p>
         </section>
         <section class="scm-panel">
           <div class="scm-panel-heading">
@@ -33,7 +77,7 @@
           </div>
           <trend-chart
             title="近30天出入库金额"
-            summary="演示数据：近30天每日入库与出库金额的柱状对比，单位万元"
+            :summary="`${isDemo ? '演示数据' : '业务台账'}：近30天外部入库与调拨出库金额，单位万元`"
             :labels="trend.map((item) => item.date)"
             :series="allSeries"
             variant="bar"
@@ -90,7 +134,7 @@
           </div>
           <trend-chart
             title="出入库趋势"
-            :summary="`演示数据：近${store.range}天入库${inboundTotal}万元，出库${outboundTotal}万元`"
+            :summary="`${isDemo ? '演示数据' : '业务台账'}：近${store.range}天入库${inboundTotal}万元，出库${outboundTotal}万元`"
             :labels="visibleTrend.map((item) => item.date)"
             :series="visibleSeries"
             :height="240"
@@ -105,7 +149,10 @@
               <h2>你好，{{ displayUser.name }}</h2>
               <p>{{ displayUser.hospital }} · {{ displayUser.department }}</p>
             </div>
-            <span class="online-dot" title="演示用户" />
+            <span
+              class="online-dot"
+              :title="isDemo ? '演示用户' : '当前登录用户'"
+            />
           </div>
           <div class="user-role">
             <span>当前角色</span
@@ -150,9 +197,15 @@
         <section class="scm-panel">
           <div class="scm-panel-heading">
             <h2>系统公告</h2>
-            <span class="scm-muted">{{ notices.length }} 条通知</span>
+            <span class="scm-muted">{{
+              isDemo ? `${notices.length} 条通知` : '数据源未配置'
+            }}</span>
           </div>
-          <notice-list :items="notices" @select="openNotice" />
+          <notice-list v-if="isDemo" :items="notices" @select="openNotice" />
+          <el-empty v-else description="公告数据暂不可用" :image-size="60" />
+          <p v-if="!isDemo" class="scm-muted todo-explanation">
+            公告发布模块尚未配置，无已发布公告数据源。
+          </p>
         </section>
         <section class="care-banner">
           <div>
@@ -165,7 +218,18 @@
       </el-col>
     </el-row>
     <product-table
+      v-if="isDemo || productData || productError"
       :items="products"
+      :title="isDemo ? '进销存商品列表' : '在库批次列表'"
+      :holder-label="isDemo ? '注册证持有人' : '生产厂家'"
+      :remote="!isDemo"
+      :total="productData?.total || 0"
+      :current-page="page"
+      :loading="productLoading"
+      :error="productError"
+      @search="search"
+      @page-change="changePage"
+      @retry="loadProducts"
       show-more
       @more="navigate('/workspace/central/query')"
     />
@@ -216,43 +280,56 @@ import TodoList from '@/components/business/TodoList.vue'
 import NoticeList from '@/components/business/NoticeList.vue'
 import TrendChart from '@/components/business/TrendChart.vue'
 import ProductTable from '@/components/business/ProductTable.vue'
-import {
-  statistics,
-  alerts,
-  todos,
-  notices,
-  products,
-  trend,
-} from '@/mock/workspace'
+import { useWorkbenchData } from '@/composables/useWorkbenchData'
+import { sumAmount } from '@/utils/workbenchContract.mjs'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkspaceNavigation } from '@/composables/useWorkspaceNavigation'
 import { businessDestinations } from '@/router/business'
 const router = useRouter()
 const store = useWorkspaceStore()
 const { isDemo } = useWorkspaceNavigation()
+const {
+  data,
+  productData,
+  loading,
+  productLoading,
+  error,
+  productError,
+  page,
+  statistics,
+  alerts,
+  todos,
+  notices,
+  products,
+  trend,
+  refresh,
+  loadProducts,
+  search,
+  changePage,
+} = useWorkbenchData(isDemo)
 const displayUser = inject(
   'workspaceUser',
   computed(() => store.user),
 )
 function navigate(path) {
-  router.push(isDemo.value ? path : businessDestinations[path] || '/dashboard')
+  router.push(isDemo.value ? path : businessDestinations[path] || path)
 }
 const editingFunctions = ref(false)
 const chosenFunctions = computed(() =>
   store.functions.filter((item) => store.selectedFunctions.includes(item.path)),
 )
-const visibleTrend = computed(() => trend.slice(-store.range))
+const visibleTrend = computed(() => trend.value.slice(-store.range))
 const toSeries = (rows) => [
   { name: '入库金额', data: rows.map((item) => item.inbound) },
   { name: '出库金额', data: rows.map((item) => item.outbound) },
 ]
-const allSeries = toSeries(trend)
+const allSeries = computed(() => toSeries(trend.value))
 const visibleSeries = computed(() => toSeries(visibleTrend.value))
-const inboundTotal = computed(() =>
-  visibleTrend.value.reduce((sum, item) => sum + item.inbound, 0).toFixed(2),
+const inboundTotal = computed(
+  () => sumAmount(visibleTrend.value, 'inbound')?.toFixed(2) ?? '—',
 )
-const outboundTotal = computed(() =>
-  visibleTrend.value.reduce((sum, item) => sum + item.outbound, 0).toFixed(2),
+const outboundTotal = computed(
+  () => sumAmount(visibleTrend.value, 'outbound')?.toFixed(2) ?? '—',
 )
 const detailOpen = ref(false)
 const detailTitle = ref('')
@@ -272,9 +349,28 @@ function openNotice(item) {
 }
 </script>
 <style scoped>
+.data-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.workspace-dashboard > .el-alert {
+  margin-bottom: 12px;
+}
+.todo-explanation {
+  padding: 8px 16px 14px;
+}
 .statistics-row {
+  align-items: stretch;
   row-gap: 16px;
   margin-bottom: 18px;
+}
+.statistics-row :deep(.statistic-card) {
+  height: 100%;
 }
 .dashboard-columns {
   margin-bottom: 18px;
