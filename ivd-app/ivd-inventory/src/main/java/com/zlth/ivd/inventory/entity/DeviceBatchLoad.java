@@ -11,7 +11,10 @@ public class DeviceBatchLoad {
     private Long id;
     private Long deviceId;
     private Long batchId;
-    private LocalDateTime loadedAt;
-    private LocalDateTime unloadedAt;
+    private String batchNo;
+    private Long reagentId;
+    private Integer operatorId;
+    @TableField("load_time") private LocalDateTime loadedAt;
+    @TableField("unload_time") private LocalDateTime unloadedAt;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
 }

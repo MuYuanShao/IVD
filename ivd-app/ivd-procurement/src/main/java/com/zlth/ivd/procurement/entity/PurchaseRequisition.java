@@ -23,6 +23,7 @@ public class PurchaseRequisition {
     private LocalDateTime reviewTime;
     private String reviewComment;
     private String remark;
+    private LocalDateTime receivedAt;
     private Long researchProjectId;
     private String researchProjectName;
 

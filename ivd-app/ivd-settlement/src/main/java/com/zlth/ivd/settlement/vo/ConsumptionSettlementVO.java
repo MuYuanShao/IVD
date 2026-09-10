@@ -9,6 +9,10 @@ import java.time.LocalDateTime;
  */
 @Data
 public class ConsumptionSettlementVO {
+    private Long consumptionRecordId;
+    private String batchNo;
+    private String unit;
+    private String settlementStatus;
     private String settlementNo;            // 结算单号
     private Long settlementId;              // 结算ID
     private String deptName;                 // 结算科室

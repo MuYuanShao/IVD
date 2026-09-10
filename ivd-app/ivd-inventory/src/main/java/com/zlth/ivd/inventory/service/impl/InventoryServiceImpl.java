@@ -8,6 +8,7 @@ import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.enums.UdiStatusEnum;
 import com.zlth.ivd.common.exception.BizException;
+import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.inventory.entity.*;
 import com.zlth.ivd.inventory.vo.ReagentBatchVO;
 import com.zlth.ivd.inventory.mapper.*;
@@ -15,6 +16,7 @@ import com.zlth.ivd.inventory.service.InventoryService;
 import com.zlth.ivd.udi.mapper.UdiUniqueCodeMapper;
 import com.zlth.ivd.udi.entity.UdiUniqueCode;
 import com.zlth.ivd.udi.service.UniqueCodeService;
+import com.zlth.ivd.udi.service.UdiStateMachine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +44,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final ReagentCatalogMapper catalogMapper;
     private final UdiUniqueCodeMapper uniqueCodeMapper;
     private final UniqueCodeService uniqueCodeService;
+    private final UdiStateMachine udiStateMachine;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -338,9 +341,20 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
-    public void transferBatch(Long batchId, Long targetWarehouseId, BigDecimal qty, String urgency) {
+    public void transferBatch(Long batchId, Long targetWarehouseId, BigDecimal qty, String urgency, String reason) {
+        if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BizException(40001, "调拨数量必须大于 0");
+        }
+        Warehouse targetWarehouse = warehouseMapper.selectById(targetWarehouseId);
+        if (targetWarehouse == null || !Objects.equals(targetWarehouse.getStatus(), 1)) {
+            throw new BizException(40400, "目标仓库不存在或已停用");
+        }
+
         // 1. 扣减源仓库库存（乐观锁重试）
         ReagentBatch sourceBatch = deductSourceBatchStock(batchId, qty);
+        if (Objects.equals(sourceBatch.getWarehouseId(), targetWarehouseId)) {
+            throw new BizException(40001, "源仓库与目标仓库不能相同");
+        }
 
         // 2. 目标仓库：查找同批次号已有记录并累加，否则新建（乐观锁重试）
         Long targetBatchId = upsertTargetBatch(sourceBatch, targetWarehouseId, qty);
@@ -348,8 +362,8 @@ public class InventoryServiceImpl implements InventoryService {
         // 3. 写入 TRANSFER consumption_record 审计追踪（使用 JdbcTemplate 避免模块循环依赖）
         Long recordId = IdGenerator.nextId();
         jdbcTemplate.update(
-            "INSERT INTO consumption_record (id, record_type, batch_no, reagent_id, material_type, quantity, unit, unit_price, amount, warehouse_id, from_warehouse_id, operator_id, occurred_at, created_at) " +
-            "VALUES (?, 'TRANSFER', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))",
+            "INSERT INTO consumption_record (id, record_type, batch_no, reagent_id, material_type, quantity, unit, unit_price, amount, warehouse_id, from_warehouse_id, operator_id, remark, occurred_at, created_at) " +
+            "VALUES (?, 'TRANSFER', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))",
             recordId,
             sourceBatch.getBatchNo(),
             sourceBatch.getReagentId(),
@@ -360,7 +374,8 @@ public class InventoryServiceImpl implements InventoryService {
             sourceBatch.getUnitPrice() != null ? sourceBatch.getUnitPrice().multiply(qty) : null,
             targetWarehouseId,
             sourceBatch.getWarehouseId(),
-            0  // operatorId=0 表示系统调拨
+            SecurityUtils.getCurrentUserId(),
+            reason
         );
 
         // 4. 唯一码全流程流转：将调拨的唯一码关联到目标批次
@@ -369,7 +384,7 @@ public class InventoryServiceImpl implements InventoryService {
             uniqueCodeService.transferUniqueCodes(batchId, targetBatchId, codeCount);
         }
 
-        log.info("批次调拨: sourceBatchId={}, targetWarehouseId={}, qty={}, urgency={}, auditId={}", batchId, targetWarehouseId, qty, urgency, recordId);
+        log.info("批次调拨: sourceBatchId={}, targetWarehouseId={}, qty={}, urgency={}, reason={}, auditId={}", batchId, targetWarehouseId, qty, urgency, reason, recordId);
     }
 
     /**
@@ -380,15 +395,21 @@ public class InventoryServiceImpl implements InventoryService {
         for (int i = 0; i < maxRetries; i++) {
             ReagentBatch sourceBatch = batchMapper.selectById(batchId);
             if (sourceBatch == null) throw new BizException(40400, "批次不存在");
+            if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK) {
+                throw new BizException(40001, "仅在库批次允许调拨");
+            }
             if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
 
             sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
-            if (sourceBatch.getStock().compareTo(BigDecimal.ZERO) <= 0) {
-                sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
-            }
+            boolean depleted = sourceBatch.getStock().compareTo(BigDecimal.ZERO) <= 0;
 
             int updated = batchMapper.updateById(sourceBatch);
             if (updated > 0) {
+                if (depleted) {
+                    udiStateMachine.transition(sourceBatch.getId(), sourceBatch.getBatchNo(),
+                            UdiStatusEnum.IN_STOCK, UdiStatusEnum.TRANSFERRED, currentOperator());
+                    sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
+                }
                 return sourceBatch;
             }
             if (i == maxRetries - 1) {
@@ -411,9 +432,15 @@ public class InventoryServiceImpl implements InventoryService {
             ReagentBatch targetBatch = batchMapper.selectOne(targetQw);
 
             if (targetBatch != null) {
+                UdiStatusEnum previousStatus = targetBatch.getUdiStatus();
                 targetBatch.setStock(targetBatch.getStock().add(qty));
                 int updated = batchMapper.updateById(targetBatch);
                 if (updated > 0) {
+                    if (previousStatus != UdiStatusEnum.IN_STOCK) {
+                        udiStateMachine.transition(targetBatch.getId(), targetBatch.getBatchNo(),
+                                previousStatus, UdiStatusEnum.IN_STOCK, currentOperator());
+                        targetBatch.setUdiStatus(UdiStatusEnum.IN_STOCK);
+                    }
                     return targetBatch.getId();
                 }
                 if (i == maxRetries - 1) {
@@ -434,44 +461,27 @@ public class InventoryServiceImpl implements InventoryService {
                 newBatch.setUnit(sourceBatch.getUnit());
                 newBatch.setUnitPrice(sourceBatch.getUnitPrice());
                 newBatch.setAvgCost(sourceBatch.getAvgCost());
-                newBatch.setUdiStatus(UdiStatusEnum.IN_STOCK);
+                newBatch.setUdiStatus(UdiStatusEnum.RECEIVED);
                 newBatch.setWarehouseId(targetWarehouseId);
                 newBatch.setLocationCode(sourceBatch.getLocationCode());
                 batchMapper.insert(newBatch);
+                udiStateMachine.transition(newBatch.getId(), newBatch.getBatchNo(),
+                        UdiStatusEnum.RECEIVED, UdiStatusEnum.IN_STOCK, currentOperator());
+                newBatch.setUdiStatus(UdiStatusEnum.IN_STOCK);
                 return newBatch.getId(); // INSERT 无乐观锁冲突，直接返回
             }
         }
         throw new BizException(50000, "调拨入库失败：超过最大重试次数");
     }
 
+    private String currentOperator() {
+        Long userId = SecurityUtils.getCurrentUserIdOrNull();
+        return userId != null ? userId.toString() : SecurityUtils.getCurrentUsername();
+    }
+
     @Override
     public Map<String, Object> traceUdi(String udiDi, String lotNo) {
-        LambdaQueryWrapper<ReagentBatch> qw = new LambdaQueryWrapper<>();
-        qw.eq(ReagentBatch::getUdiDi, udiDi);
-        if (lotNo != null) qw.eq(ReagentBatch::getBatchNo, lotNo);
-        qw.last("LIMIT 1");
-        ReagentBatch batch = batchMapper.selectOne(qw);
-        if (batch == null) throw new BizException(40400, "未找到该 UDI 的批次信息");
-        Map<String, Object> trace = new LinkedHashMap<>();
-        trace.put("batchId", batch.getId());
-        trace.put("batchNo", batch.getBatchNo());
-        trace.put("udiDi", batch.getUdiDi());
-        trace.put("reagentId", batch.getReagentId());
-        trace.put("status", batch.getUdiStatus().name());
-        trace.put("statusLabel", batch.getUdiStatus().getLabel());
-        trace.put("stock", batch.getStock());
-        trace.put("expiryDate", batch.getExpiryDate());
-        trace.put("warehouseId", batch.getWarehouseId());
-        // Timeline: purchase → inbound → central warehouse → dept → consumption
-        List<Map<String, String>> timeline = new ArrayList<>();
-        timeline.add(Map.of("node", "采购订单", "status", "completed"));
-        timeline.add(Map.of("node", "扫码验收", "status", "completed"));
-        timeline.add(Map.of("node", "一级库入库", "status", "completed"));
-        timeline.add(Map.of("node", "调拨至科室", "status", batch.getUdiStatus().ordinal() >= UdiStatusEnum.TRANSFERRED.ordinal() ? "completed" : "pending"));
-        timeline.add(Map.of("node", "扫码上机", "status", batch.getUdiStatus().ordinal() >= UdiStatusEnum.IN_USE.ordinal() ? "completed" : "pending"));
-        timeline.add(Map.of("node", "消耗核销", "status", batch.getUdiStatus() == UdiStatusEnum.CONSUMED ? "completed" : "pending"));
-        trace.put("timeline", timeline);
-        return trace;
+        return new TraceQueryService(jdbcTemplate).trace(udiDi,lotNo);
     }
 
     @Override

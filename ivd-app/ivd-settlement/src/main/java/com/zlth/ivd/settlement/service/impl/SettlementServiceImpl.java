@@ -7,6 +7,7 @@ import com.zlth.ivd.common.enums.RequisitionStatusEnum;
 import com.zlth.ivd.common.enums.SettlementStatusEnum;
 import com.zlth.ivd.common.enums.SettlementTypeEnum;
 import com.zlth.ivd.common.exception.BizException;
+import com.zlth.ivd.common.exception.DuplicateSettlementException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.common.enums.ConsumptionRecordTypeEnum;
 import com.zlth.ivd.consumption.entity.ConsumptionRecord;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.zlth.ivd.common.utils.IdGenerator;
 import com.zlth.ivd.settlement.vo.ConsumptionSettlementVO;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -106,41 +108,41 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public void settleRequisition(Long requisitionId) {
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
-
-        // 从 ivd-procurement 读取真实申领数据
+        if (jdbcTemplate.queryForList("SELECT id FROM purchase_requisition WHERE id=? FOR UPDATE", requisitionId).isEmpty())
+            throw new BizException(40400, "申领单不存在");
         PurchaseRequisition req = reqMapper.selectById(requisitionId);
-        if (req == null) throw new BizException(40400, "申领单不存在");
-
-        List<PurchaseRequisitionItem> items = reqItemMapper.selectList(
-                new LambdaQueryWrapper<PurchaseRequisitionItem>()
-                        .eq(PurchaseRequisitionItem::getReqId, requisitionId)
-                        .gt(PurchaseRequisitionItem::getQtyFulfilled, BigDecimal.ZERO));
-
-        if (items == null || items.isEmpty()) {
-            throw new BizException(40000, "申领单元已发货明细，无法结算");
-        }
-
-        for (PurchaseRequisitionItem item : items) {
-            String no = generateSettlementNo("REQ");
+        if (req.getStatus() != RequisitionStatusEnum.FULFILLED)
+            throw new BizException(40001, "请先完成科室签收后结算");
+        Long legacy = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=? AND source_item_kind='LEGACY'", Long.class, requisitionId);
+        if (legacy != null && legacy > 0) throw new DuplicateSettlementException(req.getReqNo());
+        List<Map<String,Object>> movements = jdbcTemplate.queryForList(
+                "SELECT cr.* FROM consumption_record cr JOIN purchase_requisition_item i ON i.id=cr.requisition_item_id AND i.req_id=cr.requisition_id AND i.reagent_id=cr.reagent_id WHERE cr.requisition_id=? AND cr.record_type='TRANSFER' ORDER BY cr.id", requisitionId);
+        if (movements.isEmpty()) throw new BizException(40001,"未找到带明细关联的实际发货流水，历史单据请先核对来源");
+        int added = 0;
+        for (Map<String,Object> move : movements) {
+            Long movementId = ((Number)move.get("id")).longValue();
+            Long existing = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=? AND source_item_kind='TRANSFER_RECORD' AND source_item_id=?",Long.class,requisitionId,movementId);
+            if (existing != null && existing > 0) continue;
+            BigDecimal qty = (BigDecimal)move.get("quantity"), price = (BigDecimal)move.get("unit_price"), amount = (BigDecimal)move.get("amount");
+            if (qty == null || qty.signum() <= 0 || price == null || amount == null || move.get("batch_no")==null)
+                throw new BizException(40001,"发货流水数量、金额或批号不完整，不能生成结算");
             SettlementRecord record = new SettlementRecord();
-            record.setSettlementNo(no);
-            record.setSettlementType(SettlementTypeEnum.REQUISITION.getCode());
+            record.setSettlementNo(generateSettlementNo("REQ"));
+            record.setSettlementType("REQUISITION");
             record.setSourceId(requisitionId);
+            record.setSourceItemKind("TRANSFER_RECORD");
+            record.setSourceItemId(movementId);
             record.setSourceNo(req.getReqNo());
-            record.setBatchNo("BATCH-" + req.getReqNo());
-            record.setReagentId(item.getReagentId().longValue());
-            record.setQuantity(item.getQtyFulfilled());
-            record.setUnitPrice(item.getUnitPrice());
-            record.setAmount(item.getQtyFulfilled() != null && item.getUnitPrice() != null
-                    ? item.getQtyFulfilled().multiply(item.getUnitPrice()) : BigDecimal.ZERO);
+            record.setBatchNo(move.get("batch_no").toString());
+            record.setReagentId(((Number)move.get("reagent_id")).longValue());
+            record.setQuantity(qty); record.setUnitPrice(price); record.setAmount(amount);
             record.setStatus("ACTIVE");
-            record.setFromDeptId(req.getFromDeptId() != null ? req.getFromDeptId().intValue() : null);
-            record.setSettledBy(operatorId);
+            record.setFromDeptId(req.getFromDeptId() == null ? null : req.getFromDeptId().intValue());
+            record.setSettledBy(SecurityUtils.getCurrentUserId().intValue());
             record.setSettledAt(LocalDateTime.now());
-            recordMapper.insert(record);
+            insertSettlement(record, req.getReqNo()); added++;
         }
-        log.info("申领结算完成: requisitionId={}, itemCount={}", requisitionId, items.size());
+        if (added == 0) throw new DuplicateSettlementException(req.getReqNo());
     }
 
     @Override
@@ -151,12 +153,16 @@ public class SettlementServiceImpl implements SettlementService {
         if (!ConsumptionRecordTypeEnum.TRANSFER.getCode().equals(source.getRecordType())) {
             throw new BizException(40000, "该记录不是调拨类型");
         }
+        if (settlementExists(SettlementTypeEnum.TRANSFER.getCode(), transferRecordId, transferRecordId)) {
+            throw new BizException(40900, "该调拨记录已结算");
+        }
 
         String no = generateSettlementNo("TRF");
         SettlementRecord record = new SettlementRecord();
         record.setSettlementNo(no);
         record.setSettlementType(SettlementTypeEnum.TRANSFER.getCode());
         record.setSourceId(transferRecordId);
+        record.setSourceItemId(transferRecordId);
         record.setSourceNo("TRF-" + source.getId());
         record.setBatchNo(source.getBatchNo());
         record.setReagentId(source.getReagentId());
@@ -166,7 +172,7 @@ public class SettlementServiceImpl implements SettlementService {
         record.setStatus("ACTIVE");
         record.setSettledBy(operatorId);
         record.setSettledAt(LocalDateTime.now());
-        recordMapper.insert(record);
+        insertSettlement(record, record.getSourceNo());
         log.info("调拨结算: no={}, transferRecordId={}", no, transferRecordId);
     }
 
@@ -176,7 +182,13 @@ public class SettlementServiceImpl implements SettlementService {
         // 从消耗记录读取真实数据
         ConsumptionRecord source = consumptionRecordMapper.selectById(consumptionRecordId);
         if (source == null) {
-            log.warn("消耗记录不存在: consumptionRecordId={}，使用占位数据", consumptionRecordId);
+            throw new BizException(40400, "消耗记录不存在");
+        }
+        if (!ConsumptionRecordTypeEnum.CONSUME.getCode().equals(source.getRecordType())) {
+            throw new BizException(40001, "该记录不是消耗类型");
+        }
+        if (settlementExists(SettlementTypeEnum.CONSUMPTION.getCode(), consumptionRecordId, consumptionRecordId)) {
+            throw new BizException(40900, "该消耗记录已结算");
         }
 
         String no = generateSettlementNo("CNS");
@@ -184,16 +196,17 @@ public class SettlementServiceImpl implements SettlementService {
         record.setSettlementNo(no);
         record.setSettlementType(SettlementTypeEnum.CONSUMPTION.getCode());
         record.setSourceId(consumptionRecordId);
-        record.setSourceNo(source != null ? "CNS-" + source.getId() : null);
-        record.setBatchNo(source != null ? source.getBatchNo() : null);
-        record.setReagentId(source != null ? source.getReagentId() : null);
-        record.setQuantity(source != null ? source.getQuantity() : BigDecimal.ONE);
-        record.setUnitPrice(source != null ? source.getUnitPrice() : null);
-        record.setAmount(source != null ? source.getAmount() : BigDecimal.ZERO);
+        record.setSourceItemId(consumptionRecordId);
+        record.setSourceNo("CNS-" + source.getId());
+        record.setBatchNo(source.getBatchNo());
+        record.setReagentId(source.getReagentId());
+        record.setQuantity(source.getQuantity());
+        record.setUnitPrice(source.getUnitPrice());
+        record.setAmount(source.getAmount());
         record.setStatus("ACTIVE");
         record.setSettledBy(operatorId);
         record.setSettledAt(LocalDateTime.now());
-        recordMapper.insert(record);
+        insertSettlement(record, record.getSourceNo());
         log.info("消耗结算: no={}, consumptionRecordId={}, amount={}", no, consumptionRecordId, record.getAmount());
     }
 
@@ -226,12 +239,31 @@ public class SettlementServiceImpl implements SettlementService {
         return "STL-" + prefix + "-" + IdGenerator.nextIdStr();
     }
 
+    private boolean settlementExists(String type, Long sourceId, Long sourceItemId) {
+        return recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>()
+                .eq(SettlementRecord::getSettlementType, type)
+                .eq(SettlementRecord::getSourceId, sourceId)
+                .eq(SettlementRecord::getSourceItemId, sourceItemId)) > 0;
+    }
+
+    private void insertSettlement(SettlementRecord record, String sourceNo) {
+        try {
+            recordMapper.insert(record);
+        } catch (DuplicateKeyException e) {
+            throw new BizException(40900, "来源单据已结算: " + sourceNo);
+        }
+    }
+
     // ── 消耗结算明细（消耗数据全量字段 JOIN）──
 
     private static final String CONSUMPTION_DETAIL_SQL = """
             SELECT
-                CONCAT('STL-CNS-', cr.id) AS settlement_no,
-                cr.id AS settlement_id,
+                sr.settlement_no,
+                sr.id AS settlement_id,
+                cr.id AS consumption_record_id,
+                cr.batch_no,
+                COALESCE(cr.unit,rc.unit) AS unit,
+                COALESCE(sr.status,'UNSETTLED') AS settlement_status,
                 d.dept_name,
                 COALESCE(w.name, rb_wh.name) AS warehouse_name,
                 rc.generic_name AS reagent_name,
@@ -256,9 +288,8 @@ public class SettlementServiceImpl implements SettlementService {
             FROM consumption_record cr
             LEFT JOIN reagent_catalog rc ON cr.reagent_id = rc.id AND rc.is_deleted = 0
             LEFT JOIN device dev ON cr.device_id = dev.id
-            LEFT JOIN reagent_batch rb ON rb.batch_no = cr.batch_no
-                AND rb.reagent_id = cr.reagent_id
-                AND (cr.warehouse_id IS NULL OR rb.warehouse_id = cr.warehouse_id)
+            LEFT JOIN settlement_record sr ON sr.id=(SELECT s.id FROM settlement_record s WHERE s.settlement_type='CONSUMPTION' AND s.source_id=cr.id ORDER BY s.settled_at DESC,s.id DESC LIMIT 1)
+            LEFT JOIN reagent_batch rb ON rb.id=COALESCE(cr.batch_id,(SELECT MIN(b.id) FROM reagent_batch b WHERE b.batch_no=cr.batch_no AND b.reagent_id=cr.reagent_id AND b.warehouse_id=cr.warehouse_id))
             LEFT JOIN warehouse w ON cr.warehouse_id = w.id
             LEFT JOIN warehouse rb_wh ON rb.warehouse_id = rb_wh.id
             LEFT JOIN sys_user u ON cr.operator_id = u.id
@@ -298,7 +329,11 @@ public class SettlementServiceImpl implements SettlementService {
         jdbcTemplate.query(sql.toString(), rs -> {
             ConsumptionSettlementVO vo = new ConsumptionSettlementVO();
             vo.setSettlementNo(rs.getString("settlement_no"));
-            vo.setSettlementId(rs.getLong("settlement_id"));
+            vo.setSettlementId(rs.getObject("settlement_id",Long.class));
+            vo.setConsumptionRecordId(rs.getLong("consumption_record_id"));
+            vo.setBatchNo(rs.getString("batch_no"));
+            vo.setUnit(rs.getString("unit"));
+            vo.setSettlementStatus(rs.getString("settlement_status"));
             vo.setDeptName(rs.getString("dept_name"));
             vo.setWarehouseName(rs.getString("warehouse_name"));
             vo.setReagentName(rs.getString("reagent_name"));

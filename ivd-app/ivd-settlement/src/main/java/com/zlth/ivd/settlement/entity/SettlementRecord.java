@@ -13,6 +13,8 @@ public class SettlementRecord {
     private String settlementNo;        // STL-YYYYMMDD-NNNN
     private String settlementType;      // REQUISITION / CONSUMPTION
     private Long sourceId;
+    private Long sourceItemId;
+    private String sourceItemKind;
     private String sourceNo;
     private String batchNo;
     private Long reagentId;

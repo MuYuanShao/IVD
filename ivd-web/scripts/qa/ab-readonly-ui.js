@@ -1,0 +1,28 @@
+// Read-only browser corroboration of an already executed AB run. No business write requests.
+async (page) => {
+  await page.setViewportSize({width:1440,height:1000})
+  await page.goto('http://127.0.0.1:5173/consumption')
+  await page.getByText('AB-20260909-2145-A',{exact:true}).waitFor()
+  const consumeRow=await page.getByRole('row').filter({hasText:'AB-20260909-2145-A'}).innerText()
+  const fakeDevice=await page.getByText('全自动生化分析仪 BS-800',{exact:true}).isVisible()
+  await page.screenshot({path:'output/ab-flow/AB-20260909-2145/consumption-ui.png',fullPage:true,animations:'disabled'})
+  await page.goto('http://127.0.0.1:5173/trace')
+  const field=page.getByPlaceholder('输入 UDI-DI 或批号，回车查询')
+  await field.fill('AB-20260909-2145-A')
+  const failedTrace=page.waitForResponse(r=>r.url().includes('/api/v1/inventory/trace?'))
+  await page.getByRole('button',{name:'追溯查询',exact:true}).click()
+  const byBatch=await (await failedTrace).json()
+  await page.screenshot({path:'output/ab-flow/AB-20260909-2145/trace-by-batch.png',fullPage:true,animations:'disabled'})
+  await field.fill('07613339001234')
+  const traceResponse=page.waitForResponse(r=>r.url().includes('/api/v1/inventory/trace?'))
+  await page.getByRole('button',{name:'追溯查询',exact:true}).click()
+  const byUdi=await (await traceResponse).json()
+  await page.waitForTimeout(400)
+  await page.screenshot({path:'output/ab-flow/AB-20260909-2145/trace-by-udi.png',fullPage:true,animations:'disabled'})
+  await page.goto('http://127.0.0.1:5173/requisition')
+  await page.getByPlaceholder('搜索申领单号/科室/试剂名称').fill('REQ-20260909-812')
+  await page.getByText('REQ-20260909-812',{exact:true}).waitFor()
+  await page.waitForTimeout(500)
+  await page.screenshot({path:'output/ab-flow/AB-20260909-2145/requisition-ui.png',fullPage:true,animations:'disabled'})
+  return {consumeRow,hardcodedDeviceVisible:fakeDevice,byBatch,byUdi}
+}

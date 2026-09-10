@@ -434,7 +434,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             //    待科室签收（receiveRequisition）时才真正增加二级库库存
 
             // 3. 写入 TRANSFER consumption_record 审计追踪
-            writeTransferRecord(sourceBatch, pickQty, targetWarehouseId, requisitionId);
+            writeTransferRecord(sourceBatch, pickQty, targetWarehouseId, requisitionId,reqItem.getId());
 
             // 4. 更新申领明细 fulfillment
             reqItem.setQtyFulfilled(alreadyFulfilled.add(pickQty));
@@ -511,6 +511,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         }
 
         req.setStatus(RequisitionStatusEnum.FULFILLED);
+        req.setReceivedAt(LocalDateTime.now());
         req.setUpdatedAt(LocalDateTime.now());
         reqMapper.updateById(req);
         log.info("科室签收完成: reqId={}, reqNo={}", id, req.getReqNo());
@@ -586,11 +587,13 @@ public class ProcurementServiceImpl implements ProcurementService {
     /**
      * 写入 TRANSFER consumption_record 审计追踪
      */
-    private void writeTransferRecord(ReagentBatch sourceBatch, BigDecimal qty, Long targetWarehouseId, Long requisitionId) {
+    private void writeTransferRecord(ReagentBatch sourceBatch, BigDecimal qty, Long targetWarehouseId, Long requisitionId,Long requisitionItemId) {
         ConsumptionRecord record = new ConsumptionRecord();
         record.setId(IdGenerator.nextId());
         record.setRecordType(ConsumptionRecordTypeEnum.TRANSFER.getCode());
         record.setBatchNo(sourceBatch.getBatchNo());
+        record.setBatchId(sourceBatch.getId());
+        record.setRequisitionItemId(requisitionItemId);
         record.setReagentId(sourceBatch.getReagentId());
         record.setMaterialType(sourceBatch.getMaterialType() != null ? sourceBatch.getMaterialType().name() : "REAGENT");
         record.setQuantity(qty);
@@ -1150,6 +1153,8 @@ public class ProcurementServiceImpl implements ProcurementService {
         // BUGFIX 10: 先取出订单明细并校验归属
         PurchaseOrderItem item = orderItemMapper.selectById(request.getItemId());
         if (item == null) throw new BizException(40400, "采购订单明细不存在");
+        ReagentCatalog receivedCatalog=catalogService.findById(item.getReagentId());
+        if(receivedCatalog==null) throw new BizException(40400,"试剂目录不存在");
         if (request.getOrderId() != null && !request.getOrderId().equals(item.getPoId())) {
             throw new BizException(40000, "订单明细不属于该采购订单");
         }
@@ -1206,7 +1211,8 @@ public class ProcurementServiceImpl implements ProcurementService {
                     batch.setId(IdGenerator.nextId());
                     batch.setBatchNo(request.getBatchNo());
                     batch.setReagentId(item.getReagentId().longValue());
-                    batch.setMaterialType(MaterialTypeEnum.REAGENT);
+                    batch.setMaterialType(receivedCatalog.getMaterialType());
+                    batch.setUnit(receivedCatalog.getUnit());
                     batch.setUdiDi(request.getUdiDi());
                     batch.setManufactureDate(request.getProductionDate());
                     batch.setExpiryDate(request.getExpiryDate());
@@ -1228,6 +1234,9 @@ public class ProcurementServiceImpl implements ProcurementService {
             cr.setId(IdGenerator.nextId());
             cr.setRecordType(ConsumptionRecordTypeEnum.INBOUND.getCode());
             cr.setBatchNo(request.getBatchNo());
+            cr.setBatchId(savedBatchId);
+            cr.setPurchaseOrderItemId(item.getId());
+            cr.setUnit(receivedCatalog.getUnit());
             cr.setReagentId(item.getReagentId().longValue());
             cr.setMaterialType("REAGENT");
             cr.setQuantity(qty);

@@ -12,6 +12,9 @@ public class ConsumptionRecord {
     private Long id;
     private String recordType;          // INBOUND / CONSUME
     private String batchNo;
+    private Long batchId;
+    private Long purchaseOrderItemId;
+    private Long requisitionItemId;
     private Long reagentId;
     private String materialType;        // REAGENT/CALIBRATOR/QC_MATERIAL/CONSUMABLE/OTHER
     private Long deviceId;
