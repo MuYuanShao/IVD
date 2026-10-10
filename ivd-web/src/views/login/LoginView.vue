@@ -79,6 +79,7 @@ const rules = {
 }
 
 async function handleLogin() {
+  if (loading.value) return
   console.log('[LoginView] 开始登录流程, username:', form.username)
 
   // 确保表单已挂载
@@ -97,6 +98,9 @@ async function handleLogin() {
     return
   }
 
+  // 校验期间可能再次触发 Enter，避免两个校验完成后重复提交。
+  if (loading.value) return
+
   loading.value = true
 
   try {
@@ -106,13 +110,10 @@ async function handleLogin() {
 
     const redirect = route.query.redirect || '/dashboard'
     console.log('[LoginView] 准备跳转到:', redirect, 'route.query:', route.query)
-    router.push(redirect).then(() => {
-      console.log('[LoginView] router.push 成功:', redirect)
-    }).catch((err) => {
-      console.error('[LoginView] router.push 失败:', err)
-      ElMessage.warning('页面跳转异常，请手动刷新或重新登录')
-      loading.value = false
-    })
+    const navigationFailure = await router.push(redirect)
+    if (navigationFailure) {
+      ElMessage.warning('页面跳转未完成，请重新尝试')
+    }
   } catch (err) {
     console.error('[LoginView] 登录失败:', err)
     ElMessage.error(err?.message || '登录失败，请检查用户名和密码')
@@ -129,7 +130,7 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-image: url('../../../public/bc.jpg');
+  background-image: url('/bc.jpg');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
