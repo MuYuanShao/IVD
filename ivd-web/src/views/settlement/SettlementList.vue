@@ -78,7 +78,7 @@ async function doSettle() {
 }
 
 function getSettlementTagType(type) {
-  if (type === 'REQUISITION') return ''
+  if (type === 'REQUISITION') return 'info'
   if (type === 'TRANSFER') return 'warning'
   return 'success'
 }

@@ -23,6 +23,10 @@ import java.util.Map;
 @Component
 public class JwtTokenProvider {
 
+    private static final String TOKEN_TYPE_CLAIM = "token_type";
+    private static final String ACCESS_TOKEN_TYPE = "access";
+    private static final String REFRESH_TOKEN_TYPE = "refresh";
+
     private final SecretKey secretKey;
     private final long expiration;
     private final long refreshExpiration;
@@ -50,6 +54,7 @@ public class JwtTokenProvider {
                 .subject(String.valueOf(userId))
                 .claim("username", username)
                 .claim("role", role)
+                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + expiration))
                 .signWith(secretKey)
@@ -61,6 +66,7 @@ public class JwtTokenProvider {
         Date now = new Date();
         return Jwts.builder()
                 .subject(String.valueOf(userId))
+                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + refreshExpiration))
                 .signWith(secretKey)
@@ -86,6 +92,23 @@ public class JwtTokenProvider {
             return false;
         } catch (JwtException e) {
             log.warn("JWT 无效: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public boolean validateAccessToken(String token) {
+        return validateTokenType(token, ACCESS_TOKEN_TYPE);
+    }
+
+    public boolean validateRefreshToken(String token) {
+        return validateTokenType(token, REFRESH_TOKEN_TYPE);
+    }
+
+    private boolean validateTokenType(String token, String expectedType) {
+        try {
+            return expectedType.equals(parseToken(token).get(TOKEN_TYPE_CLAIM, String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            log.warn("JWT 类型校验失败: {}", e.getMessage());
             return false;
         }
     }

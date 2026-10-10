@@ -60,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public LoginResponse refresh(RefreshRequest request) {
         String token = request.getRefreshToken();
-        if (!jwtTokenProvider.validateToken(token)) {
+        if (!jwtTokenProvider.validateRefreshToken(token)) {
             throw new BizException(40100, "Refresh Token 无效或已过期，请重新登录");
         }
 

@@ -14,7 +14,7 @@ public interface InventoryService {
     List<Map<String, Object>> getFefoRecommendations(Long reagentId, Long warehouseId);
     List<Map<String, Object>> getExpiryAlerts(int days, Long warehouseId);
     Map<String, Long> getStats(Long warehouseId, Integer level);
-    void transferBatch(Long batchId, Long targetWarehouseId, java.math.BigDecimal qty, String urgency);
+    void transferBatch(Long batchId, Long targetWarehouseId, java.math.BigDecimal qty, String urgency, String reason);
     Map<String, Object> traceUdi(String udiDi, String lotNo);
     List<PatientAssociation> getTracePatients(String batchNo);
 

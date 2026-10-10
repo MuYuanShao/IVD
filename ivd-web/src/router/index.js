@@ -61,7 +61,8 @@ const routes = [
       // ── 系统管理 · 基础数据（3 子页）──
       { path: 'system/users', name: 'UserManagement', component: () => import('@/views/system/UserManagement.vue'), meta: { title: '用户管理', group: '系统管理' } },
       { path: 'system/depts', name: 'DeptManagement', component: () => import('@/views/system/DeptManagement.vue'), meta: { title: '科室管理', group: '系统管理' } },
-      { path: 'system/warehouses', name: 'WarehouseManagement', component: () => import('@/views/system/WarehouseManagement.vue'), meta: { title: '库房管理', group: '系统管理' } }
+      { path: 'system/warehouses', name: 'WarehouseManagement', component: () => import('@/views/system/WarehouseManagement.vue'), meta: { title: '库房管理', group: '系统管理' } },
+      { path: 'system/catalog-fields', name: 'CatalogFieldOptionManagement', component: () => import('@/views/system/CatalogFieldOptionManagement.vue'), meta: { title: '试剂目录字段配置', group: '系统管理' } }
     ]
   }
 ]

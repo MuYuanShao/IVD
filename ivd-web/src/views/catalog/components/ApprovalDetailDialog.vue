@@ -68,7 +68,7 @@ const visible = computed({
 })
 
 const changeTypeLabel = (t) => ({ CREATE: '新增', UPDATE: '编辑', DELETE: '删除', DISABLE: '停用' }[t] || t)
-const changeTypeTag = (t) => ({ CREATE: 'success', UPDATE: 'warning', DELETE: 'danger', DISABLE: 'info' }[t] || '')
+const changeTypeTag = (t) => ({ CREATE: 'success', UPDATE: 'warning', DELETE: 'danger', DISABLE: 'info' }[t] || 'info')
 const reviewStatusLabel = (s) => ({ PENDING: '待审批', APPROVED: '已通过', REJECTED: '已驳回' }[s] || s)
 
 const fieldChangesParsed = computed(() => {

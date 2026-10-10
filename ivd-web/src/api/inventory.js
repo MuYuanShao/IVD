@@ -28,8 +28,8 @@ export function getInventoryStats(warehouseId, level) {
 }
 
 /** 调拨批次 */
-export function transferBatch(batchId, targetWarehouseId, qty, urgency = 'NORMAL') {
-  return request({ url: '/inventory/transfer', method: 'post', params: { batchId, targetWarehouseId, qty, urgency } })
+export function transferBatch(batchId, targetWarehouseId, qty, urgency = 'NORMAL', reason) {
+  return request({ url: '/inventory/transfer', method: 'post', params: { batchId, targetWarehouseId, qty, urgency, reason } })
 }
 
 /** UDI 追溯 */

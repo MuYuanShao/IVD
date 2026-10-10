@@ -11,6 +11,7 @@ import lombok.Data;
 @Data
 public class LicenseQuery {
 
+    private Long reagentId;      // 关联试剂 ID
     private String keyword;       // 搜索：供应商名/证号
     private String licenseType;   // 证照类型筛选
     private String status;        // 状态筛选

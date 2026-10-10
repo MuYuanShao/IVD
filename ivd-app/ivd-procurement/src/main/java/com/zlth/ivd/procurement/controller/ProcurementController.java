@@ -100,7 +100,7 @@ public class ProcurementController {
     @AuditLog(module = "采购管理", action = "拣货发货")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<PurchaseRequisitionVO> pickAndShip(@PathVariable Long id,
-                                                     @RequestBody PickAndShipRequest request) {
+                                                     @RequestBody @Valid PickAndShipRequest request) {
         return Result.success(procurementService.pickAndShip(id, request));
     }
 
@@ -201,7 +201,7 @@ public class ProcurementController {
     @PostMapping("/receive")
     @AuditLog(module = "采购管理", action = "验收入库")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
-    public Result<String> receiveOrder(@RequestBody ReceiveItemRequest request) {
+    public Result<String> receiveOrder(@RequestBody @Valid ReceiveItemRequest request) {
         procurementService.receiveOrder(request);
         return Result.success("验收成功");
     }

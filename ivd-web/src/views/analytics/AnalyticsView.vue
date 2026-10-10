@@ -34,14 +34,14 @@
         <div class="kpi-card kpi-card--warn">
           <div class="kpi-label">年度隐性浪费（估算）</div>
           <div class="kpi-value">¥{{ formatLargeNum(kpi.annualWaste) }}<span class="unit"> 万</span></div>
-          <div class="kpi-desc">浪费率 ~{{ kpi.wasteRate }}% · 可优化比例 ~40%</div>
+          <div class="kpi-desc">年度估算数据源尚未接入</div>
         </div>
       </el-col>
       <el-col :span="8">
         <div class="kpi-card kpi-card--danger">
           <div class="kpi-label">年化可节省金额</div>
           <div class="kpi-value">¥{{ formatLargeNum(kpi.annualSavable) }}<span class="unit"> 万</span></div>
-          <div class="kpi-desc" style="color:#991b1b;">系统费半年回本</div>
+          <div class="kpi-desc" style="color:#991b1b;">暂无可验证的年化预测</div>
         </div>
       </el-col>
     </el-row>
@@ -190,15 +190,22 @@ import * as echarts from 'echarts'
 import { getCostPerTest, getBrandComparison, getWasteTop10 } from '@/api/analytics'
 
 const activeTab = ref('report1')
-const period = ref('2026-07')
+const period = ref(new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'))
 const groupFilter = ref('')
 
-const months = [
-  { label: '2026年7月', value: '2026-07' }, { label: '2026年6月', value: '2026-06' }, { label: '2026年5月', value: '2026-05' }
-]
+const months = Array.from({ length: 12 }, (_, i) => {
+  const day = new Date(new Date().getFullYear(), new Date().getMonth() - i, 1)
+  const value = day.getFullYear() + '-' + String(day.getMonth() + 1).padStart(2, '0')
+  return { label: value.replace('-', '年') + '月', value }
+})
 
-// KPI
-const kpi = reactive({ annualPurchase: 5200, annualWaste: 104, wasteRate: 20, annualSavable: 41.6 })
+// Annual projections are unavailable until their authoritative sources are integrated.
+const kpi = reactive({ annualPurchase: null, annualWaste: null, wasteRate: null, annualSavable: null })
+
+function dateRange() {
+  const [year, month] = period.value.split('-').map(Number)
+  return [period.value + '-01', period.value + '-' + new Date(year, month, 0).getDate()]
+}
 
 // Report 1: Cost per test
 const costData = ref([]), costLoading = ref(false)
@@ -225,68 +232,41 @@ async function fetchAll() {
 async function fetchCostData() {
   costLoading.value = true
   try {
-    const [y, m] = period.value.split('-')
-    const d = await getCostPerTest(`${period.value}-01`, `${period.value}-31`)
-    const items = (d && d.items) ? d.items : []
-    if (items.length === 0) {
-      // Demo fallback matching effect diagram
-      costData.value = [
-        { testItem: 'CK-MB', batchNo: 'BATCH-202506A', purchaseCost: 3200, wExp: 0, wOpen: 640, wRetest: 320, effectiveCount: 75, cActual: 55.7, cNominal: 32.0, deviation: 1.74, suggestion: '换小包装' },
-        { testItem: 'ALT', batchNo: 'MR-ALT-2605', purchaseCost: 280, wExp: 84, wOpen: 0, wRetest: 28, effectiveCount: 170, cActual: 2.3, cNominal: 1.4, deviation: 1.64, suggestion: '降采购频次' },
-        { testItem: '肌酐(酶法)', batchNo: '20260512B', purchaseCost: 450, wExp: 0, wOpen: 0, wRetest: 90, effectiveCount: 192, cActual: 2.8, cNominal: 2.3, deviation: 1.24, suggestion: '排查复测率' },
-        { testItem: 'CEA', batchNo: 'LOT-CEA-2409', purchaseCost: 5800, wExp: 0, wOpen: 0, wRetest: 0, effectiveCount: 98, cActual: 59.2, cNominal: 58.0, deviation: 1.02, suggestion: '正常' },
-      ]
-    } else {
-      costData.value = items.map((item, i) => ({
-        ...item,
-        deviation: item.deviation || (item.cActual && item.cNominal ? item.cActual / item.cNominal : 1),
-        suggestion: item.suggestion || getAutoSuggestion(item)
-      }))
-    }
-  } catch { /* use demo */ } finally { costLoading.value = false }
+    const d = await getCostPerTest(...dateRange())
+    costData.value = (d?.items || []).map(item => ({
+      ...item,
+      deviation: item.deviation ?? (item.cNominal ? item.cActual / item.cNominal : null),
+      suggestion: item.suggestion || getAutoSuggestion(item)
+    }))
+  } catch { costData.value = []; ElMessage.error('成本报表加载失败') }
+  finally { costLoading.value = false }
 }
 
 async function fetchBrandData() {
   brandLoading.value = true
   try {
-    const d = await getBrandComparison(`${period.value}-01`, `${period.value}-31`)
-    const items = (d && d.brands) ? d.brands : []
-    if (items.length === 0) {
-      brandData.value = [
-        { testItem: '肌酐', brand: 'A牌', avgPrice: 2.8, totalCost: 12600, share: 0.7 },
-        { testItem: '肌酐', brand: 'B牌', avgPrice: 3.6, totalCost: 5400, share: 0.3 },
-        { testItem: 'CK-MB', brand: 'A牌', avgPrice: 55.7, totalCost: 28500, share: 1.0 },
-      ]
-    } else {
-      const total = items.reduce((s, i) => s + (i.totalCost || 0), 0)
-      brandData.value = items.map(item => ({ ...item, share: total > 0 ? (item.totalCost || 0) / total : 0 }))
-    }
-  } catch { /* use demo */ } finally { brandLoading.value = false }
+    const d = await getBrandComparison(...dateRange())
+    const items = d?.brands || []
+    const total = items.reduce((sum, item) => sum + Number(item.totalCost || 0), 0)
+    brandData.value = items.map(item => ({ ...item, share: total ? Number(item.totalCost || 0) / total : 0 }))
+  } catch { brandData.value = []; ElMessage.error('品牌报表加载失败') }
+  finally { brandLoading.value = false }
 }
 
 async function fetchWasteData() {
   wasteLoading.value = true
   try {
-    const d = await getWasteTop10(`${period.value}-01`, `${period.value}-31`)
-    const items = (d && d.wastes) ? d.wastes : []
-    if (items.length === 0) {
-      wasteData.value = [
-        { rank: 1, reagent: 'CK-MB', wasteType: 'OPEN_EXPIRED', wasteTypeLabel: '开瓶损耗', amount: 5120, wasteRatio: 0.20, rootCause: '100T包装，开瓶后30天稳定期，日均仅2-3个测试', suggestion: '换小包装(50T)，年省¥4,000+' },
-        { rank: 2, reagent: 'ALT', wasteType: 'EXPIRED', wasteTypeLabel: '过期', amount: 3360, wasteRatio: 0.13, rootCause: '采购频次低，单次采购量大', suggestion: '降采购量，提频至每2周' },
-        { rank: 3, reagent: '肌酐(酶法)', wasteType: 'RETEST', wasteTypeLabel: '复测浪费', amount: 2880, wasteRatio: 0.11, rootCause: '复测率偏高(8.5%)', suggestion: '排查AU5800设备状态' },
-        { rank: 4, reagent: '凝血酶原时间', wasteType: 'OPEN_EXPIRED', wasteTypeLabel: '开瓶损耗', amount: 1980, wasteRatio: 0.08, rootCause: '—', suggestion: '换小包装' },
-        { rank: 5, reagent: 'GLU', wasteType: 'EXPIRED', wasteTypeLabel: '过期', amount: 1560, wasteRatio: 0.06, rootCause: '—', suggestion: '降采购量' },
-      ]
-    } else {
-      const total = items.reduce((s, i) => s + (i.amount || 0), 0)
-      wasteData.value = items.map((item, i) => ({
-        ...item,
-        wasteRatio: total > 0 ? (item.amount || 0) / total : 0,
-        rootCause: item.rootCause || autoRootCause(item),
-        suggestion: item.suggestion || getWasteSuggestion(item)
-      }))
-    }
-  } catch { /* use demo */ } finally { wasteLoading.value = false }
+    const d = await getWasteTop10(...dateRange())
+    const items = d?.wastes || []
+    const total = items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    wasteData.value = items.map(item => ({
+      ...item,
+      wasteRatio: total ? Number(item.amount || 0) / total : 0,
+      rootCause: item.rootCause || autoRootCause(item),
+      suggestion: item.suggestion || getWasteSuggestion(item)
+    }))
+  } catch { wasteData.value = []; ElMessage.error('浪费报表加载失败') }
+  finally { wasteLoading.value = false }
 }
 
 function renderCharts() {
@@ -322,22 +302,17 @@ function renderWasteChart() {
     series: [{
       type: 'pie', radius: ['50%', '75%'], center: ['50%', '45%'],
       label: { show: true, formatter: '{b}\n{d}%' },
-      data: [
-        { value: 5120, name: '开瓶损耗', itemStyle: { color: '#f59e0b' } },
-        { value: 3360, name: '过期', itemStyle: { color: '#ef4444' } },
-        { value: 2880, name: '复测浪费', itemStyle: { color: '#3b82f6' } },
-        { value: 900, name: '质控损耗', itemStyle: { color: '#8b5cf6' } }
-      ]
+      data: wasteData.value.map(item => ({ value: Number(item.amount || 0), name: item.wasteTypeLabel || item.wasteType }))
     }]
   })
 }
 
 // ── Utility ──
 function formatNum(n) { return (Number(n) || 0).toFixed(2) }
-function formatLargeNum(n) { return ((Number(n) || 0) / 1).toFixed(0) }
-function getDeviationType(d) { return d > 1.5 ? 'danger' : d > 1.3 ? 'warning' : d < 1.05 ? 'success' : '' }
+function formatLargeNum(n) { return n == null ? '暂无数据' : Number(n).toFixed(0) }
+function getDeviationType(d) { return d > 1.5 ? 'danger' : d > 1.3 ? 'warning' : d < 1.05 ? 'success' : 'info' }
 function getWasteTagType(type) {
-  return type === 'EXPIRED' ? 'danger' : type === 'OPEN_EXPIRED' ? 'warning' : type === 'RETEST' ? 'info' : ''
+  return type === 'EXPIRED' ? 'danger' : type === 'OPEN_EXPIRED' ? 'warning' : 'info'
 }
 
 function getAutoSuggestion(row) {

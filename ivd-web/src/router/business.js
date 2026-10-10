@@ -46,6 +46,7 @@ export function withBusinessLayout(route) {
         }
       : {}),
   }))
+  children.push({ path: 'system/research-projects', name: 'ResearchProjectSettings', component: () => import('@/views/system/ResearchProjectSettings.vue'), meta: { title: '科研项目设置', navGroup: '系统管理' } })
   if (oldDashboard)
     children.push({
       ...oldDashboard,

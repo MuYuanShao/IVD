@@ -295,6 +295,7 @@
     <!-- ==================== Dialogs ==================== -->
     <CreateReagentDialog v-model="showCreateDialog" @created="onCreated" />
     <EditReagentDialog v-model="showEditDialog" :reagent-id="editingId" @updated="onUpdated" />
+    <CatalogDetailDialog v-model="showCatalogDetail" :reagent-id="detailReagentId" />
     <ApprovalDetailDialog v-model="showApprovalDetail" :detail="approvalDetail" />
     <RejectReasonDialog v-model="showRejectDialog" :log-id="rejectLogId" @rejected="onRejected" />
 
@@ -317,17 +318,20 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Upload, Download, Edit, View, DocumentChecked, Delete, Check, Close, Box } from '@element-plus/icons-vue'
 import { useCatalogStore } from '@/stores/catalog'
 import { formatMoney } from '@/utils/format'
 import CreateReagentDialog from './components/CreateReagentDialog.vue'
 import EditReagentDialog from './components/EditReagentDialog.vue'
+import CatalogDetailDialog from './components/CatalogDetailDialog.vue'
 import ApprovalDetailDialog from './components/ApprovalDetailDialog.vue'
 import RejectReasonDialog from './components/RejectReasonDialog.vue'
+import { useCatalogFieldOptions } from '@/composables/useCatalogFieldOptions'
 
 const catalogStore = useCatalogStore()
+const { optionGroups, loadCatalogFieldOptions } = useCatalogFieldOptions()
 
 // ── 五码映射数据 — 由后端 API 填充，初始为空
 // TODO: 对接五码映射查询 API 后由 fetchData 统一加载
@@ -338,7 +342,7 @@ const searchText = ref('')
 const filterGroups = ref([])  // 多选组别
 const filterStatus = ref('')
 const filterMaterialType = ref('')
-const groups = ['生化', '免疫', '临检', '微生物', '分子']
+const groups = computed(() => optionGroups.value.TEST_GROUP.map(item => item.optionValue))
 
 function toggleGroup(g) {
   const idx = filterGroups.value.indexOf(g)
@@ -362,6 +366,8 @@ const activeTab = ref('list')
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
 const editingId = ref(null)
+const showCatalogDetail = ref(false)
+const detailReagentId = ref(null)
 
 // ── 提交审批 ──
 const showSubmitApprovalDialog = ref(false)
@@ -413,6 +419,7 @@ watch([page, pageSize], () => { fetchData() })
 
 // ── Lifecycle ──
 onMounted(() => {
+  loadCatalogFieldOptions()
   fetchData()
   catalogStore.fetchStats()
 })
@@ -488,8 +495,8 @@ function onUpdated() {
 
 // ── 操作：查看详情 ──
 function handleViewDetail(row) {
-  approvalDetail.value = row
-  showApprovalDetail.value = true
+  detailReagentId.value = row.id
+  showCatalogDetail.value = true
 }
 
 // ── 操作：删除 ──
@@ -567,9 +574,9 @@ function materialTypeTag(type) {
     'CALIBRATOR': 'success',
     'QC_MATERIAL': 'warning',
     'CONSUMABLE': 'info',
-    'OTHER': ''
+    'OTHER': 'info'
   }
-  return map[code] || ''
+  return map[code] || 'info'
 }
 
 function materialTypeLabel(type) {
@@ -590,7 +597,7 @@ function changeTypeLabel(t) {
 }
 
 function changeTypeTag(t) {
-  return { CREATE: 'success', UPDATE: 'warning', DELETE: 'danger', DISABLE: 'info' }[t] || ''
+  return { CREATE: 'success', UPDATE: 'warning', DELETE: 'danger', DISABLE: 'info' }[t] || 'info'
 }
 
 function reviewStatusLabel(s) {

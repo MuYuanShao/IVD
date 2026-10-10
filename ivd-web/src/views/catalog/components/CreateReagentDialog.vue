@@ -102,11 +102,7 @@
           placeholder="请选择适用组别（可多选）"
           style="width: 100%"
         >
-          <el-option label="生化" value="生化" />
-          <el-option label="免疫" value="免疫" />
-          <el-option label="临检" value="临检" />
-          <el-option label="微生物" value="微生物" />
-          <el-option label="分子" value="分子" />
+          <el-option v-for="item in optionGroups.TEST_GROUP" :key="item.id" :label="item.optionLabel" :value="item.optionValue" />
         </el-select>
       </el-form-item>
 
@@ -135,7 +131,9 @@
       </el-form-item>
 
       <el-form-item label="检测方法学">
-        <el-input v-model="form.detectionMethod" placeholder="例：化学发光法" maxlength="100" />
+        <el-select v-model="form.detectionMethod" filterable clearable placeholder="请选择检测方法学" style="width:100%">
+          <el-option v-for="item in optionGroups.DETECTION_METHOD" :key="item.id" :label="item.optionLabel" :value="item.optionValue" />
+        </el-select>
       </el-form-item>
 
       <el-divider content-position="left">库存与规则</el-divider>
@@ -167,8 +165,7 @@
 
       <el-form-item label="带量类型">
         <el-select v-model="form.volumeType" placeholder="请选择带量类型" style="width:100%" :disabled="!form.isVolumeBased">
-          <el-option label="江西牵头生化试剂联盟" value="江西牵头生化试剂联盟" />
-          <el-option label="安徽牵头免疫 / 分子诊断联盟" value="安徽牵头免疫 / 分子诊断联盟" />
+          <el-option v-for="item in optionGroups.VOLUME_TYPE" :key="item.id" :label="item.optionLabel" :value="item.optionValue" />
         </el-select>
       </el-form-item>
 
@@ -178,10 +175,7 @@
 
       <el-form-item label="医保支付类型">
         <el-select v-model="form.insurancePaymentType" placeholder="请选择医保支付类型" style="width:100%">
-          <el-option label="甲类" value="甲类" />
-          <el-option label="乙类" value="乙类" />
-          <el-option label="丙类" value="丙类" />
-          <el-option label="自费" value="自费" />
+          <el-option v-for="item in optionGroups.INSURANCE_PAYMENT_TYPE" :key="item.id" :label="item.optionLabel" :value="item.optionValue" />
         </el-select>
       </el-form-item>
 
@@ -201,7 +195,7 @@
       </el-form-item>
 
       <el-form-item label="唯一码管控">
-        <el-switch v-model="form.enableUniqueCode" active-text="是" inactive-text="否" />
+        <el-switch v-model="form.enableUniqueCode" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
       </el-form-item>
     </el-form>
 
@@ -220,6 +214,7 @@ import { ElMessage } from 'element-plus'
 import { useCatalogStore } from '@/stores/catalog'
 import { getManufacturerOptions } from '@/api/manufacturer'
 import { getDistributorOptions } from '@/api/distributor'
+import { useCatalogFieldOptions } from '@/composables/useCatalogFieldOptions'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false }
@@ -235,6 +230,7 @@ const visible = computed({
 const catalogStore = useCatalogStore()
 const formRef = ref(null)
 const submitting = ref(false)
+const { optionGroups, loadCatalogFieldOptions } = useCatalogFieldOptions()
 
 // ── 生产厂家 / 配送商远程搜索 ──
 const manufacturerOptions = ref([])
@@ -286,7 +282,7 @@ const defaultForm = () => ({
   isChargeable: 0,
   chargeCode: '',
   deviceBindMode: 'FORCE',
-  enableUniqueCode: false
+  enableUniqueCode: 0
 })
 
 const form = reactive(defaultForm())
@@ -323,6 +319,7 @@ watch(visible, (val) => {
   if (val) {
     loadManufacturerOptions('')
     loadDistributorOptions('')
+    loadCatalogFieldOptions(true)
   }
 })
 
@@ -334,7 +331,11 @@ async function handleSubmit() {
   try {
     const payload = {
       ...form,
-      testGroups: form.testGroups.length > 0 ? form.testGroups.join(',') : undefined
+      testGroups: form.testGroups.length > 0 ? form.testGroups.join(',') : undefined,
+      enableUniqueCode: form.enableUniqueCode ? 1 : 0,
+      isVolumeBased: form.isVolumeBased ? 1 : 0,
+      isInsurancePayment: form.isInsurancePayment ? 1 : 0,
+      isChargeable: form.isChargeable ? 1 : 0
     }
     await catalogStore.create(payload)
     ElMessage.success('物料新增成功')

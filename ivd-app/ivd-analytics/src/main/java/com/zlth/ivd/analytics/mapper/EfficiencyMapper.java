@@ -20,7 +20,7 @@ public interface EfficiencyMapper {
             "COUNT(*) as count " +
             "FROM consumption_record cr " +
             "LEFT JOIN reagent_catalog rc ON rc.id = cr.reagent_id " +
-            "WHERE cr.record_type = 'CONSUME' AND cr.occurred_at >= #{startDate} AND cr.occurred_at <= #{endDate} " +
+            "WHERE cr.record_type = 'CONSUME' AND cr.occurred_at >= #{startDate} AND cr.occurred_at < DATE_ADD(#{endDate}, INTERVAL 1 DAY) " +
             "GROUP BY cr.reagent_id, rc.generic_name ORDER BY totalCost DESC LIMIT 20")
     List<Map<String, Object>> getCostPerTest(@Param("startDate") String startDate, @Param("endDate") String endDate);
 
@@ -32,7 +32,7 @@ public interface EfficiencyMapper {
             "FROM consumption_record cr " +
             "LEFT JOIN reagent_supplier_rel rsr ON rsr.reagent_id = cr.reagent_id AND rsr.is_default = 1 " +
             "LEFT JOIN supplier s ON s.id = rsr.supplier_id " +
-            "WHERE cr.occurred_at >= #{startDate} AND cr.occurred_at <= #{endDate} " +
+            "WHERE cr.occurred_at >= #{startDate} AND cr.occurred_at < DATE_ADD(#{endDate}, INTERVAL 1 DAY) " +
             "GROUP BY s.id, s.name ORDER BY totalCost DESC")
     List<Map<String, Object>> getBrandComparison(@Param("startDate") String startDate, @Param("endDate") String endDate);
 
@@ -42,7 +42,7 @@ public interface EfficiencyMapper {
             "FROM consumption_record cr " +
             "LEFT JOIN reagent_catalog rc ON rc.id = cr.reagent_id " +
             "WHERE cr.purpose IN ('EXPIRED','OPEN_EXPIRED','RETEST','QC_LOSS','DEPT_USE') " +
-            "AND cr.occurred_at >= #{startDate} AND cr.occurred_at <= #{endDate} " +
+            "AND cr.occurred_at >= #{startDate} AND cr.occurred_at < DATE_ADD(#{endDate}, INTERVAL 1 DAY) " +
             "GROUP BY cr.reagent_id, rc.generic_name, cr.purpose ORDER BY amount DESC LIMIT 10")
     List<Map<String, Object>> getWasteTop10(@Param("startDate") String startDate, @Param("endDate") String endDate);
 }

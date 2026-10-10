@@ -43,55 +43,44 @@ public class FinanceServiceImpl implements FinanceService {
         LocalDate settleDate = date != null ? date : LocalDate.now();
         log.info("执行日结: date={}", settleDate);
 
-        // 1. 查询前一日期末作为期初
-        BigDecimal opening = snapshotMapper.getOpeningBalance(settleDate.minusDays(1));
-        if (opening == null) opening = BigDecimal.ZERO;
-
-        // 2. 当日入库和出库
-        BigDecimal inbound = snapshotMapper.getTodayInbound(settleDate);
-        if (inbound == null) inbound = BigDecimal.ZERO;
-        BigDecimal outbound = snapshotMapper.getTodayOutbound(settleDate);
-        if (outbound == null) outbound = BigDecimal.ZERO;
-
-        // 3. 从 reagent_batch 聚合当前库存
-        List<Map<String, Object>> stocks = snapshotMapper.aggregateCurrentStock();
-        if (stocks != null && !stocks.isEmpty()) {
-            for (Map<String, Object> row : stocks) {
-                DailyInventorySnapshot snap = new DailyInventorySnapshot();
-                snap.setSnapshotDate(settleDate);
-                snap.setReagentId(row.get("reagentId") != null ? ((Number) row.get("reagentId")).longValue() : null);
-                snap.setWarehouseId(row.get("warehouseId") != null ? ((Number) row.get("warehouseId")).longValue() : null);
-                BigDecimal closing = row.get("closing") != null ? new BigDecimal(row.get("closing").toString()) : BigDecimal.ZERO;
-                snap.setOpening(opening);
-                snap.setInbound(inbound);
-                snap.setOutbound(outbound);
-                snap.setAdjustment(BigDecimal.ZERO);
-                snap.setClosing(closing);
-                // 差异 = 期初 + 入库 - 出库 + 调整 - 期末
-                BigDecimal expected = opening.add(inbound).subtract(outbound).add(snap.getAdjustment());
-                BigDecimal diff = expected.subtract(closing).abs();
-                snap.setDifference(diff);
-                snap.setDifferenceRatio(closing.compareTo(BigDecimal.ZERO) > 0
-                        ? diff.divide(closing, 4, RoundingMode.HALF_UP) : BigDecimal.ZERO);
-                snap.setIsBalanced(snap.getDifferenceRatio().compareTo(new BigDecimal("0.05")) <= 0 ? 1 : 0);
-                snapshotMapper.insert(snap);
-            }
-        } else {
-            // 无库存数据时插入汇总快照
+        if (settleDate.isAfter(LocalDate.now()))
+            throw new com.zlth.ivd.common.exception.BizException(40001, "不能生成未来日期的日结");
+        snapshotMapper.lockWarehouses();
+        LocalDate supportedFrom = snapshotMapper.getEarliestSupportedDate();
+        if (supportedFrom != null && settleDate.isBefore(supportedFrom))
+            throw new com.zlth.ivd.common.exception.BizException(40001, "初始化前的历史证据不完整，不能日结；支持日期自" + supportedFrom);
+        if (snapshotMapper.countUnpricedEvidence() > 0)
+            throw new com.zlth.ivd.common.exception.BizException(40001, "库存或流水存在未定价记录，请先核对金额后日结");
+        if (snapshotMapper.selectCount(new LambdaQueryWrapper<DailyInventorySnapshot>()
+                .eq(DailyInventorySnapshot::getSnapshotDate, settleDate)) > 0)
+            throw new com.zlth.ivd.common.exception.BizException(40900, "该日期已经日结，请先核对已有快照");
+        List<Map<String, Object>> balances = snapshotMapper.getDailyBalances(settleDate);
+        if (balances == null) return;
+        for (Map<String, Object> row : balances) {
             DailyInventorySnapshot snap = new DailyInventorySnapshot();
             snap.setSnapshotDate(settleDate);
-            snap.setOpening(opening);
-            snap.setInbound(inbound);
-            snap.setOutbound(outbound);
+            snap.setReagentId(((Number) row.get("reagentId")).longValue());
+            snap.setWarehouseId(((Number) row.get("warehouseId")).longValue());
+            snap.setOpening(decimal(row, "opening"));
+            snap.setInbound(decimal(row, "inbound"));
+            snap.setOutbound(decimal(row, "outbound"));
             snap.setAdjustment(BigDecimal.ZERO);
-            BigDecimal closing = opening.add(inbound).subtract(outbound);
-            snap.setClosing(closing);
-            snap.setDifference(BigDecimal.ZERO);
-            snap.setDifferenceRatio(BigDecimal.ZERO);
-            snap.setIsBalanced(1);
+            snap.setClosing(decimal(row, "closing"));
+            BigDecimal expected = snap.getOpening().add(snap.getInbound()).subtract(snap.getOutbound());
+            BigDecimal difference = expected.subtract(snap.getClosing()).abs();
+            snap.setDifference(difference);
+            BigDecimal denominator = expected.abs().max(snap.getClosing().abs());
+            snap.setDifferenceRatio(denominator.signum() == 0 ? BigDecimal.ZERO
+                    : difference.divide(denominator, 4, RoundingMode.HALF_UP));
+            snap.setIsBalanced(snap.getDifferenceRatio().compareTo(new BigDecimal("0.01")) < 0 ? 1 : 0);
             snapshotMapper.insert(snap);
         }
-        log.info("日结完成: date={}, 入库={}, 出库={}", settleDate, inbound, outbound);
+        log.info("日结完成: date={}, grains={}", settleDate, balances.size());
+    }
+
+    private static BigDecimal decimal(Map<String, Object> row, String field) {
+        Object value = row.get(field);
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     @Override

@@ -28,13 +28,23 @@ public class AuditController {
         String observationId = (String) request.getOrDefault("observationId", "OBS-" + System.currentTimeMillis());
         String patientIdHash = (String) request.getOrDefault("patientIdHash", "hash");
         String testItemCode = (String) request.getOrDefault("testItemCode", "NA");
-        String testValue = (String) request.getOrDefault("testValue", null);
+        String testValue = request.get("testValue") != null ? String.valueOf(request.get("testValue")) : null;
         String deviceId = (String) request.getOrDefault("deviceId", null);
         String batchNo = (String) request.getOrDefault("batchNo", null);
+        LocalDateTime testDatetime = parseDateTime(request.get("testDatetime"));
         AuditDecisionLog result = pipelineService.executePipeline(
-            observationId, patientIdHash, testItemCode, testValue, deviceId, LocalDateTime.now(), batchNo
+            observationId, patientIdHash, testItemCode, testValue, deviceId, testDatetime, batchNo, request
         );
         return Result.success(result);
+    }
+
+    private LocalDateTime parseDateTime(Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return LocalDateTime.now();
+        try {
+            return LocalDateTime.parse(String.valueOf(value));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("testDatetime 必须为 ISO-8601 日期时间");
+        }
     }
 
     /** 接口B: 人工审核结果回流 */

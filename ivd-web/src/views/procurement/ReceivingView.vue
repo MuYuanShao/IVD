@@ -645,7 +645,7 @@ async function confirmReceiving() {
       for (const item of toReceive) {
         try {
           await receiveOrder({
-            orderId: Number(poContext.orderId), itemId: item.itemId, qtyReceived: item.receiveQty,
+            orderId: poContext.orderId, itemId: item.itemId, qtyReceived: item.receiveQty,
             batchNo: item.batchNo || undefined, productionDate: item.productionDate || undefined,
             expiryDate: item.expiryDate || undefined, warehouseId: item.warehouseId || 1
           })

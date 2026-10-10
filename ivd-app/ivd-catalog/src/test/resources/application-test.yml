@@ -33,6 +33,13 @@ ivd:
     expiration: 3600000
     refresh-expiration: 86400000
 
+minio:
+  endpoint: http://127.0.0.1:9000
+  access-key: test-access-key
+  secret-key: test-secret-key
+  bucket-cert: ""
+  bucket-report: ""
+
 logging:
   level:
     com.zlth.ivd: DEBUG

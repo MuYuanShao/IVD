@@ -1,0 +1,19 @@
+-- 为一期 9 条内置审核规则补齐可执行条件；接口按同名上下文字段接收 LIS 计算结果。
+UPDATE audit_rule SET rule_condition = '{"field":"referenceRangeRatio","operator":"GT","value":1.5}'
+WHERE rule_id = 'R-RST-001' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"criticalValue","operator":"EQ","value":true}'
+WHERE rule_id = 'R-RST-002' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"deltaPercent","operator":"GT","value":50}'
+WHERE rule_id = 'R-RST-003' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"expiryDays","operator":"BETWEEN","value":[0,7]}'
+WHERE rule_id = 'R-BATCH-001' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"openExpiryDays","operator":"LT","value":0}'
+WHERE rule_id = 'R-BATCH-002' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"batchStatus","operator":"IN","value":["PENDING_UDI","EXPIRED","SCRAPPED","RECALLED","BACK_SUPPLIER"]}'
+WHERE rule_id = 'R-BATCH-003' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"deviceCalibrationDays","operator":"BETWEEN","value":[0,7]}'
+WHERE rule_id = 'R-BATCH-004' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"licenseStatus","operator":"EQ","value":"EXPIRED"}'
+WHERE rule_id = 'R-LNK-001' AND rule_condition IS NULL;
+UPDATE audit_rule SET rule_condition = '{"field":"inventoryFrozen","operator":"EQ","value":true}'
+WHERE rule_id = 'R-LNK-002' AND rule_condition IS NULL;

@@ -23,22 +23,22 @@ public class AnalyticsController {
 
     @GetMapping("/cost-per-test")
     public Result<Map<String, Object>> getCostPerTest(
-            @RequestParam(defaultValue = "2026-07-01") String startDate,
-            @RequestParam(defaultValue = "2026-07-31") String endDate) {
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
         return Result.success(analyticsService.getCostPerTest(startDate, endDate));
     }
 
     @GetMapping("/brand-comparison")
     public Result<Map<String, Object>> getBrandComparison(
-            @RequestParam(defaultValue = "2026-07-01") String startDate,
-            @RequestParam(defaultValue = "2026-07-31") String endDate) {
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
         return Result.success(analyticsService.getBrandComparison(startDate, endDate));
     }
 
     @GetMapping("/waste-top10")
     public Result<Map<String, Object>> getWasteTop10(
-            @RequestParam(defaultValue = "2026-07-01") String startDate,
-            @RequestParam(defaultValue = "2026-07-31") String endDate) {
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
         return Result.success(analyticsService.getWasteTop10(startDate, endDate));
     }
 

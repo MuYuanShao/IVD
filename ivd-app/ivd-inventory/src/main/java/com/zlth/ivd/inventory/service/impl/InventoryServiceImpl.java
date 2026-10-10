@@ -332,7 +332,7 @@ public class InventoryServiceImpl implements InventoryService {
         try {
             String inTransitSql = "SELECT COALESCE(SUM(cr.quantity), 0) FROM consumption_record cr "
                     + "INNER JOIN purchase_requisition pr ON cr.requisition_id = pr.id "
-                    + "WHERE cr.record_type = 'TRANSFER' AND pr.status IN ('SHIPPED', 'PARTIAL_FULFILLED')";
+                    + "WHERE cr.record_type = 'TRANSFER' AND pr.status IN ('SHIPPED', 'PARTIAL_FULFILLED') AND NOT EXISTS (SELECT 1 FROM requisition_transfer_receipt receipt WHERE receipt.transfer_record_id=cr.id)";
             BigDecimal inTransitRaw = jdbcTemplate.queryForObject(inTransitSql, BigDecimal.class);
             stats.put("inTransit", inTransitRaw != null ? inTransitRaw.longValue() : 0L);
         } catch (Exception e) { stats.put("inTransit", 0L); }
@@ -428,6 +428,7 @@ public class InventoryServiceImpl implements InventoryService {
         for (int i = 0; i < maxRetries; i++) {
             LambdaQueryWrapper<ReagentBatch> targetQw = new LambdaQueryWrapper<>();
             targetQw.eq(ReagentBatch::getWarehouseId, targetWarehouseId)
+                    .eq(ReagentBatch::getReagentId, sourceBatch.getReagentId())
                     .eq(ReagentBatch::getBatchNo, sourceBatch.getBatchNo());
             ReagentBatch targetBatch = batchMapper.selectOne(targetQw);
 
@@ -558,7 +559,7 @@ public class InventoryServiceImpl implements InventoryService {
             String inTransitSql = "SELECT COALESCE(SUM(cr.quantity), 0) FROM consumption_record cr "
                     + "INNER JOIN purchase_requisition pr ON cr.requisition_id = pr.id "
                     + "WHERE cr.reagent_id = ? AND cr.record_type = 'TRANSFER' "
-                    + "AND pr.status IN ('SHIPPED', 'PARTIAL_FULFILLED')";
+                    + "AND pr.status IN ('SHIPPED', 'PARTIAL_FULFILLED') AND NOT EXISTS (SELECT 1 FROM requisition_transfer_receipt receipt WHERE receipt.transfer_record_id=cr.id)";
             BigDecimal raw = jdbcTemplate.queryForObject(inTransitSql, BigDecimal.class, reagentId);
             inTransitStock = raw != null ? raw : BigDecimal.ZERO;
         } catch (Exception e) {

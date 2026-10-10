@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS reagent_catalog (
     udi_di VARCHAR(128),
     gtin VARCHAR(14),
     insurance_code VARCHAR(27),
+    is_insurance_payment TINYINT NOT NULL DEFAULT 0,
+    enable_unique_code TINYINT NOT NULL DEFAULT 0,
     registration_cert_no VARCHAR(128),
     detection_method VARCHAR(100),
     tests_per_kit INT,
@@ -22,6 +24,11 @@ CREATE TABLE IF NOT EXISTS reagent_catalog (
     stability_days_after_open INT,
     lead_time_days INT NOT NULL DEFAULT 7,
     device_bind_mode VARCHAR(20) NOT NULL DEFAULT 'FORCE',
+    is_volume_based TINYINT NOT NULL DEFAULT 0,
+    volume_type VARCHAR(50),
+    insurance_payment_type VARCHAR(50),
+    is_chargeable TINYINT NOT NULL DEFAULT 0,
+    charge_code VARCHAR(50),
     approval_status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
     is_deleted TINYINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -69,4 +76,22 @@ CREATE TABLE IF NOT EXISTS udi_backlog (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_udi_backlog_reagent FOREIGN KEY (reagent_id) REFERENCES reagent_catalog(id)
+);
+
+CREATE TABLE IF NOT EXISTS operation_audit_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    operator_id BIGINT,
+    operator_name VARCHAR(64) NOT NULL,
+    module VARCHAR(64) NOT NULL,
+    action VARCHAR(64) NOT NULL,
+    request_method VARCHAR(16),
+    request_path VARCHAR(255),
+    handler VARCHAR(255) NOT NULL,
+    client_ip VARCHAR(64),
+    reason VARCHAR(500),
+    success TINYINT NOT NULL,
+    error_message VARCHAR(1000),
+    duration_ms BIGINT NOT NULL,
+    occurred_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

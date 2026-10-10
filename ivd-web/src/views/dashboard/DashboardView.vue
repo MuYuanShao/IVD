@@ -13,7 +13,7 @@
             <div class="stat-left">
               <div class="stat-label">在库试剂量</div>
               <div class="stat-value">{{ dashboard.stockCount || 0 }}<span class="unit">盒</span></div>
-              <div class="stat-change" :class="dashboard.stockChangeUp ? 'up' : 'down'">
+              <div v-if="dashboard.stockChangePct != null" class="stat-change" :class="dashboard.stockChangeUp ? 'up' : 'down'">
                 {{ dashboard.stockChangeUp ? '↑' : '↓' }} {{ dashboard.stockChangePct || 0 }}% 较上月
               </div>
             </div>
@@ -21,10 +21,6 @@
               <div class="stat-icon" style="background:#ecfdf5;color:#059669;">
                 <el-icon :size="28"><Box /></el-icon>
               </div>
-              <svg class="sparkline" viewBox="0 0 64 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polyline points="0,22 10,18 20,20 30,12 40,15 52,7 64,2"
-                  stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
             </div>
           </div>
         </el-card>
@@ -35,7 +31,7 @@
             <div class="stat-left">
               <div class="stat-label">今日消耗核销</div>
               <div class="stat-value">{{ dashboard.consumeToday || 0 }}<span class="unit">盒</span></div>
-              <div class="stat-change" :class="dashboard.consumeChangeUp ? 'up' : 'down'">
+              <div v-if="dashboard.consumeChangePct != null" class="stat-change" :class="dashboard.consumeChangeUp ? 'up' : 'down'">
                 {{ dashboard.consumeChangeUp ? '↑' : '↓' }} {{ dashboard.consumeChangePct || 0 }}% 较昨日
               </div>
             </div>
@@ -43,10 +39,6 @@
               <div class="stat-icon" style="background:#eff6ff;color:#3b82f6;">
                 <el-icon :size="28"><DataAnalysis /></el-icon>
               </div>
-              <svg class="sparkline" viewBox="0 0 64 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polyline points="0,24 10,20 20,22 30,14 40,17 52,9 64,5"
-                  stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
             </div>
           </div>
         </el-card>
@@ -63,10 +55,6 @@
               <div class="stat-icon" style="background:#fffbeb;color:#f59e0b;">
                 <el-icon :size="28"><WarningFilled /></el-icon>
               </div>
-              <svg class="sparkline" viewBox="0 0 64 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polyline points="0,6 10,10 20,8 30,14 40,11 52,16 64,22"
-                  stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
             </div>
           </div>
         </el-card>
@@ -83,10 +71,6 @@
               <div class="stat-icon" style="background:#fef2f2;color:#ef4444;">
                 <el-icon :size="28"><Clock /></el-icon>
               </div>
-              <svg class="sparkline" viewBox="0 0 64 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polyline points="0,8 10,12 20,9 30,14 40,18 52,22 64,25"
-                  stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
             </div>
           </div>
         </el-card>
@@ -229,9 +213,9 @@ const router = useRouter()
 
 const dashboard = reactive({
   stockCount: 0, consumeToday: 0, pendingAudit: 0, expiringBatches: 0,
-  stockChangeUp: true, stockChangePct: 0,
-  consumeChangeUp: true, consumeChangePct: 0,
-  autoAuditRate: 0, interceptAccuracy: 0, falseInterceptRate: 0,
+  stockChangeUp: null, stockChangePct: null,
+  consumeChangeUp: null, consumeChangePct: null,
+  autoAuditRate: 0, interceptAccuracy: null, falseInterceptRate: null,
   autoReleased: 0, warnReleased: 0, manualReview: 0
 })
 
@@ -250,49 +234,10 @@ async function fetchDashboard() {
     const d = await getDashboardKpi()
     if (d) Object.assign(dashboard, d)
   } catch (e) { console.error('Failed to fetch dashboard KPI:', e) }
-  // 若 API 未就绪或返回空数据，则使用模拟数据作为兜底
-  if (dashboard.stockCount === 0 && dashboard.consumeToday === 0) {
-    Object.assign(dashboard, {
-      stockCount: 1250, consumeToday: 42, pendingAudit: 15, expiringBatches: 8,
-      stockChangeUp: true, stockChangePct: 3.5,
-      consumeChangeUp: false, consumeChangePct: 5.2,
-      autoAuditRate: 72, interceptAccuracy: 94, falseInterceptRate: 6,
-      autoReleased: 128, warnReleased: 35, manualReview: 18
-    })
-  }
 }
 
 function fetchUdiFlows() {
-  const now = Date.now()
-  const reagents = [
-    '肌钙蛋白I检测试剂盒', '降钙素原检测试剂盒', 'C反应蛋白检测试剂盒',
-    'D-二聚体检测试剂盒', 'BNP检测试剂盒', '糖化血红蛋白检测试剂盒',
-    '甲胎蛋白检测试剂盒', '癌胚抗原检测试剂盒', '乙肝表面抗原检测试剂盒',
-    '丙肝抗体检测试剂盒'
-  ]
-  const flowDefs = [
-    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
-    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
-    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
-    { op: 'TRANSFER', opLabel: '科室调拨', fromLabel: '在库', to: 'TRANSFERRED', toLabel: '已调拨' },
-    { op: 'RECEIVE', opLabel: '接收确认', fromLabel: '已调拨', to: 'RECEIVED', toLabel: '已接收' },
-    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
-    { op: 'CONSUME', opLabel: '消耗核销', fromLabel: '在库', to: 'CONSUMED', toLabel: '已消耗' },
-    { op: 'EXPIRY_ALERT', opLabel: '效期预警', fromLabel: '在库', to: 'EXPIRY_ALERT', toLabel: '近效期' },
-    { op: 'SCAN_LOAD', opLabel: '扫码入库', fromLabel: '—', to: 'IN_STOCK', toLabel: '在库' },
-    { op: 'TRANSFER', opLabel: '科室调拨', fromLabel: '在库', to: 'TRANSFERRED', toLabel: '已调拨' }
-  ]
-
-  udiFlows.value = flowDefs.map((def, i) => ({
-    occurredAt: new Date(now - (i + 1) * 7 * 60000),
-    udiCode: `(01)0693527${String(1000000 + i).slice(0, 7)}(17)270${String(i).padStart(2, '0')}0(10)B${String(i + 1).padStart(4, '0')}`,
-    reagentName: reagents[i % reagents.length],
-    operationType: def.op,
-    operationTypeLabel: def.opLabel,
-    fromStatusLabel: def.fromLabel,
-    toStatus: def.to,
-    toStatusLabel: def.toLabel
-  }))
+  udiFlows.value = []
 }
 
 function initCharts() {
@@ -303,9 +248,9 @@ function initCharts() {
 function initTrendChart() {
   if (!trendChartRef.value) return
   trendChart = echarts.init(trendChartRef.value)
-  const days = Array.from({ length: 30 }, (_, i) => `${i + 1}日`)
-  const inbound = Array.from({ length: 30 }, () => Math.floor(Math.random() * 30 + 80))
-  const outbound = Array.from({ length: 30 }, () => Math.floor(Math.random() * 40 + 50))
+  const days = []
+  const inbound = []
+  const outbound = []
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
     legend: { bottom: 0, textStyle: { color: '#64748b' } },
@@ -335,13 +280,7 @@ function initDeptChart() {
       type: 'pie', radius: ['55%', '78%'], center: ['50%', '45%'], avoidLabelOverlap: false,
       label: { show: true, formatter: '{b}\n{d}%', fontSize: 11 },
       emphasis: { scaleSize: 6 },
-      data: [
-        { value: 850, name: '免疫组', itemStyle: { color: '#10b981' } },
-        { value: 620, name: '生化组', itemStyle: { color: '#3b82f6' } },
-        { value: 340, name: '临检组', itemStyle: { color: '#f59e0b' } },
-        { value: 210, name: '微生物组', itemStyle: { color: '#8b5cf6' } },
-        { value: 120, name: '分子组', itemStyle: { color: '#06b6d4' } }
-      ]
+      data: []
     }]
   })
 }
@@ -356,13 +295,13 @@ function formatTime(d) {
 }
 
 function operationTagType(type) {
-  const m = { SCAN_LOAD: '', CONSUME: 'success', TRANSFER: 'info', RECEIVE: '', EXPIRY_ALERT: 'warning' }
-  return m[type] || ''
+  const m = { SCAN_LOAD: 'info', CONSUME: 'success', TRANSFER: 'info', RECEIVE: 'info', EXPIRY_ALERT: 'warning' }
+  return m[type] || 'info'
 }
 
 function udiStatusTagType(status) {
-  const m = { IN_STOCK: 'success', IN_USE: 'info', CONSUMED: '', EXPIRY_ALERT: 'warning', TRANSFERRED: 'info', RECEIVED: '' }
-  return m[status] || ''
+  const m = { IN_STOCK: 'success', IN_USE: 'info', CONSUMED: 'info', EXPIRY_ALERT: 'warning', TRANSFERRED: 'info', RECEIVED: 'info' }
+  return m[status] || 'info'
 }
 </script>
 

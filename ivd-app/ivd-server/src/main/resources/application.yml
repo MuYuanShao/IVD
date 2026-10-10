@@ -62,7 +62,7 @@ spring:
     table: flyway_schema_history
     baseline-on-migrate: true
     baseline-version: 1
-    validate-on-migrate: false
+    validate-on-migrate: true
     # 信创兼容：不执行 MySQL 私有 SQL
     # placeholders 用于区分环境
 
@@ -116,7 +116,7 @@ xxl:
       address: ''
       ip: ''
       port: 9999
-      logpath: /app/logs/xxl-job
+      logpath: ${XXL_JOB_EXECUTOR_LOGPATH:logs/xxl-job}
       logretentiondays: 30
 
 # ---- IVD 应用自定义 ----

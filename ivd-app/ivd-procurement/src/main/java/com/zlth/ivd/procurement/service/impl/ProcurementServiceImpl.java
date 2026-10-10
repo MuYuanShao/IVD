@@ -52,6 +52,11 @@ import java.util.stream.Collectors;
 @Transactional(rollbackFor = Exception.class)
 public class ProcurementServiceImpl implements ProcurementService {
 
+    private static void requirePositive(BigDecimal quantity, String field) {
+        if (quantity == null || quantity.signum() <= 0)
+            throw new BizException(40001, field + "必须大于零");
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ProcurementServiceImpl.class);
 
     private final PurchaseRequisitionMapper reqMapper;
@@ -386,6 +391,14 @@ public class ProcurementServiceImpl implements ProcurementService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public PurchaseRequisitionVO pickAndShip(Long requisitionId, PickAndShipRequest request) {
+        if (request == null || request.getItems() == null || request.getItems().isEmpty())
+            throw new BizException(40001, "请选择拣货明细");
+        for (var pick : request.getItems()) {
+            if (pick == null || pick.getReqItemId() == null || pick.getSourceBatchId() == null)
+                throw new BizException(40001, "拣货明细及源批次不能为空");
+            requirePositive(pick.getPickQty(), "拣货数量");
+        }
+        reqMapper.lockById(requisitionId);
         PurchaseRequisition req = reqMapper.selectById(requisitionId);
         if (req == null) throw new BizException(40400, "申领单不存在");
         if (req.getStatus() != RequisitionStatusEnum.REVIEWED
@@ -399,6 +412,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         if (targetWarehouseId == null) {
             targetWarehouseId = req.getToWarehouseId();
         }
+        if (targetWarehouseId == null) throw new BizException(40001, "申领单缺少目标仓库");
 
         // 首次拣货：REVIEWED → PICKING
         if (req.getStatus() == RequisitionStatusEnum.REVIEWED) {
@@ -415,8 +429,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         for (PickAndShipRequest.PickItem pickItem : request.getItems()) {
             PurchaseRequisitionItem reqItem = itemMap.get(pickItem.getReqItemId());
             if (reqItem == null) {
-                log.warn("pickAndShip: 跳过无效 reqItemId={}", pickItem.getReqItemId());
-                continue;
+                throw new BizException(40001, "拣货明细不属于当前申领单");
             }
 
             BigDecimal pickQty = pickItem.getPickQty() != null ? pickItem.getPickQty() : BigDecimal.ONE;
@@ -428,7 +441,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             }
 
             // 1. 扣减源仓库库存（乐观锁重试）— 一级库出库
-            ReagentBatch sourceBatch = deductSourceBatchStock(pickItem.getSourceBatchId(), pickQty);
+            ReagentBatch sourceBatch = deductSourceBatchStock(pickItem.getSourceBatchId(), reqItem.getReagentId(), pickQty);
 
             // 2. 目标仓库不在此处入库！拣货发货后物品处于"在途"状态，
             //    待科室签收（receiveRequisition）时才真正增加二级库库存
@@ -468,6 +481,7 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseRequisitionVO receiveRequisition(Long id) {
+        reqMapper.lockById(id);
         PurchaseRequisition req = reqMapper.selectById(id);
         if (req == null) throw new BizException(40400, "申领单不存在");
         if (req.getStatus() != RequisitionStatusEnum.SHIPPED
@@ -479,21 +493,24 @@ public class ProcurementServiceImpl implements ProcurementService {
         // 优先使用 transfer record 中记录的目标仓库（pickAndShip 阶段指定的 targetWarehouseId），
         // 回退到申领单的 toWarehouseId
         Long defaultTargetWarehouseId = req.getToWarehouseId();
+        if (defaultTargetWarehouseId == null) throw new BizException(40001, "申领单缺少签收仓库");
         if (defaultTargetWarehouseId != null) {
-            List<ConsumptionRecord> transferRecords = consumptionService.findTransferRecords(id);
+            List<ConsumptionRecord> transferRecords = consumptionService.findUnreceivedTransferRecords(id);
+            if (transferRecords == null || transferRecords.isEmpty())
+                throw new BizException(40900, "没有待签收的发货流水");
             if (transferRecords != null && !transferRecords.isEmpty()) {
                 for (ConsumptionRecord tr : transferRecords) {
+                    requirePositive(tr.getQuantity(), "发货流水数量");
                     // 每笔 transfer record 可能有不同的目标仓库，逐笔解析
                     Long trTargetWarehouseId = tr.getWarehouseId() != null
                             ? tr.getWarehouseId() : defaultTargetWarehouseId;
                     // 从源仓库查找对应的批次（即使库存已清零，批次记录仍存在）
-                    ReagentBatch sourceBatch = inventoryService.findBatch(tr.getBatchNo(), tr.getFromWarehouseId());
+                    ReagentBatch sourceBatch = inventoryService.findBatch(tr.getReagentId(), tr.getBatchNo(), tr.getFromWarehouseId());
                     if (sourceBatch == null) {
-                        log.warn("签收入库: 找不到源批次 batchNo={}, fromWarehouseId={}，跳过",
-                                tr.getBatchNo(), tr.getFromWarehouseId());
-                        continue;
+                        throw new BizException(40001, "签收入库源批次不存在，请核对发货流水");
                     }
                     Long targetBatchId = upsertTargetBatch(sourceBatch, trTargetWarehouseId, tr.getQuantity());
+                    consumptionService.confirmTransferReceipt(tr.getId(), targetBatchId);
                     log.info("签收入库: batchNo={}, qty={}, targetWarehouseId={}, targetBatchId={}",
                             tr.getBatchNo(), tr.getQuantity(), trTargetWarehouseId, targetBatchId);
 
@@ -510,7 +527,12 @@ public class ProcurementServiceImpl implements ProcurementService {
             }
         }
 
-        req.setStatus(RequisitionStatusEnum.FULFILLED);
+        List<PurchaseRequisitionItem> receiptItems = reqItemMapper.selectList(
+                new LambdaQueryWrapper<PurchaseRequisitionItem>().eq(PurchaseRequisitionItem::getReqId, id));
+        boolean complete = !receiptItems.isEmpty() && receiptItems.stream().allMatch(item ->
+                item.getQtyFulfilled() != null && item.getQtyRequested() != null
+                        && item.getQtyFulfilled().compareTo(item.getQtyRequested()) >= 0);
+        req.setStatus(complete ? RequisitionStatusEnum.FULFILLED : RequisitionStatusEnum.PARTIAL_FULFILLED);
         req.setReceivedAt(LocalDateTime.now());
         req.setUpdatedAt(LocalDateTime.now());
         reqMapper.updateById(req);
@@ -521,11 +543,17 @@ public class ProcurementServiceImpl implements ProcurementService {
     /**
      * 扣减源仓库库存（乐观锁重试，最多 3 次）
      */
-    private ReagentBatch deductSourceBatchStock(Long batchId, BigDecimal qty) {
+    private ReagentBatch deductSourceBatchStock(Long batchId, Long reagentId, BigDecimal qty) {
+        requirePositive(qty, "拣货数量");
         int maxRetries = 3;
         for (int i = 0; i < maxRetries; i++) {
             ReagentBatch sourceBatch = inventoryService.getBatch(batchId);
             if (sourceBatch == null) throw new BizException(40400, "批次不存在");
+            if (!Objects.equals(reagentId, sourceBatch.getReagentId()))
+                throw new BizException(40001, "源批次试剂与申领明细不一致");
+            if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK
+                    || sourceBatch.getExpiryDate() == null || sourceBatch.getExpiryDate().isBefore(LocalDate.now()))
+                throw new BizException(40001, "源批次不可用或已过期");
             if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
 
             sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
@@ -550,7 +578,7 @@ public class ProcurementServiceImpl implements ProcurementService {
     private Long upsertTargetBatch(ReagentBatch sourceBatch, Long targetWarehouseId, BigDecimal qty) {
         int maxRetries = 3;
         for (int i = 0; i < maxRetries; i++) {
-            ReagentBatch targetBatch = inventoryService.findBatch(sourceBatch.getBatchNo(), targetWarehouseId);
+            ReagentBatch targetBatch = inventoryService.findBatch(sourceBatch.getReagentId(), sourceBatch.getBatchNo(), targetWarehouseId);
 
             if (targetBatch != null) {
                 targetBatch.setStock(targetBatch.getStock().add(qty));
@@ -1150,6 +1178,8 @@ public class ProcurementServiceImpl implements ProcurementService {
     // ── 验收 ──
     @Override
     public void receiveOrder(ReceiveItemRequest request) {
+        if (request == null) throw new BizException(40001, "验收参数不能为空");
+        requirePositive(request.getQtyReceived(), "验收数量");
         // BUGFIX 10: 先取出订单明细并校验归属
         PurchaseOrderItem item = orderItemMapper.selectById(request.getItemId());
         if (item == null) throw new BizException(40400, "采购订单明细不存在");
@@ -1190,7 +1220,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             Long savedBatchId = null;
             int batchRetries = 3;
             for (int attempt = 0; attempt < batchRetries; attempt++) {
-                ReagentBatch existing = inventoryService.findBatch(request.getBatchNo(), warehouseId);
+                ReagentBatch existing = inventoryService.findBatch(item.getReagentId(), request.getBatchNo(), warehouseId);
                 if (existing != null) {
                     // 追加库存
                     existing.setStock(existing.getStock().add(qty));
@@ -1300,6 +1330,12 @@ public class ProcurementServiceImpl implements ProcurementService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> receiveDirect(DirectReceiveRequest request) {
+        if (request == null || request.getItems() == null || request.getItems().isEmpty())
+            throw new BizException(40001, "验收明细不能为空");
+        for (var item : request.getItems()) {
+            if (item == null || item.getReagentId() == null) throw new BizException(40001, "请选择验收试剂");
+            requirePositive(item.getQtyReceived(), "验收数量");
+        }
         Integer supplierId = request.getSupplierId() != null ? request.getSupplierId() : 1;
         Long warehouseId = request.getWarehouseId() != null ? request.getWarehouseId() : 1L;
 
@@ -1328,7 +1364,8 @@ public class ProcurementServiceImpl implements ProcurementService {
 
         for (DirectReceiveRequest.DirectReceiveItem item : request.getItems()) {
             if (item.getReagentId() == null) continue;
-            BigDecimal qty = item.getQtyReceived() != null ? item.getQtyReceived() : BigDecimal.ONE;
+            requirePositive(item.getQtyReceived(), "验收数量");
+            BigDecimal qty = item.getQtyReceived();
 
             // 查试剂目录获取单价
             BigDecimal unitPrice = item.getUnitPrice();
@@ -1359,7 +1396,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             if (item.getBatchNo() != null && !item.getBatchNo().isBlank()) {
                 Long savedBatchId;
                 // BUGFIX: 按 warehouseId + batchNo 限定范围（同 Bug 7）
-                ReagentBatch existing = inventoryService.findBatch(item.getBatchNo(), warehouseId);
+                ReagentBatch existing = inventoryService.findBatch(item.getReagentId(), item.getBatchNo(), warehouseId);
                 if (existing != null) {
                     existing.setStock(existing.getStock().add(qty));
                     existing.setUdiStatus(UdiStatusEnum.IN_STOCK);

@@ -132,7 +132,7 @@ function buildTree(list) {
 }
 
 function getLevelTagType(level) {
-  return { 1: 'danger', 2: 'warning', 3: 'info' }[level] || ''
+  return { 1: 'danger', 2: 'warning', 3: 'info' }[level] || 'info'
 }
 
 async function loadTree() {

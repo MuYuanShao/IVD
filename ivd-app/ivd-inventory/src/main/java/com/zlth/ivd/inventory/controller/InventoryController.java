@@ -65,8 +65,9 @@ public class InventoryController {
     @PostMapping("/transfer")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<String> transfer(@RequestParam Long batchId, @RequestParam Long targetWarehouseId,
-                                   @RequestParam BigDecimal qty, @RequestParam(defaultValue = "NORMAL") String urgency) {
-        inventoryService.transferBatch(batchId, targetWarehouseId, qty, urgency);
+                                   @RequestParam BigDecimal qty, @RequestParam(defaultValue = "NORMAL") String urgency,
+                                   @RequestParam(required = false) String reason) {
+        inventoryService.transferBatch(batchId, targetWarehouseId, qty, urgency, reason);
         return Result.success("调拨成功");
     }
 

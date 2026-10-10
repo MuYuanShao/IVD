@@ -13,6 +13,12 @@ import java.util.Map;
 @Mapper
 public interface DashboardMapper {
 
+    @Select("SELECT CASE WHEN SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END)>0 THEN NULL ELSE COALESCE(SUM(amount),0) END FROM consumption_record WHERE record_type='CONSUME' AND DATE(occurred_at)=CURRENT_DATE")
+    java.math.BigDecimal getTodayConsumptionCost();
+
+    @Select("SELECT CASE WHEN SUM(CASE WHEN stock<>0 AND unit_price IS NULL AND avg_cost IS NULL THEN 1 ELSE 0 END)>0 THEN NULL ELSE COALESCE(SUM(stock*COALESCE(unit_price,avg_cost)),0) END FROM reagent_batch")
+    java.math.BigDecimal getCurrentStockAmount();
+
     /** 在库试剂量（盒） */
     @Select("SELECT COALESCE(SUM(stock), 0) FROM reagent_batch WHERE stock > 0")
     Long countStock();
@@ -45,7 +51,7 @@ public interface DashboardMapper {
             "COUNT(*) as total, " +
             "SUM(CASE WHEN decision = 'AUTO_RELEASE' THEN 1 ELSE 0 END) as auto " +
             "FROM audit_decision_log " +
-            "WHERE decided_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) " +
+            "WHERE decided_at >= DATE_SUB(CURDATE(), INTERVAL (#{days}-1) DAY) AND decided_at < DATE_ADD(CURDATE(),INTERVAL 1 DAY) " +
             "GROUP BY DATE(decided_at) ORDER BY day")
-    List<Map<String, Object>> getAuditRateTrend();
+    List<Map<String, Object>> getAuditRateTrend(@org.apache.ibatis.annotations.Param("days") int days);
 }

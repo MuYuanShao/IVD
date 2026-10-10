@@ -14,6 +14,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -48,6 +51,20 @@ class ReagentCatalogControllerTest {
 
     private static Long createdReagentId;
     private static Long approvalLogId;
+
+    @BeforeEach
+    void authenticateAsSystemAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "catalog-test-admin",
+                        null,
+                        java.util.List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
+    }
+
+    @AfterEach
+    void clearAuthentication() {
+        SecurityContextHolder.clearContext();
+    }
 
     // ==================== 1. 分页查询 ====================
 

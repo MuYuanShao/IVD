@@ -69,8 +69,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     return data
   }
 
-  async function doTransfer(batchId, targetWarehouseId, qty, urgency = 'NORMAL') {
-    const res = await transferBatch(batchId, targetWarehouseId, qty, urgency)
+  async function doTransfer(batchId, targetWarehouseId, qty, urgency = 'NORMAL', reason) {
+    const res = await transferBatch(batchId, targetWarehouseId, qty, urgency, reason)
     await fetchStats()
     return res
   }

@@ -17,6 +17,8 @@ public class ReceiveItemRequest {
     /** 订单明细ID */
     private Long itemId;
     /** 收货数量 */
+    @jakarta.validation.constraints.NotNull
+    @jakarta.validation.constraints.DecimalMin(value = "0", inclusive = false)
     private BigDecimal qtyReceived;
     /** UDI-DI（产品标识） */
     private String udiDi;

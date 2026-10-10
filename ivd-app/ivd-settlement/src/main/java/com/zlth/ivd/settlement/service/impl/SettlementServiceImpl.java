@@ -111,12 +111,12 @@ public class SettlementServiceImpl implements SettlementService {
         if (jdbcTemplate.queryForList("SELECT id FROM purchase_requisition WHERE id=? FOR UPDATE", requisitionId).isEmpty())
             throw new BizException(40400, "申领单不存在");
         PurchaseRequisition req = reqMapper.selectById(requisitionId);
-        if (req.getStatus() != RequisitionStatusEnum.FULFILLED)
+        if (req.getStatus() != RequisitionStatusEnum.FULFILLED && req.getStatus() != RequisitionStatusEnum.PARTIAL_FULFILLED)
             throw new BizException(40001, "请先完成科室签收后结算");
         Long legacy = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=? AND source_item_kind='LEGACY'", Long.class, requisitionId);
         if (legacy != null && legacy > 0) throw new DuplicateSettlementException(req.getReqNo());
         List<Map<String,Object>> movements = jdbcTemplate.queryForList(
-                "SELECT cr.* FROM consumption_record cr JOIN purchase_requisition_item i ON i.id=cr.requisition_item_id AND i.req_id=cr.requisition_id AND i.reagent_id=cr.reagent_id WHERE cr.requisition_id=? AND cr.record_type='TRANSFER' ORDER BY cr.id", requisitionId);
+                "SELECT cr.* FROM consumption_record cr JOIN requisition_transfer_receipt receipt ON receipt.transfer_record_id=cr.id JOIN purchase_requisition_item i ON i.id=cr.requisition_item_id AND i.req_id=cr.requisition_id AND i.reagent_id=cr.reagent_id WHERE cr.requisition_id=? AND cr.record_type='TRANSFER' ORDER BY cr.id", requisitionId);
         if (movements.isEmpty()) throw new BizException(40001,"未找到带明细关联的实际发货流水，历史单据请先核对来源");
         int added = 0;
         for (Map<String,Object> move : movements) {

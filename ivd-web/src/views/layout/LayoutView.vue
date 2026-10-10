@@ -4,7 +4,10 @@
   P0/P1修复: 新增 /rules /trace 菜单 + 面包屑 + 侧边栏底部状态
 -->
 <template>
-  <el-container class="layout-container">
+  <el-container
+    class="layout-container"
+    :style="{ '--layout-aside-width': isCollapse ? '64px' : '230px' }"
+  >
     <!-- 侧边栏（深色主题，匹配效果图 #0b1220 → #131c30） -->
     <el-aside :width="isCollapse ? '64px' : '230px'" class="layout-aside">
       <div class="logo-area">
@@ -136,6 +139,10 @@
           <el-icon><Collection /></el-icon>
           <span style="flex:1">库房管理</span>
         </el-menu-item>
+        <el-menu-item index="/system/catalog-fields">
+          <el-icon><SetUp /></el-icon>
+          <span style="flex:1">试剂目录字段配置</span>
+        </el-menu-item>
 
         <!-- 系统 -->
         <div class="menu-group-label" v-show="!isCollapse">系统</div>
@@ -210,7 +217,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useProcurementStore } from '@/stores/procurement'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLicenseStore } from '@/stores/license'
-import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, EditPen, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, Checked, UserFilled, Money, Bell, Clock, Fold, Expand } from '@element-plus/icons-vue'
+import { Search, DataBoard, Box, Stamp, Goods, Tickets, WarningFilled, Files, Camera, EditPen, Collection, OfficeBuilding, AlarmClock, Grid, Connection, TrendCharts, Setting, SetUp, Checked, UserFilled, Money, Bell, Clock, Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -291,6 +298,7 @@ const breadcrumbParent = computed(() => {
     '/system/users': '系统管理',
     '/system/depts': '系统管理',
     '/system/warehouses': '系统管理',
+    '/system/catalog-fields': '系统管理',
   }
   return parents[route.path] || ''
 })
@@ -319,6 +327,7 @@ function doGlobalSearch() {
   else if (/用户|账号|user/.test(q)) router.push('/system/users')
   else if (/科室|dept/.test(q)) router.push('/system/depts')
   else if (/库房|仓库|warehouse/.test(q)) router.push('/system/warehouses')
+  else if (/字段配置|目录配置|下拉配置|catalog field/.test(q)) router.push('/system/catalog-fields')
   else if (/证照|license/.test(q)) router.push('/license')
   else if (/看板|dashboard/.test(q)) router.push('/dashboard')
   else ElMessage.info('全局搜索: ' + searchText.value + ' — 未匹配特定页面，请尝试其他关键词')

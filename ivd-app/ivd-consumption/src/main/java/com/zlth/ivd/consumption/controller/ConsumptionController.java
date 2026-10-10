@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -18,9 +20,22 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/v1/consumption")
 @RequiredArgsConstructor
+@Validated
 public class ConsumptionController {
 
     private final ConsumptionService consumptionService;
+    private final com.zlth.ivd.inventory.service.InstrumentUsageService instrumentUsageService;
+
+    @GetMapping("/devices")
+    public Result<List<Map<String,Object>>> devices() { return Result.success(instrumentUsageService.devices()); }
+    @GetMapping("/batches")
+    public Result<List<Map<String,Object>>> batches(@RequestParam(defaultValue="") String keyword) { return Result.success(instrumentUsageService.availableBatches(keyword)); }
+    @GetMapping("/loads")
+    public Result<List<Map<String,Object>>> loads() { return Result.success(instrumentUsageService.activeLoads()); }
+    @PostMapping("/load") @RequireRole({"SYSTEM_ADMIN","LAB_TECH"})
+    public Result<Void> load(@RequestParam Long batchId,@RequestParam Long deviceId) { instrumentUsageService.bind(batchId,deviceId);return Result.success(); }
+    @PostMapping("/unload") @RequireRole({"SYSTEM_ADMIN","LAB_TECH"})
+    public Result<Void> unload(@RequestParam Long loadId) { instrumentUsageService.unload(loadId);return Result.success(); }
 
     @GetMapping
     public Result<PageVO<ConsumptionRecordVO>> list(
@@ -32,8 +47,8 @@ public class ConsumptionController {
 
     @PostMapping("/consume")
     @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
-    public Result<String> consume(@RequestParam Long batchId, @RequestParam Long deviceId,
-                                  @RequestParam BigDecimal qty, @RequestParam(required = false) String purpose,
+    public Result<String> consume(@RequestParam Long batchId, @RequestParam(required=false) Long deviceId,
+                                  @RequestParam @Positive BigDecimal qty, @RequestParam(required = false) String purpose,
                                   @RequestParam(required = false) String remark) {
         consumptionService.recordConsumption(batchId, deviceId, qty, purpose, remark);
         return Result.success("消耗记录成功");
@@ -41,7 +56,7 @@ public class ConsumptionController {
 
     @PostMapping("/inbound")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
-    public Result<String> inbound(@RequestParam Long batchId, @RequestParam BigDecimal qty,
+    public Result<String> inbound(@RequestParam Long batchId, @RequestParam @Positive BigDecimal qty,
                                   @RequestParam Long warehouseId) {
         consumptionService.recordInbound(batchId, qty, warehouseId);
         return Result.success("入库记录成功");
@@ -49,9 +64,11 @@ public class ConsumptionController {
 
     @PostMapping("/batch-consume")
     @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
-    public Result<String> batchConsume(@RequestParam String batchNo, @RequestParam Long deviceId,
-                                       @RequestParam BigDecimal qty) {
-        consumptionService.batchConsume(batchNo, deviceId, qty);
+    public Result<String> batchConsume(@RequestParam String batchNo, @RequestParam(required=false) Long deviceId,
+                                       @RequestParam @Positive BigDecimal qty,
+                                       @RequestParam(required = false) String purpose,
+                                       @RequestParam(required = false) String remark) {
+        consumptionService.batchConsume(batchNo, deviceId, qty, purpose, remark);
         return Result.success("批量核销成功");
     }
 

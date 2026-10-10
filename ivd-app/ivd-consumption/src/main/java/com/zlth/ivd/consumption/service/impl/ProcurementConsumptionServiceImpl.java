@@ -14,6 +14,17 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProcurementConsumptionServiceImpl implements ProcurementConsumptionService {
     private final ConsumptionRecordMapper mapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    public List<ConsumptionRecord> findUnreceivedTransferRecords(Long requisitionId) {
+        return mapper.selectList(new LambdaQueryWrapper<ConsumptionRecord>()
+                .eq(ConsumptionRecord::getRequisitionId, requisitionId)
+                .eq(ConsumptionRecord::getRecordType, ConsumptionRecordTypeEnum.TRANSFER.getCode())
+                .notInSql(ConsumptionRecord::getId, "SELECT transfer_record_id FROM requisition_transfer_receipt"));
+    }
+    public void confirmTransferReceipt(Long transferId, Long targetBatchId) {
+        jdbc.update("INSERT INTO requisition_transfer_receipt(transfer_record_id,target_batch_id,received_by,received_at) VALUES(?,?,?,CURRENT_TIMESTAMP(3))",
+                transferId, targetBatchId, com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserId());
+    }
     public List<ConsumptionRecord> findTransferRecords(Long requisitionId) {
         return mapper.selectList(new LambdaQueryWrapper<ConsumptionRecord>()
                 .eq(ConsumptionRecord::getRequisitionId, requisitionId)

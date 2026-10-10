@@ -250,7 +250,7 @@ onMounted(() => { fetchRules() })
 
 // ── 帮助函数 ──
 function levelTagType(level) {
-  return level === 'L1' ? 'info' : level === 'L2' ? 'warning' : ''
+  return level === 'L1' ? 'info' : level === 'L2' ? 'warning' : 'danger'
 }
 
 function actionTagType(action) {

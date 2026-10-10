@@ -120,8 +120,8 @@ const enabledCount = computed(() => store.users.filter(u => u.status === 1).leng
 const disabledCount = computed(() => store.users.filter(u => u.status === 0).length)
 
 function getRoleTag(role) {
-  const m = { SYSTEM_ADMIN: 'danger', LAB_DIRECTOR: 'warning', PURCHASER: 'success', STOREKEEPER: '', LAB_TECH: 'info', LAB_DOCTOR: 'info', FINANCE: 'warning', IT_STAFF: 'info' }
-  return m[role] || ''
+  const m = { SYSTEM_ADMIN: 'danger', LAB_DIRECTOR: 'warning', PURCHASER: 'success', STOREKEEPER: 'info', LAB_TECH: 'info', LAB_DOCTOR: 'info', FINANCE: 'warning', IT_STAFF: 'info' }
+  return m[role] || 'info'
 }
 
 // ── data ──

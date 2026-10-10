@@ -34,10 +34,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         kpi.put("consumeToday", consumeToday != null ? consumeToday : 0);
 
         // 库存变化趋势
-        kpi.put("stockChangeUp", true);
-        kpi.put("stockChangePct", 12);
-        kpi.put("consumeChangeUp", true);
-        kpi.put("consumeChangePct", 8);
+        kpi.put("stockChangeUp", null);
+        kpi.put("stockChangePct", null);
+        kpi.put("consumeChangeUp", null);
+        kpi.put("consumeChangePct", null);
 
         // 近效期批次
         Long expiringBatches = dashboardMapper.countExpiringBatches();
@@ -71,19 +71,16 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         kpi.put("autoAuditRate", totalDecisions > 0
                 ? new BigDecimal(autoReleased).multiply(BigDecimal.valueOf(100)).divide(new BigDecimal(totalDecisions), 1, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO);
-        kpi.put("interceptAccuracy", totalDecisions > 0
-                ? new BigDecimal("94.1") : BigDecimal.ZERO);
-        kpi.put("falseInterceptRate", totalDecisions > 0
-                ? new BigDecimal("5.9") : BigDecimal.ZERO);
-
-        // 历史指标
-        kpi.put("costToday", new BigDecimal("12580.00"));
-        kpi.put("costDeviation", new BigDecimal("23"));
-        kpi.put("grossMargin", new BigDecimal("45"));
-        kpi.put("capitalTied", new BigDecimal("286000.00"));
-        kpi.put("turnoverDays", 11);
-        kpi.put("totalTestsToday", 1847);
-        kpi.put("auditAutoRate", new BigDecimal("82.5"));
+        // No adjudicated reference outcomes / LIS revenue integration: explicitly unavailable.
+        kpi.put("interceptAccuracy", null);
+        kpi.put("falseInterceptRate", null);
+        kpi.put("costToday", dashboardMapper.getTodayConsumptionCost());
+        kpi.put("capitalTied", dashboardMapper.getCurrentStockAmount());
+        kpi.put("costDeviation", null);
+        kpi.put("grossMargin", null);
+        kpi.put("turnoverDays", null);
+        kpi.put("totalTestsToday", null);
+        kpi.put("auditAutoRate", kpi.get("autoAuditRate"));
 
         return kpi;
     }
@@ -92,8 +89,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     public Map<String, Object> getCostPerTest(String startDate, String endDate) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<Map<String, Object>> items = efficiencyMapper.getCostPerTest(
-                startDate != null ? startDate : "2026-07-01",
-                endDate != null ? endDate : "2026-07-31");
+                startDate != null ? startDate : LocalDate.now().withDayOfMonth(1).toString(),
+                endDate != null ? endDate : LocalDate.now().toString());
         if (items == null) items = Collections.emptyList();
         result.put("items", items);
         return result;
@@ -103,8 +100,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     public Map<String, Object> getBrandComparison(String startDate, String endDate) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<Map<String, Object>> brands = efficiencyMapper.getBrandComparison(
-                startDate != null ? startDate : "2026-07-01",
-                endDate != null ? endDate : "2026-07-31");
+                startDate != null ? startDate : LocalDate.now().withDayOfMonth(1).toString(),
+                endDate != null ? endDate : LocalDate.now().toString());
         if (brands == null) brands = Collections.emptyList();
         result.put("brands", brands);
         return result;
@@ -114,8 +111,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     public Map<String, Object> getWasteTop10(String startDate, String endDate) {
         Map<String, Object> result = new LinkedHashMap<>();
         List<Map<String, Object>> wastes = efficiencyMapper.getWasteTop10(
-                startDate != null ? startDate : "2026-07-01",
-                endDate != null ? endDate : "2026-07-31");
+                startDate != null ? startDate : LocalDate.now().withDayOfMonth(1).toString(),
+                endDate != null ? endDate : LocalDate.now().toString());
         if (wastes == null) wastes = Collections.emptyList();
         // 添加排名
         int rank = 1;
@@ -129,24 +126,20 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public Map<String, Object> getAuditRateTrend(int days) {
         Map<String, Object> result = new LinkedHashMap<>();
-        List<Map<String, Object>> raw = dashboardMapper.getAuditRateTrend();
+        if (days < 1 || days > 366) throw new com.zlth.ivd.common.exception.BizException(40001, "趋势天数必须为1至366");
+        List<Map<String, Object>> raw = dashboardMapper.getAuditRateTrend(days);
+        Map<String, Integer> daily = new HashMap<>();
+        if (raw != null) for (Map<String, Object> row : raw) {
+            long total = ((Number) row.get("total")).longValue();
+            long auto = ((Number) row.get("auto")).longValue();
+            daily.put(String.valueOf(row.get("day")), total > 0 ? (int) (auto * 100 / total) : null);
+        }
         List<String> dates = new ArrayList<>();
         List<Integer> rates = new ArrayList<>();
-
-        if (raw != null && !raw.isEmpty()) {
-            for (Map<String, Object> row : raw) {
-                Object dayObj = row.get("day");
-                dates.add(dayObj != null ? dayObj.toString() : "");
-                long total = ((Number) row.get("total")).longValue();
-                long auto = ((Number) row.get("auto")).longValue();
-                rates.add(total > 0 ? (int) (auto * 100 / total) : 0);
-            }
-        } else {
-            // 无数据时生成占位趋势
-            for (int i = days - 1; i >= 0; i--) {
-                dates.add(LocalDate.now().minusDays(i).format(DateTimeFormatter.ofPattern("MM-dd")));
-                rates.add(75 + (int) (Math.random() * 15));
-            }
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate day = LocalDate.now().minusDays(i);
+            dates.add(day.format(DateTimeFormatter.ofPattern("MM-dd")));
+            rates.add(daily.get(day.toString())); // null produces a gap, not a fictional measurement.
         }
         result.put("dates", dates);
         result.put("rates", rates);

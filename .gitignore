@@ -69,3 +69,11 @@ middleware/minio/minio.exe
 # ---- Build Artifacts ----
 BOOT-INF/
 data/
+
+# ---- Local QA, database backups and presentation build artifacts ----
+/output/
+/ivd-web/output/
+/ivd-web/.playwright-cli/
+/.codex-ppt-build/
+/ppt-build/
+*.inspect.ndjson

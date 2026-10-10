@@ -123,13 +123,12 @@ import TraceDialog from '@/components/TraceDialog.vue'
 import TransferDialog from '@/components/TransferDialog.vue'
 
 const store = useInventoryStore()
-const selectedGroup = ref(1)
-const groups = [
-  { value: 1, label: '免疫组', leader: '赵六' }, { value: 2, label: '生化组', leader: '钱七' },
-  { value: 3, label: '临检组', leader: '孙八' }, { value: 4, label: '微生物组', leader: '周九' }, { value: 5, label: '分子组', leader: '吴十' }
-]
+const selectedGroup = ref(null)
+const groups = computed(() => store.warehouses.filter(w => w.level === 3)
+  .map(w => ({ value: w.id, label: w.name, leader: w.contactPerson || '—' })))
 
-const currentGroupLeader = computed(() => groups.find(g => g.value === selectedGroup.value)?.leader || '—')
+
+const currentGroupLeader = computed(() => groups.value.find(g => g.value === selectedGroup.value)?.leader || '—')
 const totalBoxes = computed(() => filteredList.value.reduce((sum, r) => sum + (Number(r.stock) || 0), 0))
 const totalAmount = computed(() => filteredList.value.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toFixed(2))
 
@@ -141,7 +140,11 @@ function fetchData() { store.fetchFefo(null, selectedGroup.value) }
 
 function handleGroupChange() { fetchData() }
 
-onMounted(() => { fetchData() })
+onMounted(async () => {
+  await store.fetchWarehouses({ page: 1, pageSize: 200 })
+  selectedGroup.value = groups.value[0]?.value || null
+  if (selectedGroup.value) fetchData()
+})
 
 // ── 客户端过滤 ──
 const filteredList = computed(() => {
@@ -170,18 +173,18 @@ function resetFilters() {
 
 // ── 弹窗 ──
 const showTraceDialog = ref(false), traceSearch = ref('')
-const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedBatchId = ref(null)
+const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedBatchId = ref(null), selectedSourceWarehouseId = ref(null)
 
-const targetWarehouses = [
-  { value: 1, label: '中心药库' }, { value: 5, label: '检验科' }
-]
+const targetWarehouses = computed(() => store.warehouses
+  .filter(w => w.level < 3 && w.id !== selectedSourceWarehouseId.value && (w.status === 1 || w.isActive === true))
+  .map(w => ({ value: w.id, label: w.name })))
 
 function openTrace(row) { traceSearch.value = row.udiDi || row.batchNo || ''; showTraceDialog.value = true }
-function openTransfer(row, source) { sourceName.value = source; maxQty.value = row.stock || row.qty || 999; selectedBatchId.value = row.id; showTransferDialog.value = true }
+function openTransfer(row, source) { sourceName.value = source; maxQty.value = row.stock || row.qty || 999; selectedBatchId.value = row.id; selectedSourceWarehouseId.value = row.warehouseId || selectedGroup.value; showTransferDialog.value = true }
 
 async function doSubmitTransfer(form) {
   transferLoading.value = true
-  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity); ElMessage.success('出库成功'); showTransferDialog.value = false; fetchData() }
+  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity, 'NORMAL', form.reason); ElMessage.success('出库成功'); showTransferDialog.value = false; fetchData() }
   catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 </script>

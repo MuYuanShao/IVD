@@ -66,7 +66,7 @@
       >
         <el-table-column label="模块" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.module === 'LICENSE' ? '' : 'success'" size="small" effect="plain">
+            <el-tag :type="row.module === 'LICENSE' ? 'info' : 'success'" size="small" effect="plain">
               {{ row.moduleLabel }}
             </el-tag>
           </template>
@@ -182,21 +182,21 @@ function changeTypeTag(type, module) {
   if (module === 'CATALOG') {
     switch (type) {
       case 'CREATE': return 'success'
-      case 'UPDATE': return ''
+      case 'UPDATE': return 'info'
       case 'DELETE': return 'danger'
       case 'DISABLE': return 'info'
-      default: return ''
+      default: return 'info'
     }
   }
   switch (type) {
     case 'CREATE': return 'success'
     case 'RENEW': return 'warning'
-    case 'UPDATE': return ''
+    case 'UPDATE': return 'info'
     case 'FREEZE': return 'info'
     case 'UNFREEZE': return 'success'
     case 'DELETE_ATTACHMENT': return 'danger'
     case 'REPLACE_ATTACHMENT': return 'warning'
-    default: return ''
+    default: return 'info'
   }
 }
 
@@ -205,7 +205,7 @@ function reviewStatusTag(status) {
     case 'APPROVED': return 'success'
     case 'PENDING': return 'warning'
     case 'REJECTED': return 'danger'
-    default: return ''
+    default: return 'info'
   }
 }
 

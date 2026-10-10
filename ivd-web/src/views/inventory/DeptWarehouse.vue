@@ -103,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { Search as SearchIcon } from '@element-plus/icons-vue'
@@ -132,6 +132,7 @@ function fetchData() {
     registrationCertNo: filterRegistrationCert.value || undefined
   })
   store.fetchStats()
+  store.fetchWarehouses({ page: 1, pageSize: 200 })
 }
 
 function resetFilters() {
@@ -190,17 +191,16 @@ onMounted(() => { fetchData(); populateChartData(); nextTick(() => { pieChart.re
 const showTraceDialog = ref(false), traceSearch = ref('')
 const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedBatchId = ref(null)
 
-const targetWarehouses = [
-  { value: 11, label: '免疫组库' }, { value: 12, label: '生化组库' },
-  { value: 13, label: '临检组库' }, { value: 14, label: '微生物组库' }, { value: 15, label: '分子组库' }
-]
+const targetWarehouses = computed(() => store.warehouses
+  .filter(w => w.level === 3 && (w.status === 1 || w.isActive === true))
+  .map(w => ({ value: w.id, label: w.name })))
 
 function openTrace(row) { traceSearch.value = row.udiDi || row.batchNo || ''; showTraceDialog.value = true }
 function openTransfer(row, source) { sourceName.value = source; maxQty.value = row.stock || 999; selectedBatchId.value = row.id; showTransferDialog.value = true }
 
 async function doSubmitTransfer(form) {
   transferLoading.value = true
-  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity); ElMessage.success('下发成功'); showTransferDialog.value = false; fetchData() }
+  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity, 'NORMAL', form.reason); ElMessage.success('下发成功'); showTransferDialog.value = false; fetchData() }
   catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 

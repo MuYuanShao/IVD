@@ -96,7 +96,7 @@
             <el-option
               v-for="b in (row._batches || [])"
               :key="b.id || b.batchId"
-              :label="(b.batchNo || '—') + ' | 库存:' + (b.qtyAvailable || 0) + ' | 效期:' + (b.expiryDate || '—')"
+              :label="(b.batchNo || '—') + ' | 库存:' + (b.stock ?? b.qtyAvailable ?? 0) + ' | 效期:' + (b.expiryDate || '—')"
               :value="b.id || b.batchId"
             />
           </el-select>

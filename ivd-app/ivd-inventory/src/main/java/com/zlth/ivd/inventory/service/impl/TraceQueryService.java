@@ -32,13 +32,19 @@ public class TraceQueryService {
             if(r.get("requisition_id")!=null) reqIds.add(r.get("requisition_id"));
             if(r.get("purchase_order_item_id")!=null) poItems.add(r.get("purchase_order_item_id"));
             var settlements=jdbc.queryForList("SELECT id,settlement_no,settled_at,status,amount FROM settlement_record WHERE source_id=? AND settlement_type=?",r.get("id"),"CONSUME".equals(type)?"CONSUMPTION":"TRANSFER");
+            if ("TRANSFER".equals(type) && r.get("requisition_id") != null) {
+                for (var receipt : jdbc.queryForList("SELECT * FROM requisition_transfer_receipt WHERE transfer_record_id=?", r.get("id"))) {
+                    boolean recovered = "STOCK_POSTING_RECOVERY".equals(receipt.get("evidence_source"));
+                    timeline.add(event(recovered ? "历史入库证据" : "科室签收", "requisition_transfer_receipt", receipt.get("id"), receipt.get("received_at"),
+                            detail + (recovered ? " · 来源：目标批次创建记录，非人工签收时间" : ""), receipt.get("received_by"), r.get("warehouse_name")));
+                }
+            }
             settlements.forEach(s->timeline.add(event("结算","settlement_record",s.get("id"),s.get("settled_at"),s.get("settlement_no")+" · "+s.get("status")+" · 金额 "+s.get("amount"),null,null)));
         }
         for(Object reqId:reqIds) {
             for(var r:jdbc.queryForList("SELECT * FROM purchase_requisition WHERE id=?",reqId)) {
                 timeline.add(event("申领单","purchase_requisition",reqId,r.get("created_at"),String.valueOf(r.get("req_no")),null,null));
                 if(r.get("review_time")!=null) timeline.add(event("申领审核","purchase_requisition",reqId,r.get("review_time"),String.valueOf(r.get("req_no")),null,null));
-                if("FULFILLED".equals(r.get("status"))) timeline.add(event("科室签收","purchase_requisition",reqId,r.get("received_at"),r.get("req_no")+(r.get("received_at")==null?" · 历史签收时间未单独记录":""),null,null));
             }
             jdbc.queryForList("SELECT * FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=?",reqId).forEach(s->timeline.add(event("结算","settlement_record",s.get("id"),s.get("settled_at"),s.get("settlement_no")+" · 原记录批号 "+s.get("batch_no")+" · "+s.get("status"),null,null)));
         }

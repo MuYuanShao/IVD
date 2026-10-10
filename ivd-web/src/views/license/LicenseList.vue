@@ -808,7 +808,7 @@ function formatFileSize(bytes) {
 }
 
 function statusTagType(s) {
-  return { ACTIVE: 'success', EXPIRING: 'warning', EXPIRED: 'danger', FROZEN: 'info' }[s] || ''
+  return { ACTIVE: 'success', EXPIRING: 'warning', EXPIRED: 'danger', FROZEN: 'info' }[s] || 'info'
 }
 
 function licenseTypeIcon(type) {

@@ -3,8 +3,12 @@ package com.zlth.ivd.common.aspect;
 import com.zlth.ivd.common.annotation.RequireRole;
 import com.zlth.ivd.common.exception.BizException;
 import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,9 +29,23 @@ import java.util.stream.Collectors;
 @Component
 public class RoleAspect {
 
-    @Before("@annotation(requireRole)")
-    public void checkRole(RequireRole requireRole) {
-        String[] allowedRoles = requireRole.value();
+    @Before("@within(com.zlth.ivd.common.annotation.RequireRole) || " +
+            "@annotation(com.zlth.ivd.common.annotation.RequireRole)")
+    public void checkRole(JoinPoint joinPoint) {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Class<?> targetClass = AopUtils.getTargetClass(joinPoint.getTarget());
+        RequireRole requireRole = AnnotatedElementUtils.findMergedAnnotation(
+                AopUtils.getMostSpecificMethod(signature.getMethod(), targetClass), RequireRole.class);
+        if (requireRole == null) {
+            requireRole = AnnotatedElementUtils.findMergedAnnotation(targetClass, RequireRole.class);
+        }
+        if (requireRole == null) {
+            return;
+        }
+        checkAllowedRoles(requireRole.value());
+    }
+
+    private void checkAllowedRoles(String[] allowedRoles) {
         if (allowedRoles.length == 0) {
             return; // 无限制
         }

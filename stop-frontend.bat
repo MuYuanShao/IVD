@@ -1,13 +1,5 @@
 @echo off
-chcp 936 >nul
-title Stop IVD Frontend
-
-echo Stopping IVD Frontend (port 5173)...
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173.*LISTENING"') do (
-    echo Killing process PID=%%a...
-    taskkill /PID %%a /F >nul 2>&1
-)
-
+setlocal
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":5173 .*LISTENING" 2^>nul') do powershell.exe -NoProfile -Command "Stop-Process -Id %%p -Force -ErrorAction SilentlyContinue"
 echo Frontend stopped.
-pause
+exit /b 0

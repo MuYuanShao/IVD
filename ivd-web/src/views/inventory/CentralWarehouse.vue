@@ -113,7 +113,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search as SearchIcon, ArrowDown } from '@element-plus/icons-vue'
 import { useInventoryStore } from '@/stores/inventory'
@@ -208,10 +208,9 @@ onMounted(() => { fetchData(); populateChartData(); nextTick(() => { barChart.re
 const showTraceDialog = ref(false), traceReagentId = ref(null)
 const showTransferDialog = ref(false), sourceName = ref(''), maxQty = ref(999), transferLoading = ref(false), selectedUrgency = ref('NORMAL'), selectedBatchId = ref(null)
 
-const targetWarehouses = [
-  { value: 2, label: '门诊药房' }, { value: 3, label: '住院药房' },
-  { value: 4, label: '急诊药房' }, { value: 5, label: '检验科' }
-]
+const targetWarehouses = computed(() => store.warehouses
+  .filter(w => w.level > 1 && (w.status === 1 || w.isActive === true))
+  .map(w => ({ value: w.id, label: w.name })))
 
 function openTrace(row) { traceReagentId.value = row.reagentId; showTraceDialog.value = true }
 function openTransfer(row, source, urgency = 'NORMAL') { sourceName.value = source; maxQty.value = row.stock || 999; selectedUrgency.value = urgency; selectedBatchId.value = row.id; showTransferDialog.value = true }
@@ -219,7 +218,7 @@ function handleTransferCmd(cmd, row) { openTransfer(row, '中心库', cmd) }
 
 async function doSubmitTransfer(form) {
   transferLoading.value = true
-  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity, selectedUrgency.value); ElMessage.success('调拨成功'); showTransferDialog.value = false; fetchData() }
+  try { await store.doTransfer(selectedBatchId.value, form.targetWarehouse, form.quantity, selectedUrgency.value, form.reason); ElMessage.success('调拨成功'); showTransferDialog.value = false; fetchData() }
   catch (e) { console.error('Transfer failed', e) } finally { transferLoading.value = false }
 }
 

@@ -1,53 +1,60 @@
 @echo off
 chcp 65001 >nul
-title IVD Middleware Startup
+setlocal
+set "ROOT=%~dp0"
+if /I "%~1"=="--worker" goto worker
+cscript.exe //nologo "%ROOT%launch-hidden.vbs" "call ""%~f0"" --worker" "%ROOT%logs\middleware-launcher.log"
+exit /b %errorlevel%
 
-echo ============================================
-echo   IVD Middleware Startup
-echo ============================================
-echo.
-
-:: ── Redis ──────────────────────────────────
-echo [1/3] Redis...
-sc query Redis | find "RUNNING" >nul 2>&1
-if %errorlevel% neq 0 (
-    sc start Redis >nul 2>&1
-    echo   Redis service started OK
-) else (
-    echo   Redis already running
+:worker
+title IVD Middleware
+set "REDIS=%ROOT%middleware\redis"
+set "MINIO=%ROOT%middleware\minio"
+set "XXL=%ROOT%middleware\xxl-job"
+set "HIDDEN_LAUNCHER=%ROOT%launch-hidden.vbs"
+echo [1/3] Redis
+netstat -ano | findstr /R /C:":6379 .*LISTENING" >nul 2>&1
+if errorlevel 1 (
+  sc query Redis >nul 2>&1
+  if errorlevel 1 (
+    if not exist "%REDIS%\redis-server.exe" (echo [ERROR] Redis is missing.& exit /b 1)
+    cscript.exe //nologo "%HIDDEN_LAUNCHER%" "cd /d ""%REDIS%"" && redis-server.exe redis.windows.conf" "%REDIS%\redis.log"
+  ) else (sc start Redis >nul 2>&1)
 )
-echo   Port: 6379  ^|  Password: Redis@123456
-echo.
-
-:: ── MinIO ──────────────────────────────────
-echo [2/3] MinIO...
-netstat -ano | find ":9000" | find "LISTENING" >nul 2>&1
-if %errorlevel% neq 0 (
-    start /MIN "" cmd /c "set MINIO_ROOT_USER=ivdadmin && set MINIO_ROOT_PASSWORD=Minio@123456 && D:\IVD\middleware\minio\minio.exe server D:\IVD\middleware\minio\data --address :9000 --console-address :9001 > D:\IVD\middleware\minio\minio.log 2>&1"
-    echo   MinIO starting...
-    timeout /t 3 /nobreak >nul
-) else (
-    echo   MinIO already running
+for /L %%i in (1,1,20) do (
+  netstat -ano | findstr /R /C:":6379 .*LISTENING" >nul 2>&1 && goto redis_ready
+  ping 127.0.0.1 -n 2 >nul
 )
-echo   API: http://localhost:9000  ^|  Console: http://localhost:9001
-echo   User: ivdadmin  ^|  Password: Minio@123456
-echo.
-
-:: ── XXL-Job ────────────────────────────────
-echo [3/3] XXL-Job Admin...
-netstat -ano | find ":8081" | find "LISTENING" >nul 2>&1
-if %errorlevel% neq 0 (
-    start /MIN "" cmd /c "cd /d D:\IVD\middleware\xxl-job && java -jar xxl-job-admin-2.4.1.jar --spring.config.location=file:application.properties > xxl-job.log 2>&1"
-    echo   XXL-Job starting...
-    timeout /t 10 /nobreak >nul
-) else (
-    echo   XXL-Job already running
+echo [ERROR] Redis startup timed out.& exit /b 1
+:redis_ready
+echo   Ready: 127.0.0.1:6379
+echo [2/3] MinIO
+if not exist "%MINIO%\minio.exe" (echo [ERROR] MinIO executable is missing.& exit /b 1)
+netstat -ano | findstr /R /C:":9000 .*LISTENING" >nul 2>&1
+if errorlevel 1 (
+  if not exist "%MINIO%\data" mkdir "%MINIO%\data"
+  cscript.exe //nologo "%HIDDEN_LAUNCHER%" "cd /d ""%MINIO%"" && set MINIO_ROOT_USER=ivdadmin&& set MINIO_ROOT_PASSWORD=Minio@123456&& minio.exe server data --address :9000 --console-address :9001" "%MINIO%\minio.log"
 )
-echo   URL: http://localhost:8081/xxl-job-admin
-echo   Login: admin / 123456
-echo.
-
-echo ============================================
-echo   All middleware startup complete.
-echo ============================================
-pause
+for /L %%i in (1,1,30) do (
+  curl.exe --noproxy "*" -fsS "http://127.0.0.1:9000/minio/health/live" >nul 2>&1 && goto minio_ready
+  ping 127.0.0.1 -n 2 >nul
+)
+echo [ERROR] MinIO startup timed out.& exit /b 1
+:minio_ready
+echo   Ready: http://127.0.0.1:9000
+echo [3/3] XXL-Job
+where java.exe >nul 2>&1 || (echo [ERROR] Java not found.& exit /b 1)
+if not exist "%XXL%\xxl-job-admin-2.4.1.jar" (echo [ERROR] XXL-Job JAR is missing.& exit /b 1)
+if not exist "%XXL%\application.properties" (echo [ERROR] XXL-Job configuration is missing.& exit /b 1)
+netstat -ano | findstr /R /C:":8081 .*LISTENING" >nul 2>&1
+if errorlevel 1 (
+  cscript.exe //nologo "%HIDDEN_LAUNCHER%" "cd /d ""%XXL%"" && java -jar xxl-job-admin-2.4.1.jar --spring.config.location=file:./application.properties" "%XXL%\xxl-job.log"
+)
+for /L %%i in (1,1,60) do (
+  curl.exe --noproxy "*" -fsS "http://127.0.0.1:8081/xxl-job-admin/toLogin" >nul 2>&1 && goto xxl_ready
+  ping 127.0.0.1 -n 2 >nul
+)
+echo [ERROR] XXL-Job startup timed out.& exit /b 1
+:xxl_ready
+echo   Ready: http://127.0.0.1:8081/xxl-job-admin
+exit /b 0

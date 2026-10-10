@@ -17,15 +17,21 @@ public class PickAndShipRequest {
     private Long targetWarehouseId;
 
     /** 逐行拣货指令：从哪个批次拣多少货 */
+    @jakarta.validation.Valid
+    @jakarta.validation.constraints.NotEmpty
     private List<PickItem> items;
 
     @Data
     public static class PickItem {
         /** 申领明细行 ID */
+        @jakarta.validation.constraints.NotNull
         private Long reqItemId;
         /** 源仓库批次 ID（从哪个批次拣货） */
+        @jakarta.validation.constraints.NotNull
         private Long sourceBatchId;
         /** 拣货数量 */
+        @jakarta.validation.constraints.NotNull
+        @jakarta.validation.constraints.DecimalMin(value = "0", inclusive = false)
         private BigDecimal pickQty;
     }
 }

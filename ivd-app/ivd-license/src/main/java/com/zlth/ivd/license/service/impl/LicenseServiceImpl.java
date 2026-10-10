@@ -20,6 +20,7 @@ import com.zlth.ivd.license.entity.LicenseChangeLog;
 import com.zlth.ivd.catalog.mapper.CatalogApprovalLogMapper;
 import com.zlth.ivd.license.entity.SupplierLicense;
 import com.zlth.ivd.license.mapper.LicenseChangeLogMapper;
+import com.zlth.ivd.license.mapper.ReagentSupplierRelMapper;
 import com.zlth.ivd.license.mapper.SupplierLicenseMapper;
 import com.zlth.ivd.license.mapper.SupplierMapper;
 import com.zlth.ivd.license.service.LicenseService;
@@ -68,6 +69,7 @@ public class LicenseServiceImpl implements LicenseService {
     private final SupplierLicenseMapper licenseMapper;
     private final SupplierMapper supplierMapper;
     private final LicenseChangeLogMapper changeLogMapper;
+    private final ReagentSupplierRelMapper reagentSupplierRelMapper;
     private final CatalogApprovalLogMapper catalogApprovalLogMapper;
     private final MinioClient minioClient;
     private final MinioProperties minioProps;
@@ -77,6 +79,18 @@ public class LicenseServiceImpl implements LicenseService {
     @Override
     public PageVO<LicenseVO> listLicenses(LicenseQuery query) {
         LambdaQueryWrapper<SupplierLicense> qw = new LambdaQueryWrapper<>();
+        if (query.getReagentId() != null) {
+            Set<Long> supplierIds = reagentSupplierRelMapper.selectList(
+                    new LambdaQueryWrapper<com.zlth.ivd.license.entity.ReagentSupplierRel>()
+                            .eq(com.zlth.ivd.license.entity.ReagentSupplierRel::getReagentId, query.getReagentId()))
+                    .stream()
+                    .map(com.zlth.ivd.license.entity.ReagentSupplierRel::getSupplierId)
+                    .collect(Collectors.toSet());
+            if (supplierIds.isEmpty()) {
+                return new PageVO<>(0L, query.getPage(), query.getPageSize(), Collections.emptyList());
+            }
+            qw.in(SupplierLicense::getSupplierId, supplierIds);
+        }
         if (StringUtils.hasText(query.getLicenseType())) {
             qw.eq(SupplierLicense::getLicenseType, LicenseTypeEnum.valueOf(query.getLicenseType()));
         }

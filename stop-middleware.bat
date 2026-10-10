@@ -1,26 +1,17 @@
 @echo off
-chcp 65001 >nul
-title IVD Middleware Shutdown
-
-echo ============================================
-echo   IVD Middleware Shutdown
-echo ============================================
-echo.
-
-echo [1/3] Stopping Redis...
-sc stop Redis >nul 2>&1
-echo   Redis stopped
-
-echo [2/3] Stopping MinIO...
-taskkill /F /IM minio.exe >nul 2>&1
-echo   MinIO stopped
-
-echo [3/3] Stopping XXL-Job...
-for /f "tokens=5" %%a in ('netstat -ano ^| find ":8081" ^| find "LISTENING"') do taskkill /F /PID %%a >nul 2>&1
-echo   XXL-Job stopped
-
-echo.
-echo ============================================
-echo   All middleware stopped.
-echo ============================================
-pause
+setlocal
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":8081 .*LISTENING" 2^>nul') do powershell.exe -NoProfile -Command "Stop-Process -Id %%p -Force -ErrorAction SilentlyContinue"
+echo XXL-Job stopped.
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":9000 .*LISTENING" 2^>nul') do powershell.exe -NoProfile -Command "Stop-Process -Id %%p -Force -ErrorAction SilentlyContinue"
+echo MinIO stopped.
+sc query Redis >nul 2>&1
+if errorlevel 1 (
+  for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":6379 .*LISTENING" 2^>nul') do powershell.exe -NoProfile -Command "Stop-Process -Id %%p -Force -ErrorAction SilentlyContinue"
+  echo Bundled Redis stopped.
+) else (
+  sc stop Redis >nul 2>&1
+  ping 127.0.0.1 -n 2 >nul
+  netstat -ano | findstr /R /C:":6379 .*LISTENING" >nul 2>&1
+  if errorlevel 1 (echo Redis service stopped.) else (echo [WARN] Redis service is still running; stop it from an elevated terminal if required.)
+)
+exit /b 0
