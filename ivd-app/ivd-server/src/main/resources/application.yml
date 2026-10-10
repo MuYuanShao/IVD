@@ -121,6 +121,11 @@ xxl:
 
 # ---- IVD 应用自定义 ----
 ivd:
+  isolation:
+    enabled: ${IVD_ISOLATION_ENABLED:false}
+  clinical:
+    enabled: ${IVD_CLINICAL_ENABLED:false}
+    encryption-key: ${IVD_CLINICAL_ENCRYPTION_KEY:}
   audit:
     # 审核服务异常时默认放行（PRD §8.6 兜底安全）
     fallback-release: ${IVD_AUDIT_FALLBACK_RELEASE:true}
@@ -145,6 +150,8 @@ logging:
   level:
     root: INFO
     com.zlth.ivd: DEBUG
+    # Clinical mapper parameters include ciphertext; do not copy these into application logs.
+    com.zlth.ivd.laboratory.mapper: INFO
     org.springframework.security: INFO
     com.baomidou.mybatisplus: DEBUG
   file:

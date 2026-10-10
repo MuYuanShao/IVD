@@ -30,6 +30,8 @@ public class AuthServiceImpl implements AuthService {
     private final com.zlth.ivd.system.service.AuthenticationDirectoryService directory;
     @org.springframework.beans.factory.annotation.Value("${ivd.isolation.enabled:false}")
     private boolean isolationEnabled;
+    @org.springframework.beans.factory.annotation.Value("${ivd.clinical.enabled:false}")
+    private boolean clinicalEnabled;
 
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -55,7 +57,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole())
                 .realName(user.getRealName())
                 .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
-                .features(java.util.Map.of("labCatalog", isolationEnabled))
+                .features(java.util.Map.of("labCatalog", isolationEnabled,"labPatients", isolationEnabled && clinicalEnabled))
                 .build();
     }
 
@@ -87,7 +89,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole())
                 .realName(user.getRealName())
                 .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
-                .features(java.util.Map.of("labCatalog", isolationEnabled))
+                .features(java.util.Map.of("labCatalog", isolationEnabled,"labPatients", isolationEnabled && clinicalEnabled))
                 .build();
     }
 
@@ -114,7 +116,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("institutionId",scope.map(s->s.institutionId()).orElse(user.getInstitutionId()));
         result.put("homeInstitutionId",user.getInstitutionId());
         result.put("departmentId",scope.isPresent()?scope.get().departmentId():user.getDeptId());
-        result.put("features",java.util.Map.of("labCatalog", isolationEnabled));
+        result.put("features",java.util.Map.of("labCatalog", isolationEnabled,"labPatients", isolationEnabled && clinicalEnabled));
         return result;
     }
 }

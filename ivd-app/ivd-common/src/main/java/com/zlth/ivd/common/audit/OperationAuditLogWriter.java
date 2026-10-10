@@ -21,6 +21,7 @@ public class OperationAuditLogWriter {
     public void append(OperationAuditEntry entry) {
         OperationAuditLogMapper mapper = mapperProvider.getIfAvailable();
         if (mapper == null) {
+            if (isolationEnabled) throw new IllegalStateException("机构审计持久化未配置，操作已拒绝");
             log.debug("当前应用上下文未启用操作审计 Mapper，跳过持久化");
             return;
         }

@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Configuration;
 public class InstitutionMigrationConfig {
     private static final MigrationVersion OWNERSHIP = MigrationVersion.fromVersion("20261010005");
 
-    @Bean
     public FlywayMigrationStrategy checkedInstitutionMigration(@Value("${ivd.isolation.enabled:false}") boolean enabled) {
         return flyway -> {
             if (!enabled) {
@@ -25,6 +24,16 @@ public class InstitutionMigrationConfig {
             }
             flyway.migrate(); // Preserve normal checksum validation; never repair executed migrations here.
         };
+    }
+
+    @Bean
+    public FlywayMigrationStrategy checkedClinicalInstitutionMigration(
+            @Value("${ivd.isolation.enabled:false}") boolean enabled,
+            @Value("${ivd.clinical.enabled:false}") boolean clinicalEnabled,
+            com.zlth.ivd.laboratory.security.ClinicalCrypto crypto) {
+        if(clinicalEnabled && (!enabled || !crypto.available()))
+            throw new IllegalStateException("临床业务缺少机构隔离或独立密钥；未执行迁移");
+        return checkedInstitutionMigration(enabled);
     }
 
     @Bean

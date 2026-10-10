@@ -18,6 +18,10 @@ class InstitutionMigrationConfigTest {
         new InstitutionMigrationConfig().checkedInstitutionMigration(true).migrate(flyway);
         verify(flyway).migrate();
     }
+    @Test void clinicalOptInWithoutKeyCannotEvenStartMigration(){
+        var crypto=new com.zlth.ivd.laboratory.security.ClinicalCrypto("","test-jwt-key");
+        assertThrows(IllegalStateException.class,()->new InstitutionMigrationConfig().checkedClinicalInstitutionMigration(true,true,crypto));
+    }
     @Test void schemaAndSwitchMismatchFailClosed(){
         var source=new org.h2.jdbcx.JdbcDataSource();source.setURL("jdbc:h2:mem:guard"+java.util.UUID.randomUUID()+";DB_CLOSE_DELAY=-1");
         var jdbc=new org.springframework.jdbc.core.JdbcTemplate(source);
