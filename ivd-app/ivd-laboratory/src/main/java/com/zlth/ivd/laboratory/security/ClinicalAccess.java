@@ -12,6 +12,8 @@ public final class ClinicalAccess {
  }
  public static void requireMasterWriter(){
   if(!Set.of("SYSTEM_ADMIN","LAB_DIRECTOR").contains(InstitutionContext.require().role())) throw new BizException(40300,"没有基础资料维护权限");
+  InstitutionContext.requireUserActor();
+  if(InstitutionContext.require().role().equals("LAB_DIRECTOR")) requireClinical();
  }
  public static void requireSigner(){if(!requireClinical().role().equals("LAB_DIRECTOR"))throw new BizException(40300,"仅主任可签发报告");}
 }

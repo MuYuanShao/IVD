@@ -15,6 +15,11 @@ public class Device {
     private String model;
     private String manufacturer;
     private Long locationId;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @TableField(select = false, insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
+    private Long institutionId;
+    @TableField(select = false, insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
+    private Long deptId;
     private LocalDate lastCalibrationDate;
     private LocalDate nextCalibrationDate;
     private Boolean isActive;

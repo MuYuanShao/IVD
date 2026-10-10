@@ -16,7 +16,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value)
   const role = computed(() => user.value?.role || '')
   const realName = computed(() => user.value?.realName || user.value?.username || '')
-  const deptId = computed(() => user.value?.deptId || null)
+  const deptId = computed(() => user.value?.departmentId || user.value?.deptId || null)
   const deptName = computed(() => user.value?.deptName || '')
   const roleLabel = computed(() => {
     const map = {
@@ -50,7 +50,10 @@ export const useAuthStore = defineStore('auth', () => {
         userId: data.userId,
         username: data.username,
         role: data.role,
-        realName: data.realName
+        realName: data.realName,
+        institutionId: data.institutionId,
+        departmentId: data.departmentId,
+        features: data.features || {}
       }
       // 持久化
       localStorage.setItem('ivd-token', data.accessToken)

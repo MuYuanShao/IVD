@@ -47,6 +47,8 @@ export function withBusinessLayout(route) {
       : {}),
   }))
   children.push({ path: 'system/research-projects', name: 'ResearchProjectSettings', component: () => import('@/views/system/ResearchProjectSettings.vue'), meta: { title: '科研项目设置', navGroup: '系统管理' } })
+  children.push({ path: 'lab/items', name: 'LabTestItems', component: () => import('@/views/laboratory/LabCatalogView.vue'), meta: { title: '检验项目', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'], labMode: 'items' } })
+  children.push({ path: 'lab/intervals', name: 'LabIntervals', component: () => import('@/views/laboratory/LabCatalogView.vue'), meta: { title: '参考区间与测量范围', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'], labMode: 'intervals' } })
   if (oldDashboard)
     children.push({
       ...oldDashboard,

@@ -8,6 +8,8 @@
 
 手工构建运行：在 `ivd-web` 执行 `npm run build`，然后 `npm start`。可用 `IVD_FRONTEND_PORT` 和 `IVD_BACKEND_URL` 指定端口与后端 HTTP 地址；远程正式部署仍使用现有 nginx 配置及 HTTPS，不直接暴露此本机静态服务。
 
+隔离预览可额外设置 `IVD_FRONTEND_DIST` 指向独立构建目录，默认仍为 `ivd-web/dist`，不影响正常一键启动。
+
 验证：构建后执行 `node --test scripts/qa/production-server.test.mjs`。首页图表按需异步加载，加载或失败提示保留高度；登录按钮等待导航结束，期间拒绝重复点击。
 
 本项仅部署前端，不构建或部署未完成的机构隔离/检验后端，也不执行数据库迁移。

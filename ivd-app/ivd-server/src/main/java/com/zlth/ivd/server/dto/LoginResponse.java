@@ -21,4 +21,5 @@ public class LoginResponse {
     private String realName;
     private Long institutionId;
     private Long departmentId;
+    private java.util.Map<String, Boolean> features;
 }

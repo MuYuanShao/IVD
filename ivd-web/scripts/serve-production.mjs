@@ -4,7 +4,7 @@ import { stat } from 'node:fs/promises'
 import { dirname, extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../dist')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), process.env.IVD_FRONTEND_DIST || '../dist')
 const port = Number(process.env.IVD_FRONTEND_PORT || 5173)
 const backend = new URL(process.env.IVD_BACKEND_URL || 'http://127.0.0.1:8080')
 if (backend.protocol !== 'http:') throw new Error('IVD_BACKEND_URL must use http')

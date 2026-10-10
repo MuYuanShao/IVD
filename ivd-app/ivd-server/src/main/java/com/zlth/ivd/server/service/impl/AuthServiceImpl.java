@@ -55,6 +55,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole())
                 .realName(user.getRealName())
                 .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
+                .features(java.util.Map.of("labCatalog", isolationEnabled))
                 .build();
     }
 
@@ -86,6 +87,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole())
                 .realName(user.getRealName())
                 .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
+                .features(java.util.Map.of("labCatalog", isolationEnabled))
                 .build();
     }
 
@@ -112,6 +114,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("institutionId",scope.map(s->s.institutionId()).orElse(user.getInstitutionId()));
         result.put("homeInstitutionId",user.getInstitutionId());
         result.put("departmentId",scope.isPresent()?scope.get().departmentId():user.getDeptId());
+        result.put("features",java.util.Map.of("labCatalog", isolationEnabled));
         return result;
     }
 }

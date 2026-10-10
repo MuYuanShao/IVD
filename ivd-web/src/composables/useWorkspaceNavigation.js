@@ -1,9 +1,11 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 export function useWorkspaceNavigation() {
   const route = useRoute()
   const router = useRouter()
+  const auth = useAuthStore()
   const isDemo = computed(() =>
     route.matched.some((item) => item.path === '/workspace'),
   )
@@ -29,7 +31,9 @@ export function useWorkspaceNavigation() {
         .map((item) => mapEntry(item, tree.value.path))
     const result = []
     for (const item of tree.value.children.filter(
-      (item) => item.name && !item.meta?.hidden,
+      (item) => item.name && !item.meta?.hidden &&
+        (!item.meta?.feature || auth.user?.features?.[item.meta.feature] === true) &&
+        (!item.meta?.roles || item.meta.roles.includes(auth.role)),
     )) {
       const entry = { title: item.meta.title, path: `/${item.path}` }
       if (!item.meta.navGroup) {
