@@ -27,14 +27,13 @@ public class AuthServiceImpl implements AuthService {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
-    private final SysUserMapper sysUserMapper;
+    private final com.zlth.ivd.system.service.AuthenticationDirectoryService directory;
+    @org.springframework.beans.factory.annotation.Value("${ivd.isolation.enabled:false}")
+    private boolean isolationEnabled;
 
     @Override
     public LoginResponse login(LoginRequest request) {
-        SysUser user = sysUserMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>()
-                        .eq(SysUser::getUsername, request.getUsername())
-                        .eq(SysUser::getStatus, 1));
+        SysUser user = directory.findForLogin(request.getUsername());
 
         if (user == null) {
             throw new BizException(40100, "用户名或密码错误");
@@ -43,8 +42,9 @@ public class AuthServiceImpl implements AuthService {
             throw new BizException(40100, "用户名或密码错误");
         }
 
-        String accessToken = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
+        requireInstitution(user);
+        String accessToken = accessToken(user);
+        String refreshToken = refreshToken(user);
 
         log.info("用户登录成功: username={}, role={}", user.getUsername(), user.getRole());
         return LoginResponse.builder()
@@ -54,6 +54,7 @@ public class AuthServiceImpl implements AuthService {
                 .username(user.getUsername())
                 .role(user.getRole())
                 .realName(user.getRealName())
+                .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
                 .build();
     }
 
@@ -65,13 +66,17 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Long userId = jwtTokenProvider.getUserId(token);
-        SysUser user = sysUserMapper.selectById(userId);
+        SysUser user = directory.findActiveUser(userId);
         if (user == null || user.getStatus() != 1) {
             throw new BizException(40100, "用户不存在或已停用");
         }
 
-        String newAccessToken = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
+        requireInstitution(user);
+        if (isolationEnabled && !jwtTokenProvider.validateInstitutionRefreshToken(token, user.getInstitutionId())) {
+            throw new BizException(40100, "机构上下文已变更，请重新登录");
+        }
+        String newAccessToken = accessToken(user);
+        String newRefreshToken = refreshToken(user);
 
         return LoginResponse.builder()
                 .accessToken(newAccessToken)
@@ -80,6 +85,33 @@ public class AuthServiceImpl implements AuthService {
                 .username(user.getUsername())
                 .role(user.getRole())
                 .realName(user.getRealName())
+                .institutionId(user.getInstitutionId()).departmentId(user.getDeptId())
                 .build();
+    }
+
+    private String refreshToken(SysUser user) {
+        return isolationEnabled ? jwtTokenProvider.generateRefreshToken(user.getId(), user.getInstitutionId())
+                : jwtTokenProvider.generateRefreshToken(user.getId());
+    }
+
+    private String accessToken(SysUser user) {
+        return isolationEnabled ? jwtTokenProvider.generateToken(user.getId(),user.getUsername(),user.getRole(),user.getInstitutionId(),user.getDeptId())
+                : jwtTokenProvider.generateToken(user.getId(),user.getUsername(),user.getRole());
+    }
+    private void requireInstitution(SysUser user) {
+        if (isolationEnabled && (user.getInstitutionId() == null || directory.activeInstitution(user.getInstitutionId()) == null))
+            throw new BizException(40300,"用户所属机构未配置或已停用");
+    }
+
+    @Override public java.util.Map<String,Object> currentUser() {
+        var user=directory.findActiveUser(com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserId());
+        if(user==null) throw new BizException(40100,"账号已停用");
+        java.util.Map<String,Object> result=new java.util.LinkedHashMap<>();
+        result.put("userId",user.getId()); result.put("username",user.getUsername()); result.put("role",user.getRole()); result.put("realName",user.getRealName());
+        var scope=com.zlth.ivd.common.security.InstitutionContext.current();
+        result.put("institutionId",scope.map(s->s.institutionId()).orElse(user.getInstitutionId()));
+        result.put("homeInstitutionId",user.getInstitutionId());
+        result.put("departmentId",scope.isPresent()?scope.get().departmentId():user.getDeptId());
+        return result;
     }
 }

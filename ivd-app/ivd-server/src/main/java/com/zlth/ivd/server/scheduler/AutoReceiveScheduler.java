@@ -30,6 +30,9 @@ public class AutoReceiveScheduler {
 
     private final SettlementService settlementService;
     private final PurchaseRequisitionMapper reqMapper;
+    private final com.zlth.ivd.system.service.AuthenticationDirectoryService institutions;
+    @Value("${ivd.isolation.enabled:false}")
+    private boolean isolationEnabled;
 
     @Value("${ivd.auto-receive.enabled:false}")
     private boolean enabled;
@@ -47,6 +50,16 @@ public class AutoReceiveScheduler {
             return;
         }
 
+        if(!isolationEnabled) throw new IllegalStateException("自动签收必须启用机构隔离");
+        for(Long institutionId:institutions.activeInstitutionIds()) {
+            try {
+                com.zlth.ivd.common.security.InstitutionContext.within(
+                        com.zlth.ivd.common.security.InstitutionContext.jobScope(institutionId),()->{ receiveInInstitution(); return null; });
+            } catch(Exception error) { log.error("机构自动签收失败: institutionId={}",institutionId,error); }
+        }
+    }
+
+    private void receiveInInstitution() {
         LocalDateTime threshold = LocalDateTime.now().minusHours(delayHours);
         List<PurchaseRequisition> expired = reqMapper.selectList(
                 new LambdaQueryWrapper<PurchaseRequisition>()

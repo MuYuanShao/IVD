@@ -39,6 +39,12 @@ public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectMapper objectMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.zlth.ivd.system.service.AuthenticationDirectoryService institutionDirectory;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.zlth.ivd.common.audit.OperationAuditLogWriter auditWriter;
+    @org.springframework.beans.factory.annotation.Value("${ivd.isolation.enabled:false}")
+    private boolean isolationEnabled;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -70,7 +76,7 @@ public class SecurityConfig {
                             "/error"
                     ).permitAll()
                     // 证照附件预览/下载 — 仅 GET 公开，DELETE/PUT 需认证
-                    .requestMatchers(HttpMethod.GET, "/api/v1/license/*/file/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/license/*/file/**").authenticated()
                     // 审计接口需认证（人工决策回写涉及敏感操作）
                     .requestMatchers("/api/v1/audit/**").authenticated()
                     // 其他接口均需认证
@@ -80,6 +86,10 @@ public class SecurityConfig {
             .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
                     UsernamePasswordAuthenticationFilter.class);
 
+        if(isolationEnabled) {
+            if(institutionDirectory==null || auditWriter==null) throw new IllegalStateException("机构隔离依赖未配置");
+            http.addFilterAfter(new InstitutionRequestFilter(institutionDirectory,jwtTokenProvider,objectMapper,auditWriter,true),JwtAuthenticationFilter.class);
+        }
         return http.build();
     }
 

@@ -11,6 +11,7 @@
     <dependencies>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
         <!-- 聚合所有业务模块 -->
+        <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-laboratory</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-common</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-catalog</artifactId></dependency>
         <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-license</artifactId></dependency>

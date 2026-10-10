@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class OperationAuditLogWriter {
 
     private final ObjectProvider<OperationAuditLogMapper> mapperProvider;
+    @org.springframework.beans.factory.annotation.Value("${ivd.isolation.enabled:false}")
+    private boolean isolationEnabled;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void append(OperationAuditEntry entry) {
@@ -22,6 +24,9 @@ public class OperationAuditLogWriter {
             log.debug("当前应用上下文未启用操作审计 Mapper，跳过持久化");
             return;
         }
-        mapper.append(entry);
+        if(isolationEnabled) {
+            entry.setInstitutionId(com.zlth.ivd.common.security.InstitutionContext.current().map(s->s.institutionId()).orElse(null));
+            mapper.appendScoped(entry);
+        } else mapper.append(entry);
     }
 }

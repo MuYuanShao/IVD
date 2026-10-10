@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class OperationAuditEntry {
+    private Long institutionId;
     private Long operatorId;
     private String operatorName;
     private String module;

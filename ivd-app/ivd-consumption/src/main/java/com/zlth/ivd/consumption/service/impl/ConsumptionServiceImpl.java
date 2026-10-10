@@ -104,7 +104,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
     @Override
     public void recordConsumption(Long batchId, Long deviceId, BigDecimal qty, String purpose, String remark) {
         requirePositiveQuantity(qty);
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
+        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         ReagentBatch selected=batchMapper.selectById(batchId);
         if(selected==null) throw new BizException(40400,"库存批次不存在");
         ReagentCatalog catalog=catalogMapper.selectById(selected.getReagentId());
@@ -188,7 +188,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
      * 消耗结算库房 = 操作人所在科室的二级库（level=2）
      * 若操作人无科室或科室无对应二级库，则回退到批次所在库房
      */
-    private Long resolveSettlementWarehouseId(Integer operatorId, Long fallbackWarehouseId) {
+    private Long resolveSettlementWarehouseId(Long operatorId, Long fallbackWarehouseId) {
         try {
             String sql = """
                 SELECT w.id FROM warehouse w
@@ -210,7 +210,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
     @Override
     public void recordInbound(Long batchId, BigDecimal qty, Long warehouseId) {
         requirePositiveQuantity(qty);
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
+        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         // 带乐观锁重试的库存增加
         ReagentBatch batch = inboundBatchStock(batchId, qty, warehouseId);
 

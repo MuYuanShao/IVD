@@ -20,7 +20,7 @@ public class ShortageOrderVO {
     private String shortageNo;
     private Long reqId;
     private String sourceReqNo;
-    private Integer fromDeptId;
+    private Long fromDeptId;
     private String deptName;
     private String reagentName;
     private String spec;

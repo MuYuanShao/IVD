@@ -140,7 +140,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             PurchaseRequisitionVO vo = new PurchaseRequisitionVO();
             vo.setId(req.getId()); vo.setReqNo(req.getReqNo());
             vo.setResearchProjectId(req.getResearchProjectId()); vo.setResearchProjectName(req.getResearchProjectName());
-            vo.setFromDeptId(req.getFromDeptId() != null ? req.getFromDeptId().intValue() : null);
+            vo.setFromDeptId(req.getFromDeptId());
             vo.setDeptName(deptNameMap.getOrDefault(req.getFromDeptId(), "科室#" + req.getFromDeptId()));
             vo.setToWarehouseId(req.getToWarehouseId() != null ? req.getToWarehouseId().intValue() : null);
             vo.setApplicantId(req.getApplicantId() != null ? req.getApplicantId().intValue() : null);
@@ -310,7 +310,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         PurchaseRequisitionVO vo = new PurchaseRequisitionVO();
         vo.setId(req.getId()); vo.setReqNo(req.getReqNo());
         vo.setResearchProjectId(req.getResearchProjectId()); vo.setResearchProjectName(req.getResearchProjectName());
-        vo.setFromDeptId(req.getFromDeptId() != null ? req.getFromDeptId().intValue() : null);
+        vo.setFromDeptId(req.getFromDeptId());
         vo.setDeptName(deptName);
         vo.setToWarehouseId(req.getToWarehouseId() != null ? req.getToWarehouseId().intValue() : null);
         vo.setApplicantId(req.getApplicantId() != null ? req.getApplicantId().intValue() : null);
@@ -631,7 +631,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         record.setWarehouseId(targetWarehouseId);
         record.setFromWarehouseId(sourceBatch.getWarehouseId());
         record.setRequisitionId(requisitionId);
-        record.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
+        record.setOperatorId(SecurityUtils.getCurrentOperatorIdOrNull());
         record.setOccurredAt(LocalDateTime.now());
         record.setCreatedAt(LocalDateTime.now());
         consumptionService.appendRecord(record);
@@ -686,7 +686,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             vo.setId(so.getId()); vo.setShortageNo(so.getShortageNo());
             vo.setReqId(so.getReqId());
             vo.setSourceReqNo(reqNoMap.getOrDefault(so.getReqId(), "-"));
-            vo.setFromDeptId(so.getFromDeptId() != null ? so.getFromDeptId().intValue() : null);
+            vo.setFromDeptId(so.getFromDeptId());
             vo.setDeptName(deptNameMap.getOrDefault(so.getFromDeptId(), "科室#" + so.getFromDeptId()));
             vo.setStatus(so.getStatus()); vo.setUrgency(so.getUrgency());
             vo.setSuggestedSupplierId(so.getSuggestedSupplierId() != null ? so.getSuggestedSupplierId().intValue() : null);
@@ -771,7 +771,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         vo.setId(so.getId()); vo.setShortageNo(so.getShortageNo());
         vo.setReqId(so.getReqId());
         vo.setSourceReqNo(so.getReqId() != null ? "REQ#" + so.getReqId() : "-");
-        vo.setFromDeptId(so.getFromDeptId() != null ? so.getFromDeptId().intValue() : null);
+        vo.setFromDeptId(so.getFromDeptId());
         vo.setDeptName(deptName);
         vo.setStatus(so.getStatus()); vo.setUrgency(so.getUrgency());
         vo.setSuggestedSupplierId(so.getSuggestedSupplierId() != null ? so.getSuggestedSupplierId().intValue() : null);
@@ -1273,7 +1273,7 @@ public class ProcurementServiceImpl implements ProcurementService {
             cr.setUnitPrice(item.getUnitPrice());
             cr.setAmount(item.getUnitPrice() != null ? item.getUnitPrice().multiply(qty) : null);
             cr.setWarehouseId(warehouseId);
-            cr.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
+            cr.setOperatorId(SecurityUtils.getCurrentOperatorIdOrNull());
             cr.setOccurredAt(LocalDateTime.now());
             cr.setCreatedAt(LocalDateTime.now());
             consumptionService.appendRecord(cr);
@@ -1432,7 +1432,7 @@ public class ProcurementServiceImpl implements ProcurementService {
                 cr.setUnitPrice(unitPrice);
                 cr.setAmount(unitPrice.multiply(qty));
                 cr.setWarehouseId(warehouseId);
-                cr.setOperatorId(SecurityUtils.getCurrentUserId().intValue());
+                cr.setOperatorId(SecurityUtils.getCurrentOperatorIdOrNull());
                 cr.setOccurredAt(LocalDateTime.now());
                 cr.setCreatedAt(LocalDateTime.now());
                 consumptionService.appendRecord(cr);

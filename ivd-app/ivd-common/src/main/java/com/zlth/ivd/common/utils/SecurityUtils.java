@@ -33,7 +33,8 @@ public final class SecurityUtils {
     public static String getCurrentUsername() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getDetails() == null) {
-            return "anonymous";
+            return com.zlth.ivd.common.security.InstitutionContext.current()
+                    .filter(s->"SYSTEM_JOB".equals(s.role())).map(s->"SYSTEM_JOB").orElse("anonymous");
         }
         return auth.getDetails().toString();
     }
@@ -55,5 +56,12 @@ public final class SecurityUtils {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** Machine-triggered business tasks record NULL, never a forged human operator. */
+    public static Long getCurrentOperatorIdOrNull() {
+        var scope=com.zlth.ivd.common.security.InstitutionContext.current();
+        if(scope.isPresent() && "SYSTEM_JOB".equals(scope.get().role())) return null;
+        return getCurrentUserId();
     }
 }

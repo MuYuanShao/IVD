@@ -22,8 +22,8 @@ public class SettlementRecord {
     private BigDecimal unitPrice;
     private BigDecimal amount;
     private String status;              // ACTIVE / REVERSED
-    private Integer fromDeptId;
-    private Integer settledBy;
+    private Long fromDeptId;
+    private Long settledBy;
     private LocalDateTime settledAt;
     private LocalDateTime reversedAt;
     @TableField(fill = FieldFill.INSERT)

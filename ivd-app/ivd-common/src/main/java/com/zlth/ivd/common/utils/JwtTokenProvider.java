@@ -61,6 +61,20 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    public String generateToken(Long userId, String username, String role, Long institutionId, Long departmentId) {
+        if (institutionId == null || institutionId <= 0) throw new IllegalArgumentException("机构归属不能为空");
+        Date now = new Date();
+        return Jwts.builder().subject(String.valueOf(userId)).claim("username",username).claim("role",role)
+                .claim("institution_id",institutionId).claim("department_id",departmentId).claim("scope_version",2)
+                .claim(TOKEN_TYPE_CLAIM,ACCESS_TOKEN_TYPE).issuedAt(now)
+                .expiration(new Date(now.getTime()+expiration)).signWith(secretKey).compact();
+    }
+
+    public Long getInstitutionId(String token) {
+        Number value = parseToken(token).get("institution_id",Number.class);
+        return value == null ? null : value.longValue();
+    }
+
     /** 生成 Refresh Token（更长有效期，只含 userId） */
     public String generateRefreshToken(Long userId) {
         Date now = new Date();
@@ -71,6 +85,33 @@ public class JwtTokenProvider {
                 .expiration(new Date(now.getTime() + refreshExpiration))
                 .signWith(secretKey)
                 .compact();
+    }
+
+    public String generateRefreshToken(Long userId, Long institutionId) {
+        if (institutionId == null || institutionId <= 0) {
+            throw new IllegalArgumentException("机构归属不能为空");
+        }
+        Date now = new Date();
+        return Jwts.builder().subject(String.valueOf(userId))
+                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
+                .claim("institution_id", institutionId).claim("scope_version", 2)
+                .issuedAt(now).expiration(new Date(now.getTime() + refreshExpiration))
+                .signWith(secretKey).compact();
+    }
+
+    /** 隔离启用后，不允许旧令牌或已变更机构的账号续期。 */
+    public boolean validateInstitutionRefreshToken(String token, Long institutionId) {
+        if (institutionId == null || institutionId <= 0) return false;
+        try {
+            Claims claims = parseToken(token);
+            Number version = claims.get("scope_version", Number.class);
+            Number owner = claims.get("institution_id", Number.class);
+            return REFRESH_TOKEN_TYPE.equals(claims.get(TOKEN_TYPE_CLAIM, String.class))
+                    && version != null && version.intValue() == 2
+                    && owner != null && owner.longValue() == institutionId;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /** 解析 Token 中的 Claims */

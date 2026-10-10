@@ -26,5 +26,5 @@ public interface AuditPipelineService {
 
     List<AuditDecisionLog> listDecisions(String batchNo, LocalDateTime start, LocalDateTime end);
 
-    void recordManualFeedback(String observationId, String manualDecision, Integer auditorId, String note);
+    void recordManualFeedback(String observationId, String manualDecision, Long auditorId, String note);
 }

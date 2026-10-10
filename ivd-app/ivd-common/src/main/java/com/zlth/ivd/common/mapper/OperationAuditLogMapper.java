@@ -16,4 +16,14 @@ public interface OperationAuditLogMapper {
                #{handler}, #{clientIp}, #{reason}, #{success}, #{errorMessage}, #{durationMs}, #{occurredAt})
             """)
     int append(OperationAuditEntry entry);
+
+    @com.baomidou.mybatisplus.annotation.InterceptorIgnore(tenantLine="true")
+    @Insert("""
+            INSERT INTO operation_audit_log
+              (institution_id,operator_id,operator_name,module,action,request_method,request_path,handler,client_ip,reason,
+               success,error_message,duration_ms,occurred_at)
+            VALUES (#{institutionId},#{operatorId},#{operatorName},#{module},#{action},#{requestMethod},#{requestPath},#{handler},
+                    #{clientIp},#{reason},#{success},#{errorMessage},#{durationMs},#{occurredAt})
+            """)
+    int appendScoped(OperationAuditEntry entry);
 }

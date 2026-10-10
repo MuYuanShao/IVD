@@ -64,7 +64,7 @@ public class UdiStateMachine {
 
         // 3. 写入不可变日志
         LocalDateTime now = LocalDateTime.now();
-        Integer operatorId = parseOperatorId(operator);
+        Long operatorId = parseOperatorId(operator);
         UdiStatusLog statusLog = UdiStatusLog.builder()
                 .id(IdGenerator.nextId())
                 .batchNo(batchNo)
@@ -100,9 +100,9 @@ public class UdiStateMachine {
         }
     }
 
-    private Integer parseOperatorId(String operator) {
+    private Long parseOperatorId(String operator) {
         try {
-            return operator == null ? null : Integer.valueOf(operator);
+            return operator == null ? null : Long.valueOf(operator);
         } catch (NumberFormatException ignored) {
             return null;
         }

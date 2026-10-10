@@ -21,7 +21,7 @@ public class AuditDecisionLog {
     private String triggeredRules;      // JSON array of rule IDs
     private Integer auditLatencyMs;
     private String manualDecision;      // RELEASED/HELD/RETEST
-    private Integer auditorId;
+    private Long auditorId;
     private String auditorNote;
     private BigDecimal recheckValue;
     private LocalDateTime decidedAt;

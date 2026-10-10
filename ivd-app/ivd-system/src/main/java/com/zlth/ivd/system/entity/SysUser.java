@@ -16,6 +16,9 @@ public class SysUser {
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+    @TableField(value = "institution_id", insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private Long institutionId;
 
     /** 用户编码（业务唯一标识，格式 USER-YYYYMMDD-NNN） */
     private String userCode;

@@ -23,7 +23,7 @@ public class ProcurementConsumptionServiceImpl implements ProcurementConsumption
     }
     public void confirmTransferReceipt(Long transferId, Long targetBatchId) {
         jdbc.update("INSERT INTO requisition_transfer_receipt(transfer_record_id,target_batch_id,received_by,received_at) VALUES(?,?,?,CURRENT_TIMESTAMP(3))",
-                transferId, targetBatchId, com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserId());
+                transferId, targetBatchId, com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserIdOrNull());
     }
     public List<ConsumptionRecord> findTransferRecords(Long requisitionId) {
         return mapper.selectList(new LambdaQueryWrapper<ConsumptionRecord>()

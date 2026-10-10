@@ -34,7 +34,7 @@ public class UdiStatusLog {
     private String toStatus;
 
     /** 操作人ID */
-    private Integer operatorId;
+    private Long operatorId;
 
     /** 操作人姓名 */
     private String operatorName;

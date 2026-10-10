@@ -27,6 +27,7 @@
         <module>ivd-udi</module>
         <module>ivd-integration</module>
         <module>ivd-system</module>
+        <module>ivd-laboratory</module>
         <module>ivd-server</module>
     </modules>
 
@@ -67,6 +68,7 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-laboratory</artifactId><version>${project.version}</version></dependency>
             <!-- ======== Internal Modules ======== -->
             <dependency>
                 <groupId>com.zlth.ivd</groupId>
@@ -286,4 +288,13 @@
             </plugins>
         </pluginManagement>
     </build>
+    <profiles>
+        <!-- Build an isolated preview without replacing the JAR currently used by start-backend.bat. -->
+        <profile>
+            <id>laboratory-preview</id>
+            <build>
+                <directory>${maven.multiModuleProjectDirectory}/../output/laboratory-preview/${project.artifactId}</directory>
+            </build>
+        </profile>
+    </profiles>
 </project>

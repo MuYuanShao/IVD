@@ -52,7 +52,7 @@ public class AuditController {
     public Result<String> manualFeedback(@RequestBody Map<String, Object> request) {
         String observationId = (String) request.get("observationId");
         String manualDecision = (String) request.get("manualDecision");
-        Integer auditorId = (Integer) request.getOrDefault("auditorId", 1);
+        Long auditorId = com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserId();
         String note = (String) request.getOrDefault("note", "");
         pipelineService.recordManualFeedback(observationId, manualDecision, auditorId, note);
         return Result.success("人工复核结果已记录");

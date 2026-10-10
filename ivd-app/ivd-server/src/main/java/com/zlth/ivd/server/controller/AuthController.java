@@ -49,15 +49,6 @@ public class AuthController {
     /** 获取当前用户信息（从 JWT 解析） */
     @GetMapping("/userinfo")
     public Result<Map<String, Object>> userinfo(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-        String username = jwtTokenProvider.getUsername(token);
-        String role = jwtTokenProvider.getRole(token);
-        Long userId = jwtTokenProvider.getUserId(token);
-        return Result.success(Map.of(
-                "userId", userId,
-                "username", username,
-                "role", role,
-                "realName", role.equals("ADMIN") ? "系统管理员" : "IVD 操作员"
-        ));
+        return Result.success(authService.currentUser());
     }
 }

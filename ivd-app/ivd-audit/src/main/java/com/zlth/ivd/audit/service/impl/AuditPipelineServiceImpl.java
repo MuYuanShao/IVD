@@ -255,7 +255,7 @@ public class AuditPipelineServiceImpl implements AuditPipelineService {
     }
 
     /** 记录人工复核结果 */
-    public void recordManualFeedback(String observationId, String manualDecision, Integer auditorId, String note) {
+    public void recordManualFeedback(String observationId, String manualDecision, Long auditorId, String note) {
         AuditDecisionLog logEntry = decisionLogMapper.selectOne(
             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AuditDecisionLog>()
                 .eq(AuditDecisionLog::getObservationId, observationId)

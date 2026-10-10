@@ -27,7 +27,7 @@ public class ConsumptionRecordVO {
     private BigDecimal amount;
     private String purpose;
     private Long warehouseId;
-    private Integer operatorId;
+    private Long operatorId;
     private String remark;
     private LocalDateTime occurredAt;
     private LocalDateTime createdAt;

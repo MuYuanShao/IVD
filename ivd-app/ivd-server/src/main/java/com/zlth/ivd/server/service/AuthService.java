@@ -17,4 +17,5 @@ public interface AuthService {
 
     /** 使用 Refresh Token 换取新的 Access Token */
     LoginResponse refresh(RefreshRequest request);
+    java.util.Map<String,Object> currentUser();
 }

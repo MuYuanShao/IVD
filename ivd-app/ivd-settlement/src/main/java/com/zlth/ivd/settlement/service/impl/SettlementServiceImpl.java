@@ -137,8 +137,8 @@ public class SettlementServiceImpl implements SettlementService {
             record.setReagentId(((Number)move.get("reagent_id")).longValue());
             record.setQuantity(qty); record.setUnitPrice(price); record.setAmount(amount);
             record.setStatus("ACTIVE");
-            record.setFromDeptId(req.getFromDeptId() == null ? null : req.getFromDeptId().intValue());
-            record.setSettledBy(SecurityUtils.getCurrentUserId().intValue());
+            record.setFromDeptId(req.getFromDeptId());
+            record.setSettledBy(SecurityUtils.getCurrentOperatorIdOrNull());
             record.setSettledAt(LocalDateTime.now());
             insertSettlement(record, req.getReqNo()); added++;
         }
@@ -147,7 +147,7 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public void settleTransfer(Long transferRecordId) {
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
+        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         ConsumptionRecord source = consumptionRecordMapper.selectById(transferRecordId);
         if (source == null) throw new BizException(40400, "调拨记录不存在");
         if (!ConsumptionRecordTypeEnum.TRANSFER.getCode().equals(source.getRecordType())) {
@@ -178,7 +178,7 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public void settleConsumption(Long consumptionRecordId) {
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
+        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         // 从消耗记录读取真实数据
         ConsumptionRecord source = consumptionRecordMapper.selectById(consumptionRecordId);
         if (source == null) {
@@ -212,7 +212,7 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public void reverseSettlement(Long settlementId, String reason) {
-        Integer operatorId = SecurityUtils.getCurrentUserId().intValue();
+        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         SettlementRecord record = recordMapper.selectById(settlementId);
         if (record == null) throw new BizException(40400, "结算记录不存在");
         if (SettlementStatusEnum.REVERSED.getCode().equals(record.getStatus())) throw new BizException(40001, "该记录已被冲销，不能重复冲销");

@@ -19,7 +19,7 @@ import java.util.List;
 public class PurchaseRequisitionVO {
     private Long id;
     private String reqNo;
-    private Integer fromDeptId;
+    private Long fromDeptId;
     private String deptName;
     private Integer toWarehouseId;
     private Integer applicantId;

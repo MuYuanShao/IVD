@@ -27,9 +27,13 @@ import java.time.LocalDateTime;
 @MapperScan("com.zlth.ivd.**.mapper")
 public class MybatisPlusConfig {
 
+    @org.springframework.beans.factory.annotation.Value("${ivd.isolation.enabled:false}")
+    private boolean isolationEnabled;
+
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        if (isolationEnabled) interceptor.addInnerInterceptor(new com.zlth.ivd.common.security.InstitutionSqlInterceptor());
         // 乐观锁插件（配合 @Version 注解）
         interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
         // 分页插件（MySQL 方言）
