@@ -10,6 +10,8 @@ exit /b %errorlevel%
 title IVD Backend :8080
 set "JAR=%IVD_ROOT%ivd-app\ivd-server\target\ivd-server-1.0.0-mvp.jar"
 set "LOG=%IVD_ROOT%ivd-app\ivd-server\backend.log"
+rem Machine-local deployment settings are intentionally excluded from Git.
+if not defined SPRING_CONFIG_ADDITIONAL_LOCATION if exist "%IVD_ROOT%output\runtime\application-local.properties" set "SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:%IVD_ROOT%output/runtime/application-local.properties"
 where java.exe >nul 2>&1 || (echo [ERROR] Java 17 not found in PATH.& exit /b 1)
 if not exist "%JAR%" (echo [ERROR] Missing backend JAR: %JAR%& exit /b 1)
 if not defined JWT_SECRET set "JWT_SECRET=28841e0c7d10a6ab5d45e8e0e08af19d5e5e4bbf3a4e1a8c5d7a9b3f4e6c8a1b"

@@ -625,11 +625,25 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         if (query.getPage() == null || query.getPage() < 1 || query.getPageSize() == null
                 || query.getPageSize() < 1 || query.getPageSize() > 10000)
             throw new BizException(40001, "目录变更记录分页参数非法");
-        var requestPage = new Page<com.zlth.ivd.common.vo.ChangeLogVO>(query.getPage(),query.getPageSize());
-        requestPage.setMaxLimit((long)query.getPageSize());
-        var page = changeMapper.pageChanges(requestPage, query);
-        page.getRecords().forEach(vo -> { vo.setModule("CATALOG"); vo.setModuleLabel("试剂目录");
+        long prefix = (long)query.getPage()*query.getPageSize();
+        if(prefix>10000) throw new BizException(40001,"请增加日期筛选后查询深页目录历史");
+        var source = new com.zlth.ivd.common.dto.ChangeLogQuery();
+        org.springframework.beans.BeanUtils.copyProperties(query,source);
+        source.setPage(1);source.setPageSize((int)prefix);
+        var requestPage = new Page<com.zlth.ivd.common.vo.ChangeLogVO>(1,prefix);
+        requestPage.setMaxLimit(prefix);
+        var page = changeMapper.pageChanges(requestPage, source);
+        var legacy = approvalLogService.pageChanges(source);
+        var records = new java.util.ArrayList<>(page.getRecords());
+        records.addAll(legacy.getRecords());
+        records.sort(java.util.Comparator.comparing(com.zlth.ivd.common.vo.ChangeLogVO::getCreatedAt,
+                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder()))
+                .thenComparing(com.zlth.ivd.common.vo.ChangeLogVO::getId,java.util.Comparator.reverseOrder()));
+        int start = (query.getPage()-1)*query.getPageSize();
+        var selected = start>=records.size()?new java.util.ArrayList<com.zlth.ivd.common.vo.ChangeLogVO>():
+                new java.util.ArrayList<>(records.subList(start,Math.min(start+query.getPageSize(),records.size())));
+        selected.forEach(vo -> { vo.setModule("CATALOG"); vo.setModuleLabel("试剂目录");
             vo.setChangeTypeLabel(switch (vo.getChangeType()) { case "CREATE" -> "新增试剂"; case "UPDATE" -> "编辑试剂"; case "DELETE" -> "删除试剂"; default -> vo.getChangeType(); }); });
-        return PageVO.of(page);
+        return new PageVO<>(page.getTotal()+legacy.getTotal(),query.getPage(),query.getPageSize(),selected);
     }
 }

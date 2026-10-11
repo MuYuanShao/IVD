@@ -47,7 +47,7 @@ public interface CatalogApprovalLogMapper extends BaseMapper<CatalogApprovalLog>
                      OR rc.his_code LIKE CONCAT('%',#{query.keyword},'%'))
             </if>
         </where>
-        ORDER BY cal.submitted_at DESC
+        ORDER BY cal.submitted_at DESC, cal.id DESC
         </script>
     """)
     IPage<ChangeLogVO> findAllWithReagent(Page<ChangeLogVO> page, @Param("query") ChangeLogQuery query);

@@ -11,6 +11,7 @@ import com.zlth.ivd.catalog.entity.CatalogApprovalLog;
  */
 public interface CatalogApprovalLogService {
     CatalogApprovalLog lockById(Long id);
+    com.zlth.ivd.common.dto.PageVO<com.zlth.ivd.common.vo.ChangeLogVO> pageChanges(com.zlth.ivd.common.dto.ChangeLogQuery query);
 
     /**
      * 创建审批日志（提交审批时调用）

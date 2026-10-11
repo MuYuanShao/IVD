@@ -28,6 +28,13 @@ public class CatalogApprovalLogServiceImpl implements CatalogApprovalLogService 
     private final CatalogApprovalLogMapper approvalLogMapper;
 
     @Override
+    public com.zlth.ivd.common.dto.PageVO<com.zlth.ivd.common.vo.ChangeLogVO> pageChanges(com.zlth.ivd.common.dto.ChangeLogQuery query) {
+        var page = new Page<com.zlth.ivd.common.vo.ChangeLogVO>(query.getPage(),query.getPageSize());
+        page.setMaxLimit((long)query.getPageSize());
+        return com.zlth.ivd.common.dto.PageVO.of(approvalLogMapper.findAllWithReagent(page,query));
+    }
+
+    @Override
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CatalogApprovalLog lockById(Long id) {
         return approvalLogMapper.selectOne(new LambdaQueryWrapper<CatalogApprovalLog>()
