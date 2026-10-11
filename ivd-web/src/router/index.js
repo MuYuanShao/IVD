@@ -83,7 +83,7 @@ router.beforeEach((to, from, next) => {
   }
 
   const token = localStorage.getItem('ivd-token')
-  console.log('[Router Guard] 检查认证:', to.path, 'token:', token ? token.substring(0, 30) + '...' : '无')
+  console.log('[Router Guard] 检查认证:', to.path, 'token:', token ? '已提供' : '无')
 
   if (!token) {
     // 未登录，跳转登录页

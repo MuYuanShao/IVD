@@ -10,6 +10,7 @@ import java.util.Map;
 
 @Service @RequiredArgsConstructor
 public class AuthenticationDirectoryServiceImpl implements AuthenticationDirectoryService {
+    @Override public boolean isActiveOwned(Long id,long owner){var row=activeDepartment(id);return row!=null && row.get("institution_id") instanceof Number value && value.longValue()==owner;}
     private final AuthenticationDirectoryMapper mapper;
     public SysUser findForLogin(String username) { return mapper.findForLogin(username); }
     public SysUser findActiveUser(Long id) { return mapper.findActiveUser(id); }

@@ -15,6 +15,7 @@ import com.zlth.ivd.laboratory.vo.*;
 import jakarta.validation.Validator;
 import java.time.LocalDateTime;
 import java.util.*;
+import com.zlth.ivd.laboratory.enums.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,9 @@ public class LabCatalogServiceImpl implements LabCatalogService {
         return PageVO.of(result,this::vo);
     }
     @Override public TestItemVO item(Long id) { requireReader(); return vo(ownedItem(id,false)); }
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,rollbackFor=Exception.class)
+    public TestItemVO lockItem(Long id,boolean activeOnly){requireReader();var value=ownedItem(id,true);if(activeOnly && !Boolean.TRUE.equals(value.getActive()))throw new BizException(40900,"检验项目已停用");return vo(value);}
+    @Override public TestItemVO requireCode(String code){requireReader();var value=items.selectOne(itemQuery().eq(LabTestItem::getCode,code));if(value==null)throw new BizException(40400,"检验项目编码不存在或无权引用");return vo(value);}
 
     @Override public TestItemVO createItem(TestItemRequest request) {
         ClinicalAccess.requireMasterWriter(); validate(request); validateItem(request);
@@ -47,7 +51,7 @@ public class LabCatalogServiceImpl implements LabCatalogService {
     @Override public TestItemVO updateItem(Long id,TestItemRequest request) {
         ClinicalAccess.requireMasterWriter(); validate(request); validateItem(request);
         var value=ownedItem(id,true); version(request.version(),value.getVersion());
-        boolean changed=!value.getMethodology().equals(request.methodology().trim()) || !value.getUnit().equals(request.unit().trim()) || !value.getResultType().equals(request.resultType());
+        boolean changed=!value.getMethodology().equals(request.methodology().trim()) || !value.getUnit().equals(request.unit().trim()) || value.getResultType()!=LabResultTypeEnum.fromCode(request.resultType());
         if(changed && intervals.selectCount(intervalQuery().eq(LabInterval::getItemId,id))>0)
             throw new BizException(40900,"已有关联区间，方法学、单位和结果类型不可直接修改；请新增检验项目");
         copyItem(value,request);
@@ -59,8 +63,7 @@ public class LabCatalogServiceImpl implements LabCatalogService {
         requireReader(); var query=intervalQuery();
         if(itemId!=null) { ownedItem(itemId,false); query.eq(LabInterval::getItemId,itemId); }
         if(kind!=null && !kind.isBlank()) {
-            if(!Set.of("REFERENCE","MEASUREMENT").contains(kind)) throw new BizException(40001,"区间类型无效");
-            query.eq(LabInterval::getKind,kind);
+            query.eq(LabInterval::getKind,IntervalKindEnum.fromCode(kind));
         }
         var result=intervals.selectPage(new Page<LabInterval>(Math.max(1,page),Math.min(200,Math.max(1,size))),query.orderByDesc(LabInterval::getId));
         var ids=result.getRecords().stream().map(LabInterval::getItemId).distinct().toList();
@@ -90,7 +93,7 @@ public class LabCatalogServiceImpl implements LabCatalogService {
         if(!Boolean.TRUE.equals(parent.getActive())) throw new BizException(40900,"检验项目已停用");
         if(request.deviceId()!=null) devices.requireActiveOwned(request.deviceId());
         var input=new IntervalPolicy.Input(request.itemId(),request.deviceId(),request.methodology(),request.unit(),request.sex(),request.ageDays(),request.sampleDate(),request.result());
-        var result=policy.evaluate(rules(parent.getId()),input,request.kind());
+        var result=policy.evaluate(rules(parent.getId()),input,IntervalKindEnum.fromCode(request.kind()));
         return new IntervalEvaluationVO(result.status(),result.intervalId(),result.reason());
     }
     @Override public List<DeviceOptionVO> deviceOptions(String keyword) {
@@ -110,7 +113,7 @@ public class LabCatalogServiceImpl implements LabCatalogService {
     private void version(Integer incoming,Integer current){if(incoming==null || !incoming.equals(current)) throw new BizException(40900,"数据版本已变更，请刷新后重试");}
     private void requireReader(){var scope=InstitutionContext.require(); if(scope.actorId()==null || !Set.of("SYSTEM_ADMIN","LAB_TECH","LAB_DOCTOR","LAB_DIRECTOR").contains(scope.role())) throw new BizException(40300,"没有检验基础资料访问权限");}
     private void validateItem(TestItemRequest r){if(r.resultType().equals("NUMERIC") && r.unit().isBlank()) throw new BizException(40001,"定量项目必须指定单位");}
-    private void copyItem(LabTestItem v,TestItemRequest r){v.setCode(r.code().trim());v.setName(r.name().trim());v.setMethodology(r.methodology().trim());v.setResultType(r.resultType());v.setUnit(r.unit().trim());v.setActive(r.active());v.setUpdatedAt(LocalDateTime.now());}
+    private void copyItem(LabTestItem v,TestItemRequest r){v.setCode(r.code().trim());v.setName(r.name().trim());v.setMethodology(r.methodology().trim());v.setResultType(LabResultTypeEnum.fromCode(r.resultType()));v.setUnit(r.unit().trim());v.setActive(r.active());if(r.deviceRequired()!=null || v.getDeviceRequired()==null)v.setDeviceRequired(Boolean.TRUE.equals(r.deviceRequired()));v.setUpdatedAt(LocalDateTime.now());}
     private void copyInterval(LabInterval v,IntervalRequest r,LabTestItem parent){
         if(!Boolean.TRUE.equals(parent.getActive()) && r.active()) throw new BizException(40900,"停用项目不能启用区间");
         if(r.minAgeDays()>r.maxAgeDays() || r.validFrom().isAfter(r.validTo())) throw new BizException(40001,"年龄或有效期起止范围无效");
@@ -118,15 +121,15 @@ public class LabCatalogServiceImpl implements LabCatalogService {
             if(r.active()) devices.requireActiveOwned(r.deviceId());
             else devices.requireOwned(r.deviceId());
         }
-        if(r.kind().equals("MEASUREMENT") && (r.deviceId()==null || !parent.getResultType().equals("NUMERIC"))) throw new BizException(40001,"测量范围必须绑定设备及定量项目");
-        if(parent.getResultType().equals("NUMERIC")){
+        if(IntervalKindEnum.fromCode(r.kind())==IntervalKindEnum.MEASUREMENT && (r.deviceId()==null || !(parent.getResultType()==LabResultTypeEnum.NUMERIC))) throw new BizException(40001,"测量范围必须绑定设备及定量项目");
+        if((parent.getResultType()==LabResultTypeEnum.NUMERIC)){
             if(r.lowerBound()==null || r.upperBound()==null || r.lowerBound().compareTo(r.upperBound())>0 || (r.normalText()!=null && !r.normalText().isBlank())) throw new BizException(40001,"定量区间必须填写有效上下限，不能填写定性参考结果");
         } else if(r.normalText()==null || r.normalText().isBlank() || r.lowerBound()!=null || r.upperBound()!=null) throw new BizException(40001,"定性区间必须填写参考结果，不能填写数值上下限");
-        v.setItemId(parent.getId());v.setDeviceId(r.deviceId());v.setKind(r.kind());v.setMethodology(parent.getMethodology());v.setUnit(parent.getUnit());v.setResultType(parent.getResultType());v.setSex(r.sex());v.setMinAgeDays(r.minAgeDays());v.setMaxAgeDays(r.maxAgeDays());v.setLowerBound(r.lowerBound());v.setUpperBound(r.upperBound());v.setNormalText(parent.getResultType().equals("NUMERIC")?null:r.normalText().trim());v.setValidFrom(r.validFrom());v.setValidTo(r.validTo());v.setActive(r.active());v.setUpdatedAt(LocalDateTime.now());
+        v.setItemId(parent.getId());v.setDeviceId(r.deviceId());v.setKind(IntervalKindEnum.fromCode(r.kind()));v.setMethodology(parent.getMethodology());v.setUnit(parent.getUnit());v.setResultType(parent.getResultType());v.setSex(ReferenceSexEnum.fromCode(r.sex()));v.setMinAgeDays(r.minAgeDays());v.setMaxAgeDays(r.maxAgeDays());v.setLowerBound(r.lowerBound());v.setUpperBound(r.upperBound());v.setNormalText((parent.getResultType()==LabResultTypeEnum.NUMERIC)?null:r.normalText().trim());v.setValidFrom(r.validFrom());v.setValidTo(r.validTo());v.setActive(r.active());v.setUpdatedAt(LocalDateTime.now());
     }
-    private TestItemVO vo(LabTestItem v){return new TestItemVO(v.getId(),v.getCode(),v.getName(),v.getMethodology(),v.getResultType(),v.getUnit(),v.getActive(),v.getVersion());}
+    private TestItemVO vo(LabTestItem v){return new TestItemVO(v.getId(),v.getCode(),v.getName(),v.getMethodology(),v.getResultType().getCode(),v.getUnit(),v.getActive(),v.getVersion(),v.getDeviceRequired());}
     private IntervalVO vo(LabInterval v,LabTestItem parent){
         if(parent==null) throw new BizException(40900,"关联检验项目缺失，请核对基础资料");
-        return new IntervalVO(v.getId(),v.getItemId(),parent.getCode(),parent.getName(),v.getDeviceId(),v.getKind(),v.getMethodology(),v.getUnit(),v.getResultType(),v.getSex(),v.getMinAgeDays(),v.getMaxAgeDays(),v.getLowerBound(),v.getUpperBound(),v.getNormalText(),v.getValidFrom(),v.getValidTo(),v.getActive(),v.getVersion());
+        return new IntervalVO(v.getId(),v.getItemId(),parent.getCode(),parent.getName(),v.getDeviceId(),v.getKind().getCode(),v.getMethodology(),v.getUnit(),v.getResultType().getCode(),v.getSex().getCode(),v.getMinAgeDays(),v.getMaxAgeDays(),v.getLowerBound(),v.getUpperBound(),v.getNormalText(),v.getValidFrom(),v.getValidTo(),v.getActive(),v.getVersion());
     }
 }

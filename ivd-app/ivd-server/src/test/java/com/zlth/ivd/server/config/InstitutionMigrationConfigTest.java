@@ -33,6 +33,8 @@ class InstitutionMigrationConfigTest {
         assertThrows(IllegalStateException.class,()->config.institutionSchemaGuard(source,false).afterSingletonsInstantiated());
         assertThrows(IllegalStateException.class,()->config.institutionSchemaGuard(source,true).afterSingletonsInstantiated());
         jdbc.execute("CREATE TABLE lab_test_item(id BIGINT PRIMARY KEY)");jdbc.execute("CREATE TABLE lab_interval(id BIGINT PRIMARY KEY)");
+        assertThrows(IllegalStateException.class,()->config.institutionSchemaGuard(source,true).afterSingletonsInstantiated());
+        jdbc.execute("ALTER TABLE lab_test_item ADD device_required BOOLEAN");
         assertDoesNotThrow(()->config.institutionSchemaGuard(source,true).afterSingletonsInstantiated());
     }
 }

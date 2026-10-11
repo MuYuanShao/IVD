@@ -1,0 +1,45 @@
+import request from '@/utils/request'
+
+// Clinical payloads are never persisted in browser storage or sent to diagnostic logs.
+export const getPatients = (params, signal) => request({ url: '/lab/patients', params, signal, silentError: true })
+export const getPatient = (id) => request({ url: `/lab/patients/${id}`, silentError: true })
+export const createPatient = (data) => request({ url: '/lab/patients', method: 'post', data, silentError: true })
+export const updatePatient = (id, data) => request({ url: `/lab/patients/${id}`, method: 'put', data, silentError: true })
+export const getSamples = (params, signal) => request({ url: '/lab/samples', params, signal, silentError: true })
+export const getSample = (id) => request({ url: `/lab/samples/${id}`, silentError: true })
+export const createSample = (data) => request({ url: '/lab/samples', method: 'post', data, silentError: true })
+export const receiveSample = (id, data) => request({ url: `/lab/samples/${id}/receive`, method: 'post', data, silentError: true })
+export const rejectSample = (id, data) => request({ url: `/lab/samples/${id}/reject`, method: 'post', data, silentError: true })
+export const getSampleResults = (id, params, signal) => request({ url: `/lab/samples/${id}/results`, params, signal, silentError: true })
+export const createSampleResult = (id, data) => request({ url: `/lab/samples/${id}/results`, method: 'post', data, silentError: true })
+export const updateSampleResult = (id, data) => request({ url: `/lab/results/${id}`, method: 'put', data, silentError: true })
+export const getResultVersions = (id) => request({ url: `/lab/results/${id}/versions`, silentError: true })
+export const getTestingInstitutions = () => request({ url: '/lab/testing-institutions/options', silentError: true })
+export const searchClinicalResults = (params, signal) => request({ url: '/lab/results', params, signal, silentError: true })
+export const getDeviceRegistry = (params, signal) => request({ url:'/lab/devices',params,signal,silentError:true })
+export const getDeviceRegistryDetail = (id) => request({ url:`/lab/devices/${id}`,silentError:true })
+export const saveDeviceRegistry = (id,data) => request({ url:id ? `/lab/devices/${id}` : '/lab/devices',method:id ? 'put' : 'post',data,silentError:true })
+export const getDeviceWarehouses = () => request({ url:'/lab/devices/warehouses/options',silentError:true })
+export const getDeviceCapabilities = (id) => request({ url:`/lab/devices/${id}/capabilities`,silentError:true })
+export const setDeviceCapability = (id,data) => request({ url:`/lab/devices/${id}/capabilities`,method:'put',data,silentError:true })
+export const getResultEvidence = (id,params) => request({ url:`/lab/results/${id}/evidence`,params,silentError:true })
+export const bindResultEvidence = (id,data) => request({ url:`/lab/results/${id}/evidence`,method:'post',data,silentError:true })
+export const getEvidenceBatches = (id,keyword) => request({ url:`/lab/results/${id}/evidence/batch-options`,params:{ keyword },silentError:true })
+export const getEvidenceConsumption = (id,batchId) => request({ url:`/lab/results/${id}/evidence/consumption-options`,params:{ batchId },silentError:true })
+export const getReports = (params,signal) => request({ url:'/lab/reports',params,signal,silentError:true })
+export const getReport = (id) => request({ url:`/lab/reports/${id}`,silentError:true })
+export const getReportVersions = (id) => request({ url:`/lab/reports/${id}/versions`,silentError:true })
+export const getReportHistory = (id) => request({ url:`/lab/reports/${id}/history`,silentError:true })
+export const saveReport = (id,data) => request({ url:id ? `/lab/reports/${id}` : '/lab/reports',method:id ? 'put' : 'post',data,silentError:true })
+export const actOnReport = (id,action,data) => request({ url:`/lab/reports/${id}/${action}`,method:'post',data,silentError:true,timeout:60000 })
+async function checkedBlob(options,type) {
+  const blob=await request({ ...options,responseType:'blob',silentError:true })
+  if(!blob.type.includes(type)) { let message='文件获取失败';try { message=JSON.parse(await blob.text()).message || message } catch {}throw new Error(message) }
+  return blob
+}
+export const getReportPdf = (id,purpose='PREVIEW') => checkedBlob({ url:`/lab/reports/${id}/pdf`,params:{ purpose },timeout:60000 },'application/pdf')
+export const getImportTemplate = (resource) => checkedBlob({ url:`/lab/imports/${resource}/template` },'spreadsheetml')
+export const preflightImport = (resource,file) => { const data=new FormData();data.append('file',file);return request({ url:`/lab/imports/${resource}/preflight`,method:'post',data,timeout:900000,silentError:true }) }
+export const executeImport = (id) => request({ url:`/lab/imports/batches/${id}/execute`,method:'post',timeout:900000,silentError:true })
+export const getImportBatch = (id) => request({ url:`/lab/imports/batches/${id}`,silentError:true })
+export const traceClinicalEvidence = (params,signal) => request({ url:'/lab/evidence/trace',params,signal,silentError:true })

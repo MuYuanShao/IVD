@@ -58,6 +58,11 @@ public class InstitutionMigrationConfig {
                     }
                     if (!tables.containsAll(java.util.Set.of("lab_test_item", "lab_interval")))
                         throw new IllegalStateException("检验项目与区间迁移尚未完成，已拒绝启用检验业务");
+                    boolean deviceRequirement=false;
+                    try(var columns=connection.getMetaData().getColumns(connection.getCatalog(),null,"%","%")){
+                        while(columns.next())if("lab_test_item".equalsIgnoreCase(columns.getString("TABLE_NAME")) && "device_required".equalsIgnoreCase(columns.getString("COLUMN_NAME")))deviceRequirement=true;
+                    }
+                    if(!deviceRequirement)throw new IllegalStateException("项目设备要求迁移尚未完成，拒绝以旧结构启用新检验目录");
                 }
             } catch (SQLException error) {
                 throw new IllegalStateException("机构归属结构校验失败，已拒绝启动", error);

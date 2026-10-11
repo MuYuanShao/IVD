@@ -55,6 +55,14 @@ public class PatientServiceImpl implements PatientService {
         if(patient==null) throw new BizException(40400,"患者不存在或无权访问");
         var profile=decrypt(patient);audit("DETAIL",id);return detailVO(patient,profile);
     }
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,rollbackFor=Exception.class)
+    public PatientDetailVO requireAuthorizedForWrite(Long id) {
+        var scope=ClinicalAccess.requireClinical();
+        if(grants.lockActive(id,scope.institutionId(),scope.departmentId())==null)
+            throw new BizException(40400,"患者不存在或无权访问");
+        return detail(id);
+    }
+    @Override public PatientDetailVO requireNumber(String number){var row=patients.selectOne(authorizedQuery().eq(LabPatient::getNumberIndex,crypto.index("patient-number",number)));if(row==null)throw new BizException(40400,"患者编号不存在或无权引用");return detail(row.getId());}
     @Override public PatientDetailVO update(Long id,PatientRequest request) {
         var scope=ClinicalAccess.requireClinical();validate(request);
         if(grants.lockActive(id,scope.institutionId(),scope.departmentId())==null) throw new BizException(40400,"患者不存在或无权访问");
@@ -131,7 +139,7 @@ public class PatientServiceImpl implements PatientService {
     }
     private void audit(String action,Long id) {
         if(!crypto.available()) throw new BizException(50000,"临床加密密钥未配置");
-        audits.append(OperationAuditEntry.builder().operatorId(InstitutionContext.requireUserActor())
+        audits.appendDomain(OperationAuditEntry.builder().operatorId(InstitutionContext.requireUserActor())
                 .operatorName(SecurityUtils.getCurrentUsername()).module("laboratory-patient").action(action)
                 .handler("PatientService").reason(id==null?"Authorized patient list":"Patient ID="+id)
                 .success(true).durationMs(0L).occurredAt(LocalDateTime.now()).build());

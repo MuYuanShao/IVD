@@ -1,0 +1,24 @@
+.el-form .el-select {
+  width: 100%;
+}
+.lab-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.lab-pair .el-input,
+.lab-pair .el-input-number {
+  min-width: 0;
+  flex: 1;
+}
+.lab-hint {
+  font-size: 12px;
+  color: var(--scm-muted);
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .lab-pair {
+    flex-wrap: wrap;
+  }
+}

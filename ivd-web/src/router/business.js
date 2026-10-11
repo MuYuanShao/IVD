@@ -47,8 +47,15 @@ export function withBusinessLayout(route) {
       : {}),
   }))
   children.push({ path: 'system/research-projects', name: 'ResearchProjectSettings', component: () => import('@/views/system/ResearchProjectSettings.vue'), meta: { title: '科研项目设置', navGroup: '系统管理' } })
-  children.push({ path: 'lab/items', name: 'LabTestItems', component: () => import('@/views/laboratory/LabCatalogView.vue'), meta: { title: '检验项目', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'], labMode: 'items' } })
-  children.push({ path: 'lab/intervals', name: 'LabIntervals', component: () => import('@/views/laboratory/LabCatalogView.vue'), meta: { title: '参考区间与测量范围', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'], labMode: 'intervals' } })
+  children.push({ path: 'lab/items', name: 'LabTestItems', component: () => import('@/views/laboratory/LabTestItemsView.vue'), meta: { title: '检验项目', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
+  children.push({ path: 'lab/intervals', name: 'LabIntervals', component: () => import('@/views/laboratory/LabIntervalsView.vue'), meta: { title: '参考区间与测量范围', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
+  children.push({ path: 'lab/patients', name: 'LabPatients', component: () => import('@/views/laboratory/LabPatientsView.vue'), meta: { title: '患者档案', navGroup: '检验业务', feature: 'labPatients', roles: ['LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
+  children.push({ path: 'lab/samples', name: 'LabSamples', component: () => import('@/views/laboratory/LabSamplesView.vue'), meta: { title: '样本与检测结果', navGroup: '检验业务', feature: 'labPatients', roles: ['LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
+  children.push({ path: 'lab/results', name: 'LabResults', component: () => import('@/views/laboratory/LabResultsView.vue'), meta: { title: '患者 / 设备关联查询', navGroup: '检验业务', feature: 'labPatients', roles: ['LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
+  children.push({ path: 'lab/devices', name: 'LabDevices', component: () => import('@/views/laboratory/LabDevicesView.vue'), meta: { title:'设备档案与项目能力',navGroup:'检验业务',feature:'labPatients',roles:['SYSTEM_ADMIN','LAB_DIRECTOR','LAB_DOCTOR','LAB_TECH'] } })
+  children.push({ path: 'lab/reports', name: 'LabReports', component: () => import('@/views/laboratory/LabReportsView.vue'), meta: { title:'检验报告',navGroup:'检验业务',feature:'labPatients',roles:['LAB_DIRECTOR','LAB_DOCTOR','LAB_TECH'] } })
+  children.push({ path: 'lab/imports', name: 'LabImports', component: () => import('@/views/laboratory/LabImportsView.vue'), meta: { title:'Excel 导入',navGroup:'检验业务',feature:'labPatients',roles:['SYSTEM_ADMIN','LAB_DIRECTOR','LAB_DOCTOR','LAB_TECH'] } })
+  children.push({ path:'lab/evidence',name:'LabEvidenceTrace',component:()=>import('@/views/laboratory/LabEvidenceTraceView.vue'),meta:{ title:'批次 / 消耗临床追溯',navGroup:'检验业务',feature:'labPatients',roles:['LAB_DIRECTOR','LAB_DOCTOR','LAB_TECH'] } })
   if (oldDashboard)
     children.push({
       ...oldDashboard,

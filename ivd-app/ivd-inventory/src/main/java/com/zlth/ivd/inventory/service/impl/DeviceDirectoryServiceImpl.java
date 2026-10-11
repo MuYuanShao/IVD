@@ -16,6 +16,9 @@ public class DeviceDirectoryServiceImpl implements DeviceDirectoryService {
         return load(id,true);
     }
     @Override public DeviceReference requireOwned(Long id) { return load(id,false); }
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,readOnly=false,rollbackFor=Exception.class)
+    public DeviceReference lockOwned(Long id,boolean activeOnly){InstitutionContext.requireUserActor();var query=ownedQuery().eq(Device::getId,id);if(activeOnly)query.eq(Device::getIsActive,true);var device=mapper.selectOne(query.last("FOR UPDATE"));if(device==null)throw new BizException(40400,"设备不存在、已停用或无权访问");return new DeviceReference(device.getId(),device.getDeviceCode(),device.getName(),device.getDeptId());}
+    @Override public DeviceReference requireOwnedCode(String code){var row=mapper.selectOne(ownedQuery().eq(Device::getDeviceCode,code));if(row==null)throw new BizException(40400,"设备编码不存在或无权访问");return new DeviceReference(row.getId(),row.getDeviceCode(),row.getName(),row.getDeptId());}
     private DeviceReference load(Long id,boolean activeOnly) {
         var query = ownedQuery().eq(Device::getId,id);
         if(activeOnly) query.eq(Device::getIsActive,true);

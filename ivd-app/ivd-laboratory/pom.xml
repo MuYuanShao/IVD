@@ -8,6 +8,8 @@
   <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-inventory</artifactId></dependency>
   <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-system</artifactId></dependency>
   <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-audit</artifactId></dependency>
+  <dependency><groupId>com.zlth.ivd</groupId><artifactId>ivd-consumption</artifactId></dependency>
+  <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId></dependency>
   <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.8</version></dependency>
   <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope></dependency>
  </dependencies>

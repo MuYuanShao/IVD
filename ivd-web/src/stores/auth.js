@@ -17,13 +17,15 @@ export const useAuthStore = defineStore('auth', () => {
   const role = computed(() => user.value?.role || '')
   const realName = computed(() => user.value?.realName || user.value?.username || '')
   const deptId = computed(() => user.value?.departmentId || user.value?.deptId || null)
-  const deptName = computed(() => user.value?.deptName || '')
+  const deptName = computed(() => user.value?.deptName || (deptId.value ? `科室 #${deptId.value}` : ''))
   const roleLabel = computed(() => {
     const map = {
       SYSTEM_ADMIN: '系统管理员',
       STOREKEEPER: '库管员',
       DEPT_ADMIN: '科室管理员',
       LAB_TECH: '检验技师',
+      LAB_DOCTOR: '检验医生',
+      LAB_DIRECTOR: '检验科主任',
       AUDITOR: '审核员',
       ADMIN: '系统管理员',
       USER: '操作员'
@@ -43,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
         console.error('[Auth Store] 服务器返回数据异常:', data)
         throw new Error('服务器返回数据异常')
       }
-      console.log('[Auth Store] 登录成功，保存 token:', data.accessToken.substring(0, 30) + '...')
+      console.log('[Auth Store] 登录成功')
       token.value = data.accessToken
       refreshTokenVal.value = data.refreshToken
       user.value = {

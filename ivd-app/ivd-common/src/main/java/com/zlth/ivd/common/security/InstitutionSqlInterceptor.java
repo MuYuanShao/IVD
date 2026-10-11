@@ -29,7 +29,7 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
         String name=table.getName().replace("`","").toLowerCase(Locale.ROOT);
         String column=switch(name) {
             case "purchase_requisition","shortage_order" -> "from_dept_id";
-            case "patient_association","audit_decision_log","lab_sample","lab_report" -> "department_id";
+            case "patient_association","audit_decision_log","lab_sample","lab_sample_event","lab_result","lab_result_revision","lab_result_evidence","lab_report","lab_report_result","lab_report_event","lab_import_batch","lab_import_unit" -> "department_id";
             default -> null;
         };
         String prefix=table.getAlias()==null?table.getName():table.getAlias().getName();

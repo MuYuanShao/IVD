@@ -4,7 +4,7 @@ import com.zlth.ivd.system.entity.SysUser;
 import java.util.List;
 import java.util.Map;
 
-public interface AuthenticationDirectoryService {
+public interface AuthenticationDirectoryService extends com.zlth.ivd.common.security.OwnedDepartmentService {
     SysUser findForLogin(String username);
     SysUser findActiveUser(Long userId);
     Map<String,Object> activeInstitution(Long institutionId);

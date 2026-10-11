@@ -6,7 +6,10 @@ import com.zlth.ivd.laboratory.vo.*;
 public interface PatientService {
     PatientDetailVO create(PatientRequest request);
     PatientDetailVO detail(Long id);
+    /** Caller transaction retains the authorization lock until its clinical write commits. */
+    PatientDetailVO requireAuthorizedForWrite(Long id);
     PatientDetailVO update(Long id,PatientRequest request);
     PageVO<PatientSummaryVO> list(int page,int pageSize);
     void setDepartmentAccess(Long id,PatientDepartmentRequest request);
+    PatientDetailVO requireNumber(String number);
 }

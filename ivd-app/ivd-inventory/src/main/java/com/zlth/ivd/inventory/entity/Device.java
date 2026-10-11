@@ -18,10 +18,13 @@ public class Device {
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     @TableField(select = false, insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
     private Long institutionId;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     @TableField(select = false, insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
     private Long deptId;
-    private LocalDate lastCalibrationDate;
-    private LocalDate nextCalibrationDate;
+    /** Explicit registry query maps this field; legacy device reads do not require the new column. */
+    @TableField(exist=false) private Integer version;
+    @TableField(updateStrategy=FieldStrategy.ALWAYS) private LocalDate lastCalibrationDate;
+    @TableField(updateStrategy=FieldStrategy.ALWAYS) private LocalDate nextCalibrationDate;
     private Boolean isActive;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

@@ -11,10 +11,12 @@ import org.springframework.web.bind.annotation.*;
 
 /** Never log raw clinical payloads or parser messages which may contain patient information. */
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@RestControllerAdvice(assignableTypes=PatientController.class)
+@RestControllerAdvice(assignableTypes={PatientController.class,SampleController.class,LabResultController.class,ResultEvidenceController.class,DeviceCapabilityController.class,ReportController.class,DeviceRegistryController.class,ClinicalImportController.class,ClinicalEvidenceTraceController.class})
 public class ClinicalExceptionHandler {
     @ExceptionHandler({HttpMessageNotReadableException.class,MethodArgumentNotValidException.class,
             org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+            org.springframework.web.multipart.MaxUploadSizeExceededException.class,
             org.springframework.web.bind.MissingServletRequestParameterException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<?> invalidRequest(Exception ignored){return Result.badRequest("临床请求格式或字段无效，请核对必填项与日期格式");}

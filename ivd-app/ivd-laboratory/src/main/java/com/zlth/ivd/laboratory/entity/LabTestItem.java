@@ -3,6 +3,7 @@ package com.zlth.ivd.laboratory.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import com.zlth.ivd.common.security.InstitutionOwnedEntity;
 import java.time.LocalDateTime;
+import com.zlth.ivd.laboratory.enums.LabResultTypeEnum;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -14,9 +15,10 @@ public class LabTestItem extends InstitutionOwnedEntity {
     private String code;
     private String name;
     private String methodology;
-    private String resultType;
+    private LabResultTypeEnum resultType;
     private String unit;
     private Boolean active;
+    private Boolean deviceRequired;
     @Version private Integer version;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

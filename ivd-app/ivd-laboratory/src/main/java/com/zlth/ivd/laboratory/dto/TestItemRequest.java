@@ -8,4 +8,8 @@ public record TestItemRequest(
         @NotNull @Pattern(regexp="NUMERIC|TEXT") String resultType,
         @NotNull @Size(max=32) String unit,
         @NotNull Boolean active,
-        @PositiveOrZero Integer version) { }
+        @PositiveOrZero Integer version,Boolean deviceRequired) {
+    public TestItemRequest(String code,String name,String methodology,String resultType,String unit,Boolean active,Integer version){
+        this(code,name,methodology,resultType,unit,active,version,null);
+    }
+}
