@@ -32,13 +32,21 @@ class SettlementEvidenceTest {
             }
             return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
         });
-        new SettlementServiceImpl(records,null,reqs,null,null,jdbc).settleRequisition(1L);
+        var procurement=mock(com.zlth.ivd.procurement.service.ProcurementService.class);
+        when(procurement.lockRequisitionForSettlement(1L)).thenReturn(req);
+        when(procurement.receivedTransfers(1L)).thenReturn(List.of(evidence(100L,"LOT-A",2),evidence(101L,"LOT-B",1)));
+        new SettlementServiceImpl(records,null,procurement,jdbc,mock(com.zlth.ivd.settlement.mapper.SettlementEventMapper.class)).settleRequisition(1L);
         var captured=org.mockito.ArgumentCaptor.forClass(SettlementRecord.class);verify(records,times(2)).insert(captured.capture());
         assertEquals(List.of("LOT-A","LOT-B"),captured.getAllValues().stream().map(SettlementRecord::getBatchNo).toList());
         assertEquals(new BigDecimal("30.00"),captured.getAllValues().stream().map(SettlementRecord::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add));
         assertEquals("TRANSFER_RECORD",captured.getValue().getSourceItemKind());assertEquals(101L,captured.getValue().getSourceItemId());
     }
     private Map<String,Object> move(long id,String batch,int qty){return Map.of("id",id,"batch_no",batch,"reagent_id",4L,"quantity",BigDecimal.valueOf(qty),"unit_price",new BigDecimal("10.00"),"amount",new BigDecimal("10.00").multiply(BigDecimal.valueOf(qty)));}
+    private com.zlth.ivd.consumption.entity.ConsumptionRecord evidence(long id,String batch,int qty){
+        var row=new com.zlth.ivd.consumption.entity.ConsumptionRecord();row.setId(id);row.setBatchId(4L);row.setBatchNo(batch);row.setReagentId(4L);
+        row.setQuantity(BigDecimal.valueOf(qty));row.setUnitPrice(new BigDecimal("10.00"));row.setAmount(new BigDecimal("10.00").multiply(row.getQuantity()));
+        row.setSettlementMode("领用结算");return row;
+    }
     @Test void detailUsesRealSettlementAndNeverFansOutLegacyBatches() {
         var ds=new DriverManagerDataSource("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1","sa","");
         var jdbc=new JdbcTemplate(ds);
@@ -51,7 +59,7 @@ class SettlementEvidenceTest {
         jdbc.update("INSERT INTO consumption_record VALUES(10,NULL,'LOT','CONSUME',1,NULL,NULL,1,'box',10,1,10,CURRENT_TIMESTAMP),(11,NULL,'LOT','CONSUME',1,NULL,NULL,1,'box',10,1,10,CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO reagent_batch VALUES(1,'LOT',1,1,10),(2,'LOT',1,2,10)");
         jdbc.update("INSERT INTO settlement_record VALUES(99,'REAL-99','CONSUMPTION',10,'ACTIVE',CURRENT_TIMESTAMP)");
-        var result=new SettlementServiceImpl(null,null,null,null,null,jdbc).getConsumptionDetails(1,10,null,null,null);
+        var result=new SettlementServiceImpl(null,null,null,jdbc,null).getConsumptionDetails(1,10,null,null,null);
         assertEquals(2,result.getTotal());
         var settled=result.getRecords().stream().filter(r->r.getConsumptionRecordId()==10L).findFirst().orElseThrow();
         assertEquals(99L,settled.getSettlementId());assertEquals("REAL-99",settled.getSettlementNo());assertEquals("LOT",settled.getBatchNo());

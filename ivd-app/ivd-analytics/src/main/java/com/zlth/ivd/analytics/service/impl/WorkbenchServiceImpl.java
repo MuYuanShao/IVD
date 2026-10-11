@@ -26,7 +26,7 @@ public class WorkbenchServiceImpl implements WorkbenchService {
         if (userId == null) throw new BizException(40100,"请重新登录");
         var user=mapper.userScope(userId);
         if (user == null) throw new BizException(40300,"账号不存在或已停用");
-        if ("SYSTEM_ADMIN".equals(user.getRole()) || "ADMIN".equals(user.getRole())) return null;
+        if (user.getRole()!=null && Set.of("SYSTEM_ADMIN","ADMIN","STOREKEEPER","FINANCE").contains(user.getRole())) return null;
         if (user.getDeptId()==null) throw new BizException(40300,"未分配科室，无法确定数据范围，请联系管理员");
         return user.getDeptId();
     }

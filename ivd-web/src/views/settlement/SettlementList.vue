@@ -8,7 +8,7 @@
       <el-col :span="6"><el-card shadow="hover" class="stat-card"><el-statistic title="总结算单数" :value="stats.total || 0" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--success"><el-statistic title="有效结算" :value="stats.active || 0" /></el-card></el-col>
       <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--warning"><el-statistic title="已冲销" :value="stats.reversed || 0" /></el-card></el-col>
-      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><el-statistic title="本月结算金额" value="126.8万" /></el-card></el-col>
+      <el-col :span="6"><el-card shadow="hover" class="stat-card stat-card--info"><span>本月有效结算金额</span><strong>{{ stats.monthlyAmount == null ? '待核对' : `¥${Number(stats.monthlyAmount).toFixed(2)}` }}</strong></el-card></el-col>
     </el-row>
 
     <el-card shadow="never">
@@ -28,10 +28,10 @@
           <template #default="{row}"><el-tag :type="row.status==='ACTIVE'?'success':'danger'" size="small">{{ row.status==='ACTIVE'?'有效':'已冲销' }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="settledAt" label="结算时间" width="160" />
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="160">
           <template #default="{row}">
             <el-button v-if="row.status==='ACTIVE'" link type="danger" size="small" @click="doReverse(row)">冲销</el-button>
-            <span v-else style="color:var(--text-disabled);font-size:12px">—</span>
+            <el-button link type="primary" size="small" @click="historyId = row.id">追溯</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -41,23 +41,29 @@
     <el-dialog v-model="showSettleDialog" title="手动结算" width="400px">
       <el-form label-width="80px">
         <el-form-item label="结算类型"><el-select v-model="settleForm.type" style="width:100%"><el-option label="申领结算" value="REQUISITION" /><el-option label="消耗结算" value="CONSUMPTION" /><el-option label="调拨结算" value="TRANSFER" /></el-select></el-form-item>
-        <el-form-item label="源单据ID"><el-input-number v-model="settleForm.sourceId" :min="1" style="width:100%" /></el-form-item>
+        <el-alert title="按采购模式结算，不重复补账；来源ID按文本输入以保留完整精度。" type="info" :closable="false" />
+        <el-form-item label="源单据ID"><el-input v-model="settleForm.sourceId" placeholder="粘贴完整来源ID" maxlength="19" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="showSettleDialog=false">取消</el-button><el-button type="primary" @click="doSettle">确认结算</el-button></template>
     </el-dialog>
+    <settlement-history-modal v-model="historyVisible" :settlement-id="historyId" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getSettlementList, getSettlementStats, settleRequisition, settleConsumption, settleTransfer, reverseSettlement } from '@/api/settlement'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import SettlementHistoryModal from './components/SettlementHistoryModal.vue'
+import { validSourceId } from '@/utils/settlementFlow.mjs'
 
 const page = ref(1), pageSize = ref(10)
 const records = ref([]), loading = ref(false), total = ref(0)
 const stats = ref({})
 const showSettleDialog = ref(false)
-const settleForm = ref({ type: 'REQUISITION', sourceId: 1 })
+const settleForm = ref({ type: 'REQUISITION', sourceId: '' })
+const historyId = ref(null)
+const historyVisible = computed({ get: () => historyId.value !== null, set: value => { if (!value) historyId.value = null } })
 
 onMounted(() => { fetchRecords(); fetchStats() })
 
@@ -68,6 +74,8 @@ async function fetchRecords() {
 async function fetchStats() { try { stats.value = await getSettlementStats() || {} } catch {} }
 
 async function doSettle() {
+  if (!validSourceId(settleForm.value.sourceId)) { ElMessage.warning('请输入完整、有效的来源ID'); return }
+  settleForm.value.sourceId = String(settleForm.value.sourceId).trim()
   try {
     if (settleForm.value.type === 'REQUISITION') await settleRequisition(settleForm.value.sourceId)
     else if (settleForm.value.type === 'TRANSFER') await settleTransfer(settleForm.value.sourceId)
@@ -84,6 +92,7 @@ function getSettlementTagType(type) {
 }
 
 function getSettlementTypeLabel(type) {
+  if (type === 'INBOUND') return '验收结算'
   if (type === 'REQUISITION') return '申领结算'
   if (type === 'TRANSFER') return '调拨结算'
   return '消耗结算'
@@ -91,7 +100,7 @@ function getSettlementTypeLabel(type) {
 
 async function doReverse(row) {
   try {
-    const { value } = await ElMessageBox.prompt('请输入冲销原因', '冲销结算', { confirmButtonText: '确认冲销', type: 'warning' })
+    const { value } = await ElMessageBox.prompt('请输入冲销原因', '冲销结算', { confirmButtonText: '确认冲销', type: 'warning', inputValidator: value => value?.trim() && value.trim().length <= 500 || '请填写不超过500字的冲销原因' })
     await reverseSettlement(row.id, value || '')
     fetchRecords(); fetchStats()
   } catch {}

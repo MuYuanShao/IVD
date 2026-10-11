@@ -169,7 +169,8 @@ public class UniqueCodeService {
         int updated = 0;
         for (UdiUniqueCode code : codes) {
             code.setBatchId(targetBatchId);
-            code.setStatus("TRANSFERRED");
+            // Called after target stock has actually been received, not while shipment is in transit.
+            code.setStatus("IN_STOCK");
             code.setUpdatedAt(now);
             uniqueCodeMapper.updateById(code);
             updated++;

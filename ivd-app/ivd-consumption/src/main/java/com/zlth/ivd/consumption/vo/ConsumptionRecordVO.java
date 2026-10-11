@@ -14,6 +14,10 @@ import java.time.LocalDateTime;
 @Data
 public class ConsumptionRecordVO {
     private Long id;
+    private Long batchId;
+    private String settlementMode;
+    private String settlementNo;
+    private String settlementStatus;
     private String recordType;
     private String batchNo;
     private Long reagentId;

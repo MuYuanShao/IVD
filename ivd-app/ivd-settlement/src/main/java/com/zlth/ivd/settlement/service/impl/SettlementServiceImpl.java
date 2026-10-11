@@ -11,11 +11,8 @@ import com.zlth.ivd.common.exception.DuplicateSettlementException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.common.enums.ConsumptionRecordTypeEnum;
 import com.zlth.ivd.consumption.entity.ConsumptionRecord;
-import com.zlth.ivd.consumption.mapper.ConsumptionRecordMapper;
 import com.zlth.ivd.procurement.entity.PurchaseRequisition;
 import com.zlth.ivd.procurement.entity.PurchaseRequisitionItem;
-import com.zlth.ivd.procurement.mapper.PurchaseRequisitionMapper;
-import com.zlth.ivd.procurement.mapper.PurchaseRequisitionItemMapper;
 import com.zlth.ivd.procurement.service.ProcurementService;
 import com.zlth.ivd.settlement.entity.SettlementRecord;
 import com.zlth.ivd.settlement.mapper.SettlementRecordMapper;
@@ -46,11 +43,10 @@ import java.util.Map;
 public class SettlementServiceImpl implements SettlementService {
 
     private final SettlementRecordMapper recordMapper;
-    private final ConsumptionRecordMapper consumptionRecordMapper;
-    private final PurchaseRequisitionMapper reqMapper;
-    private final PurchaseRequisitionItemMapper reqItemMapper;
+    private final com.zlth.ivd.consumption.service.ProcurementConsumptionService consumption;
     private final ProcurementService procurementService;
     private final JdbcTemplate jdbcTemplate;
+    private final com.zlth.ivd.settlement.mapper.SettlementEventMapper eventMapper;
 
     @Lazy
     @Autowired
@@ -67,21 +63,19 @@ public class SettlementServiceImpl implements SettlementService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW,rollbackFor = Exception.class)
     public void receiveAndSettleRequisition(Long requisitionId) {
         // 1. 状态变更：SHIPPED/PARTIAL_FULFILLED → FULFILLED
         procurementService.receiveRequisition(requisitionId);
         // 2. 自动生成结算记录
-        settleRequisition(requisitionId);
+        settleReceivedMovements(requisitionId,false);
         log.info("科室签收+结算完成: requisitionId={}", requisitionId);
     }
 
     @Override
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public Map<String, Object> batchReceiveAndSettle() {
-        List<PurchaseRequisition> pending = reqMapper.selectList(
-                new LambdaQueryWrapper<PurchaseRequisition>()
-                        .in(PurchaseRequisition::getStatus,
-                                RequisitionStatusEnum.SHIPPED, RequisitionStatusEnum.PARTIAL_FULFILLED));
+        List<PurchaseRequisition> pending = procurementService.pendingReceipts();
 
         int success = 0, failed = 0;
         List<String> errors = new ArrayList<>();
@@ -108,118 +102,82 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public void settleRequisition(Long requisitionId) {
-        if (jdbcTemplate.queryForList("SELECT id FROM purchase_requisition WHERE id=? FOR UPDATE", requisitionId).isEmpty())
-            throw new BizException(40400, "申领单不存在");
-        PurchaseRequisition req = reqMapper.selectById(requisitionId);
+        settleReceivedMovements(requisitionId,true);
+    }
+
+    private void settleReceivedMovements(Long requisitionId,boolean manualRequisitionOnly) {
+        PurchaseRequisition req = procurementService.lockRequisitionForSettlement(requisitionId);
         if (req.getStatus() != RequisitionStatusEnum.FULFILLED && req.getStatus() != RequisitionStatusEnum.PARTIAL_FULFILLED)
             throw new BizException(40001, "请先完成科室签收后结算");
-        Long legacy = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=? AND source_item_kind='LEGACY'", Long.class, requisitionId);
-        if (legacy != null && legacy > 0) throw new DuplicateSettlementException(req.getReqNo());
-        List<Map<String,Object>> movements = jdbcTemplate.queryForList(
-                "SELECT cr.* FROM consumption_record cr JOIN requisition_transfer_receipt receipt ON receipt.transfer_record_id=cr.id JOIN purchase_requisition_item i ON i.id=cr.requisition_item_id AND i.req_id=cr.requisition_id AND i.reagent_id=cr.reagent_id WHERE cr.requisition_id=? AND cr.record_type='TRANSFER' ORDER BY cr.id", requisitionId);
-        if (movements.isEmpty()) throw new BizException(40001,"未找到带明细关联的实际发货流水，历史单据请先核对来源");
-        int added = 0;
-        for (Map<String,Object> move : movements) {
-            Long movementId = ((Number)move.get("id")).longValue();
-            Long existing = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=? AND source_item_kind='TRANSFER_RECORD' AND source_item_id=?",Long.class,requisitionId,movementId);
-            if (existing != null && existing > 0) continue;
-            BigDecimal qty = (BigDecimal)move.get("quantity"), price = (BigDecimal)move.get("unit_price"), amount = (BigDecimal)move.get("amount");
-            if (qty == null || qty.signum() <= 0 || price == null || amount == null || move.get("batch_no")==null)
-                throw new BizException(40001,"发货流水数量、金额或批号不完整，不能生成结算");
-            SettlementRecord record = new SettlementRecord();
-            record.setSettlementNo(generateSettlementNo("REQ"));
-            record.setSettlementType("REQUISITION");
-            record.setSourceId(requisitionId);
-            record.setSourceItemKind("TRANSFER_RECORD");
-            record.setSourceItemId(movementId);
-            record.setSourceNo(req.getReqNo());
-            record.setBatchNo(move.get("batch_no").toString());
-            record.setReagentId(((Number)move.get("reagent_id")).longValue());
-            record.setQuantity(qty); record.setUnitPrice(price); record.setAmount(amount);
-            record.setStatus("ACTIVE");
-            record.setFromDeptId(req.getFromDeptId());
-            record.setSettledBy(SecurityUtils.getCurrentOperatorIdOrNull());
-            record.setSettledAt(LocalDateTime.now());
-            insertSettlement(record, req.getReqNo()); added++;
+        var movements = procurementService.receivedTransfers(requisitionId);
+        if (movements.isEmpty()) {
+            if(manualRequisitionOnly)throw new BizException(40001,"未找到带明细关联的实际发货流水，历史单据请先核对来源");
+            return;
         }
-        if (added == 0) throw new DuplicateSettlementException(req.getReqNo());
+        int added = 0;
+        for (var move : movements) {
+            var mode=com.zlth.ivd.common.enums.SettlementModeEnum.resolve(move.getSettlementMode());
+            if(mode!=com.zlth.ivd.common.enums.SettlementModeEnum.REQUISITION
+                    && (manualRequisitionOnly || mode!=com.zlth.ivd.common.enums.SettlementModeEnum.TRANSFER)) continue;
+            String type=mode.name();Long sourceId=mode==com.zlth.ivd.common.enums.SettlementModeEnum.REQUISITION?requisitionId:move.getId();
+            if(recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getSettlementType,"REQUISITION")
+                    .eq(SettlementRecord::getSourceId,requisitionId).eq(SettlementRecord::getSourceItemKind,"LEGACY"))>0)
+                throw new DuplicateSettlementException(req.getReqNo());
+            if(settlementExists(type,sourceId,move.getId())) continue;
+            insertFromEvidence(move,type,sourceId,"TRANSFER_RECORD",req.getReqNo(),req.getFromDeptId());added++;
+        }
+        if (manualRequisitionOnly && added==0) throw new BizException(40900,"该单没有待结算的领用模式明细，或已结算；其他模式按对应业务触发");
     }
 
     @Override
     public void settleTransfer(Long transferRecordId) {
-        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
-        ConsumptionRecord source = consumptionRecordMapper.selectById(transferRecordId);
+        ConsumptionRecord source = consumption.getRecord(transferRecordId);
         if (source == null) throw new BizException(40400, "调拨记录不存在");
-        if (!ConsumptionRecordTypeEnum.TRANSFER.getCode().equals(source.getRecordType())) {
-            throw new BizException(40000, "该记录不是调拨类型");
-        }
+        if(!"TRANSFER".equals(source.getRecordType()) || source.getRequisitionId()==null)
+            throw new BizException(40001,"仅带申领签收证据的调拨流水可结算");
+        var req=procurementService.lockRequisitionForSettlement(source.getRequisitionId());
+        source=consumption.lockRecord(transferRecordId);
+        requireMode(source,com.zlth.ivd.common.enums.SettlementModeEnum.TRANSFER);
+        if(procurementService.receivedTransfers(req.getId()).stream().noneMatch(row->row.getId().equals(transferRecordId)))
+            throw new BizException(40001,"请先完成科室签收");
         if (settlementExists(SettlementTypeEnum.TRANSFER.getCode(), transferRecordId, transferRecordId)) {
             throw new BizException(40900, "该调拨记录已结算");
         }
 
-        String no = generateSettlementNo("TRF");
-        SettlementRecord record = new SettlementRecord();
-        record.setSettlementNo(no);
-        record.setSettlementType(SettlementTypeEnum.TRANSFER.getCode());
-        record.setSourceId(transferRecordId);
-        record.setSourceItemId(transferRecordId);
-        record.setSourceNo("TRF-" + source.getId());
-        record.setBatchNo(source.getBatchNo());
-        record.setReagentId(source.getReagentId());
-        record.setQuantity(source.getQuantity());
-        record.setUnitPrice(source.getUnitPrice());
-        record.setAmount(source.getAmount());
-        record.setStatus("ACTIVE");
-        record.setSettledBy(operatorId);
-        record.setSettledAt(LocalDateTime.now());
-        insertSettlement(record, record.getSourceNo());
-        log.info("调拨结算: no={}, transferRecordId={}", no, transferRecordId);
+        insertFromEvidence(source,"TRANSFER",transferRecordId,"TRANSFER_RECORD",req.getReqNo(),req.getFromDeptId());
     }
 
     @Override
     public void settleConsumption(Long consumptionRecordId) {
-        Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
         // 从消耗记录读取真实数据
-        ConsumptionRecord source = consumptionRecordMapper.selectById(consumptionRecordId);
+        ConsumptionRecord source = consumption.lockRecord(consumptionRecordId);
         if (source == null) {
             throw new BizException(40400, "消耗记录不存在");
         }
         if (!ConsumptionRecordTypeEnum.CONSUME.getCode().equals(source.getRecordType())) {
             throw new BizException(40001, "该记录不是消耗类型");
         }
+        requireMode(source,com.zlth.ivd.common.enums.SettlementModeEnum.CONSUMPTION);
         if (settlementExists(SettlementTypeEnum.CONSUMPTION.getCode(), consumptionRecordId, consumptionRecordId)) {
             throw new BizException(40900, "该消耗记录已结算");
         }
 
-        String no = generateSettlementNo("CNS");
-        SettlementRecord record = new SettlementRecord();
-        record.setSettlementNo(no);
-        record.setSettlementType(SettlementTypeEnum.CONSUMPTION.getCode());
-        record.setSourceId(consumptionRecordId);
-        record.setSourceItemId(consumptionRecordId);
-        record.setSourceNo("CNS-" + source.getId());
-        record.setBatchNo(source.getBatchNo());
-        record.setReagentId(source.getReagentId());
-        record.setQuantity(source.getQuantity());
-        record.setUnitPrice(source.getUnitPrice());
-        record.setAmount(source.getAmount());
-        record.setStatus("ACTIVE");
-        record.setSettledBy(operatorId);
-        record.setSettledAt(LocalDateTime.now());
-        insertSettlement(record, record.getSourceNo());
-        log.info("消耗结算: no={}, consumptionRecordId={}, amount={}", no, consumptionRecordId, record.getAmount());
+        insertFromEvidence(source,"CONSUMPTION",source.getId(),"CONSUMPTION_RECORD","CNS-"+source.getId(),department());
     }
 
     @Override
     public void reverseSettlement(Long settlementId, String reason) {
+        if(reason==null || reason.isBlank() || reason.trim().length()>500) throw new BizException(40001,"冲销原因必填且不得超过500字");
         Long operatorId = SecurityUtils.getCurrentOperatorIdOrNull();
-        SettlementRecord record = recordMapper.selectById(settlementId);
+        SettlementRecord record = recordMapper.lockById(settlementId);
         if (record == null) throw new BizException(40400, "结算记录不存在");
         if (SettlementStatusEnum.REVERSED.getCode().equals(record.getStatus())) throw new BizException(40001, "该记录已被冲销，不能重复冲销");
+        if(!"ACTIVE".equals(record.getStatus()))throw new BizException(40900,"仅有效结算可以冲销");
 
         record.setStatus(SettlementStatusEnum.REVERSED.getCode());
         record.setReversedAt(LocalDateTime.now());
-        recordMapper.updateById(record);
+        if(recordMapper.updateById(record)!=1) throw new BizException(40900,"结算状态已变化");
+        appendEvent(record,"ACTIVE","REVERSED",reason.trim());
         log.info("冲销结算: id={}, reason={}, operatorId={}", settlementId, reason, operatorId);
     }
 
@@ -229,7 +187,19 @@ public class SettlementServiceImpl implements SettlementService {
         stats.put("total", recordMapper.selectCount(null));
         stats.put("active", recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getStatus, "ACTIVE")));
         stats.put("reversed", recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getStatus, SettlementStatusEnum.REVERSED.getCode())));
+        stats.put("monthlyAmount",jdbcTemplate.queryForObject("SELECT CASE WHEN COUNT(*)<>COUNT(amount) THEN NULL ELSE COALESCE(SUM(amount),0) END FROM settlement_record WHERE status='ACTIVE' AND settled_at>=?",
+                BigDecimal.class,java.time.LocalDate.now().withDayOfMonth(1).atStartOfDay()));
         return stats;
+    }
+
+    @Override @Transactional(readOnly=true)
+    public List<com.zlth.ivd.settlement.vo.SettlementEventVO> history(Long id) {
+        if(recordMapper.selectById(id)==null)throw new BizException(40400,"结算不存在或不可访问");
+        return eventMapper.selectList(new LambdaQueryWrapper<com.zlth.ivd.settlement.entity.SettlementEvent>()
+                .eq(com.zlth.ivd.settlement.entity.SettlementEvent::getSettlementId,id)
+                .orderByAsc(com.zlth.ivd.settlement.entity.SettlementEvent::getId)).stream()
+                .map(row->new com.zlth.ivd.settlement.vo.SettlementEventVO(row.getId(),row.getFromStatus(),row.getToStatus(),
+                        row.getReason(),row.getOperatorId(),row.getOperatorName(),row.getCreatedAt())).toList();
     }
 
     /**
@@ -248,10 +218,54 @@ public class SettlementServiceImpl implements SettlementService {
 
     private void insertSettlement(SettlementRecord record, String sourceNo) {
         try {
+            record.setId(IdGenerator.nextId());
             recordMapper.insert(record);
+            appendEvent(record,null,"ACTIVE","业务来源="+sourceNo+"，类型="+record.getSettlementType());
         } catch (DuplicateKeyException e) {
             throw new BizException(40900, "来源单据已结算: " + sourceNo);
         }
+    }
+
+    @org.springframework.context.event.EventListener
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,rollbackFor=Exception.class)
+    public void onStockBusinessRecord(com.zlth.ivd.common.event.StockBusinessRecordedEvent event) {
+        if(!"INBOUND".equals(event.recordType()) && !"CONSUME".equals(event.recordType()))return;
+        var source=consumption.lockRecord(event.recordId());
+        if(source==null || !event.recordType().equals(source.getRecordType()))throw new BizException(40900,"结算事件来源不一致");
+        var mode=com.zlth.ivd.common.enums.SettlementModeEnum.resolve(source.getSettlementMode());
+        var expected="INBOUND".equals(event.recordType())?com.zlth.ivd.common.enums.SettlementModeEnum.INBOUND:
+                com.zlth.ivd.common.enums.SettlementModeEnum.CONSUMPTION;
+        if(mode!=expected)return;
+        if(settlementExists(mode.name(),source.getId(),source.getId()))return;
+        insertFromEvidence(source,mode.name(),source.getId(),"INBOUND".equals(event.recordType())?"INBOUND_RECORD":"CONSUMPTION_RECORD",
+                event.recordType()+"-"+source.getId(),department());
+    }
+
+    private void requireMode(ConsumptionRecord source,com.zlth.ivd.common.enums.SettlementModeEnum expected) {
+        if(com.zlth.ivd.common.enums.SettlementModeEnum.resolve(source.getSettlementMode())!=expected)
+            throw new BizException(40001,"该来源不是所选结算模式；未知历史来源须先人工核对，不能重复计费");
+    }
+    private void insertFromEvidence(ConsumptionRecord source,String type,Long sourceId,String kind,String sourceNo,Long departmentId) {
+        if(source.getQuantity()==null || source.getQuantity().signum()<=0 || source.getUnitPrice()==null
+                || source.getUnitPrice().signum()<0 || source.getAmount()==null || source.getBatchId()==null
+                || source.getBatchNo()==null || source.getReagentId()==null)
+            throw new BizException(40001,"来源数量、批次或金额证据不完整，结算已拒绝");
+        if(source.getQuantity().multiply(source.getUnitPrice()).setScale(2,java.math.RoundingMode.HALF_UP).compareTo(source.getAmount())!=0)
+            throw new BizException(40900,"来源金额与数量单价不一致");
+        String prefix=switch(type){case "CONSUMPTION"->"CNS";case "TRANSFER"->"TRF";case "REQUISITION"->"REQ";case "INBOUND"->"INB";default->throw new BizException(40001,"不支持的结算类型");};
+        var record=new SettlementRecord();record.setSettlementNo(generateSettlementNo(prefix));
+        record.setSettlementType(type);record.setSourceId(sourceId);record.setSourceItemKind(kind);record.setSourceItemId(source.getId());
+        record.setSourceNo(sourceNo);record.setBatchNo(source.getBatchNo());record.setReagentId(source.getReagentId());
+        record.setQuantity(source.getQuantity());record.setUnitPrice(source.getUnitPrice());record.setAmount(source.getAmount());
+        record.setStatus("ACTIVE");record.setFromDeptId(departmentId);record.setSettledBy(SecurityUtils.getCurrentOperatorIdOrNull());
+        record.setSettledAt(LocalDateTime.now());insertSettlement(record,sourceNo);
+    }
+    private Long department(){return com.zlth.ivd.common.security.InstitutionContext.current().map(scope->scope.departmentId()).orElse(null);}
+    private void appendEvent(SettlementRecord record,String from,String to,String reason) {
+        var event=new com.zlth.ivd.settlement.entity.SettlementEvent();event.setSettlementId(record.getId());
+        event.setFromStatus(from);event.setToStatus(to);event.setReason(reason);
+        event.setOperatorId(SecurityUtils.getCurrentOperatorIdOrNull());event.setOperatorName(SecurityUtils.getCurrentUsername());
+        event.setCreatedAt(LocalDateTime.now());eventMapper.insert(event);
     }
 
     // ── 消耗结算明细（消耗数据全量字段 JOIN）──

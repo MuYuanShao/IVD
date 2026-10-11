@@ -32,7 +32,7 @@ public class SettlementController {
 
     /** 科室签收 + 自动结算（科室人员 / 库管员操作） */
     @PostMapping("/receive")
-    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "DEPT_ADMIN"})
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<String> receiveAndSettle(@RequestParam Long requisitionId) {
         settlementService.receiveAndSettleRequisition(requisitionId);
         return Result.success("签收完成，结算记录已自动生成");
@@ -40,7 +40,7 @@ public class SettlementController {
 
     /** 一键批量签收：签收所有待签收申领单 */
     @PostMapping("/receive/batch")
-    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "DEPT_ADMIN"})
+    @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<Map<String, Object>> batchReceive() {
         Map<String, Object> result = settlementService.batchReceiveAndSettle();
         return Result.success(result);
@@ -69,6 +69,10 @@ public class SettlementController {
                                   @RequestParam(required = false) String reason) {
         settlementService.reverseSettlement(settlementId, reason);
         return Result.success("冲销成功");
+    }
+    @GetMapping("/{id}/history")
+    public Result<List<com.zlth.ivd.settlement.vo.SettlementEventVO>> history(@PathVariable Long id) {
+        return Result.success(settlementService.history(id));
     }
 
     @GetMapping("/stats")

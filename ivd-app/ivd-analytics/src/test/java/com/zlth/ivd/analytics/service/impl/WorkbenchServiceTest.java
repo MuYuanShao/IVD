@@ -66,4 +66,9 @@ class WorkbenchServiceTest {
         var node=mapper.readTree(mapper.writeValueAsString(new WorkbenchVO.Metrics()));
         assertTrue(node.has("consumptionAmount"));assertTrue(node.get("consumptionAmount").isNull());
     }
+    @Test void financeAndStorekeeperUseInstitutionSummaryWithoutInventingDepartment(){
+        assertEquals(service.overview(1L).getMetrics().getConsumptionAmount(),service.overview(7L).getMetrics().getConsumptionAmount());
+        assertEquals(service.products(1L,1,20,"").getTotal(),service.products(8L,1,20,"").getTotal());
+        assertThrows(BizException.class,()->service.overview(4L));
+    }
 }

@@ -45,6 +45,8 @@ public class InventoryServiceImpl implements InventoryService {
     private final UdiUniqueCodeMapper uniqueCodeMapper;
     private final UniqueCodeService uniqueCodeService;
     private final UdiStateMachine udiStateMachine;
+    private final com.zlth.ivd.inventory.service.ProcurementInventoryService stockOperations;
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -361,22 +363,10 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 3. 写入 TRANSFER consumption_record 审计追踪（使用 JdbcTemplate 避免模块循环依赖）
         Long recordId = IdGenerator.nextId();
-        jdbcTemplate.update(
-            "INSERT INTO consumption_record (id, record_type, batch_no, reagent_id, material_type, quantity, unit, unit_price, amount, warehouse_id, from_warehouse_id, operator_id, remark, occurred_at, created_at) " +
-            "VALUES (?, 'TRANSFER', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))",
-            recordId,
-            sourceBatch.getBatchNo(),
-            sourceBatch.getReagentId(),
-            sourceBatch.getMaterialType() != null ? sourceBatch.getMaterialType().name() : "REAGENT",
-            qty,
-            sourceBatch.getUnit(),
-            sourceBatch.getUnitPrice(),
-            sourceBatch.getUnitPrice() != null ? sourceBatch.getUnitPrice().multiply(qty) : null,
-            targetWarehouseId,
-            sourceBatch.getWarehouseId(),
-            SecurityUtils.getCurrentUserId(),
-            reason
-        );
+        events.publishEvent(new com.zlth.ivd.common.event.InventoryTransferRecordedEvent(recordId,sourceBatch.getId(),
+                sourceBatch.getOriginPurchaseOrderItemId(),sourceBatch.getSettlementMode(),sourceBatch.getBatchNo(),sourceBatch.getReagentId(),
+                sourceBatch.getMaterialType()!=null?sourceBatch.getMaterialType().name():null,qty,sourceBatch.getUnit(),sourceBatch.getUnitPrice(),
+                sourceBatch.getUnitPrice()!=null?sourceBatch.getUnitPrice().multiply(qty):null,targetWarehouseId,sourceBatch.getWarehouseId(),reason));
 
         // 4. 唯一码全流程流转：将调拨的唯一码关联到目标批次
         int codeCount = qty.intValue();
@@ -424,55 +414,7 @@ public class InventoryServiceImpl implements InventoryService {
      * 目标仓库累加/新建批次（乐观锁重试累加分支，最多 3 次）
      */
     private Long upsertTargetBatch(ReagentBatch sourceBatch, Long targetWarehouseId, BigDecimal qty) {
-        int maxRetries = 3;
-        for (int i = 0; i < maxRetries; i++) {
-            LambdaQueryWrapper<ReagentBatch> targetQw = new LambdaQueryWrapper<>();
-            targetQw.eq(ReagentBatch::getWarehouseId, targetWarehouseId)
-                    .eq(ReagentBatch::getReagentId, sourceBatch.getReagentId())
-                    .eq(ReagentBatch::getBatchNo, sourceBatch.getBatchNo());
-            ReagentBatch targetBatch = batchMapper.selectOne(targetQw);
-
-            if (targetBatch != null) {
-                UdiStatusEnum previousStatus = targetBatch.getUdiStatus();
-                targetBatch.setStock(targetBatch.getStock().add(qty));
-                int updated = batchMapper.updateById(targetBatch);
-                if (updated > 0) {
-                    if (previousStatus != UdiStatusEnum.IN_STOCK) {
-                        udiStateMachine.transition(targetBatch.getId(), targetBatch.getBatchNo(),
-                                previousStatus, UdiStatusEnum.IN_STOCK, currentOperator());
-                        targetBatch.setUdiStatus(UdiStatusEnum.IN_STOCK);
-                    }
-                    return targetBatch.getId();
-                }
-                if (i == maxRetries - 1) {
-                    throw new BizException(50000, "调拨入库失败：超过最大重试次数");
-                }
-                log.warn("调拨入库乐观锁冲突，正在重试 ({}/{})", i + 1, maxRetries);
-            } else {
-                ReagentBatch newBatch = new ReagentBatch();
-                newBatch.setId(IdGenerator.nextId());
-                newBatch.setBatchNo(sourceBatch.getBatchNo());
-                newBatch.setReagentId(sourceBatch.getReagentId());
-                newBatch.setMaterialType(sourceBatch.getMaterialType());
-                newBatch.setUdiDi(sourceBatch.getUdiDi());
-                newBatch.setUdiPi(sourceBatch.getUdiPi());
-                newBatch.setManufactureDate(sourceBatch.getManufactureDate());
-                newBatch.setExpiryDate(sourceBatch.getExpiryDate());
-                newBatch.setStock(qty);
-                newBatch.setUnit(sourceBatch.getUnit());
-                newBatch.setUnitPrice(sourceBatch.getUnitPrice());
-                newBatch.setAvgCost(sourceBatch.getAvgCost());
-                newBatch.setUdiStatus(UdiStatusEnum.RECEIVED);
-                newBatch.setWarehouseId(targetWarehouseId);
-                newBatch.setLocationCode(sourceBatch.getLocationCode());
-                batchMapper.insert(newBatch);
-                udiStateMachine.transition(newBatch.getId(), newBatch.getBatchNo(),
-                        UdiStatusEnum.RECEIVED, UdiStatusEnum.IN_STOCK, currentOperator());
-                newBatch.setUdiStatus(UdiStatusEnum.IN_STOCK);
-                return newBatch.getId(); // INSERT 无乐观锁冲突，直接返回
-            }
-        }
-        throw new BizException(50000, "调拨入库失败：超过最大重试次数");
+        return stockOperations.receiveIntoWarehouse(sourceBatch,targetWarehouseId,qty).getId();
     }
 
     private String currentOperator() {

@@ -15,6 +15,7 @@ public class ReceiveItemRequest {
     /** 采购订单ID */
     private Long orderId;
     /** 订单明细ID */
+    @jakarta.validation.constraints.NotNull
     private Long itemId;
     /** 收货数量 */
     @jakarta.validation.constraints.NotNull
@@ -23,10 +24,13 @@ public class ReceiveItemRequest {
     /** UDI-DI（产品标识） */
     private String udiDi;
     /** 批号 */
+    @jakarta.validation.constraints.NotBlank
+    @jakarta.validation.constraints.Size(max=64)
     private String batchNo;
     /** 生产日期 */
     private LocalDate productionDate;
     /** 有效期至 */
+    @jakarta.validation.constraints.NotNull
     private LocalDate expiryDate;
     /** 收货仓库ID（默认中心库=1） */
     private Long warehouseId;

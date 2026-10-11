@@ -14,6 +14,7 @@ public class ConsumptionRecord {
     private String batchNo;
     private Long batchId;
     private Long purchaseOrderItemId;
+    private String settlementMode;
     private Long requisitionItemId;
     private Long reagentId;
     private String materialType;        // REAGENT/CALIBRATOR/QC_MATERIAL/CONSUMABLE/OTHER

@@ -7,6 +7,7 @@ CREATE TABLE purchase_requisition(id BIGINT PRIMARY KEY,req_no VARCHAR(40),from_
 CREATE TABLE purchase_requisition_item(id BIGINT PRIMARY KEY,req_id BIGINT,qty_requested DECIMAL(10,2),qty_fulfilled DECIMAL(10,2),amount DECIMAL(12,2));
 CREATE TABLE shortage_order(id BIGINT PRIMARY KEY,from_dept_id BIGINT,status VARCHAR(40));
 INSERT INTO sys_user VALUES(1,NULL,'SYSTEM_ADMIN',1,0),(2,10,'LAB_TECH',1,0),(3,20,'LAB_TECH',1,0),(4,NULL,'LAB_TECH',1,0),(5,NULL,'SYSTEM_ADMIN',0,0),(6,30,'LAB_TECH',1,0);
+INSERT INTO sys_user VALUES(7,NULL,'FINANCE',1,0),(8,NULL,'STOREKEEPER',1,0);
 INSERT INTO warehouse VALUES(100,10,'检验科库'),(200,20,'急诊科库');
 INSERT INTO reagent_catalog VALUES(1,'试剂A','生产厂A','A001','1ml',0),(2,'物料B','生产厂B','B001','5ml',1);
 INSERT INTO reagent_batch VALUES(9007199254740993,1,1.25,'盒',100,'2026-09-07','IN_STOCK','LOT-A','A01'),(2,1,3,'盒',100,'2026-09-08','PENDING_UDI','LOT-B','A02'),(3,2,9,'支',200,'2026-10-01','IN_STOCK','LOT-C','B01'),(4,1,0,'盒',100,'2026-08-01','EXPIRED','LOT-D','A03');

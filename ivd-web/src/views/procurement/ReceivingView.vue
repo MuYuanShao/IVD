@@ -80,13 +80,13 @@
         </el-table-column>
         <el-table-column label="批号" width="130">
           <template #default="{row}">
-            <el-input v-if="row.receiveQty > 0" v-model="row.batchNo" placeholder="选填" size="small" style="width:110px" />
+            <el-input v-if="row.receiveQty > 0" v-model="row.batchNo" placeholder="必填批号" size="small" style="width:110px" />
             <span v-else style="color:#94a3b8;font-size:12px">—</span>
           </template>
         </el-table-column>
         <el-table-column label="效期" width="130">
           <template #default="{row}">
-            <el-date-picker v-if="row.receiveQty > 0" v-model="row.expiryDate" type="date" placeholder="选填" size="small" style="width:110px" value-format="YYYY-MM-DD" />
+            <el-date-picker v-if="row.receiveQty > 0" v-model="row.expiryDate" type="date" placeholder="必填有效期" size="small" style="width:110px" value-format="YYYY-MM-DD" />
             <span v-else style="color:#94a3b8;font-size:12px">—</span>
           </template>
         </el-table-column>
@@ -631,6 +631,10 @@ function clearAll() {
 async function confirmReceiving() {
   const toReceive = receiveItems.value.filter(i => i.receiveQty > 0)
   if (!toReceive.length) return
+  if (toReceive.some(item => !item.batchNo?.trim() || !item.expiryDate)) {
+    ElMessage.warning('请为每项验收物料填写批号和有效期，收货成功必须对应实际入库')
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `确认对 ${toReceive.length} 项试剂进行人工验收入库，共 ${toReceive.reduce((s, i) => s + i.receiveQty, 0)} 件？`,

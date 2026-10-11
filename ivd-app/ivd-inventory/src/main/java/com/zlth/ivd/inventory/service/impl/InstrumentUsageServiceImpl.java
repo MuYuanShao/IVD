@@ -16,6 +16,7 @@ import java.util.*;
 public class InstrumentUsageServiceImpl implements InstrumentUsageService {
     private final JdbcTemplate jdbc;
     private final UdiStateMachine states;
+    private final com.zlth.ivd.inventory.service.ProcurementInventoryService warehouses;
     @Override @Transactional(readOnly=true)
     public List<Map<String,Object>> devices() {
         return jdbc.queryForList("SELECT CAST(id AS CHAR) deviceId,device_code deviceCode,name deviceName,manufacturer,location_id warehouseId FROM device WHERE is_active=1 ORDER BY id");
@@ -31,6 +32,11 @@ public class InstrumentUsageServiceImpl implements InstrumentUsageService {
         var batches=jdbc.queryForList("SELECT id,batch_no,reagent_id,warehouse_id,udi_status FROM reagent_batch WHERE id=? AND stock>0 AND expiry_date>=CURRENT_DATE FOR UPDATE",batchId);
         if(batches.isEmpty()) throw new BizException(40001,"批次无可用库存或效期未维护/已过期");
         var b=batches.get(0);
+        com.zlth.ivd.common.security.InstitutionContext.current()
+                .filter(scope->Set.of("LAB_TECH","LAB_DIRECTOR").contains(scope.role())).ifPresent(scope->{
+                    if(!(b.get("warehouse_id") instanceof Number warehouse))throw new BizException(40001,"批次库房未维护");
+                    warehouses.requireDepartmentWarehouse(warehouse.longValue(),scope.departmentId());
+                });
         if(!(devices.get(0).get("location_id") instanceof Number dw) || !(b.get("warehouse_id") instanceof Number bw) || dw.longValue()!=bw.longValue()) throw new BizException(40001,"仪器与批次不在同一库房，请先调拨");
         String status=String.valueOf(b.get("udi_status"));
         if(!List.of("IN_STOCK","IN_USE").contains(status)) throw new BizException(40001,"该状态的批次不能上机");
@@ -43,7 +49,7 @@ public class InstrumentUsageServiceImpl implements InstrumentUsageService {
     public List<Map<String,Object>> availableBatches(String keyword) {
         String q=keyword==null?"":keyword.trim();
         if(q.length()>100) throw new BizException(40001,"搜索词过长");
-        return jdbc.queryForList("SELECT CAST(b.id AS CHAR) batchId,b.batch_no batchNo,b.stock,COALESCE(b.unit,c.unit) unit,b.warehouse_id warehouseId,w.name warehouseName,c.generic_name reagentName,c.device_bind_mode deviceBindMode FROM reagent_batch b JOIN reagent_catalog c ON c.id=b.reagent_id LEFT JOIN warehouse w ON w.id=b.warehouse_id WHERE b.stock>0 AND b.udi_status IN ('IN_STOCK','IN_USE') AND b.expiry_date>=CURRENT_DATE AND (?='' OR LOCATE(?,b.batch_no)>0 OR LOCATE(?,b.udi_di)>0 OR LOCATE(?,c.generic_name)>0) ORDER BY b.expiry_date,b.id LIMIT 100",q,q,q,q);
+        return jdbc.queryForList("SELECT CAST(b.id AS CHAR) batchId,b.inventory_generation inventoryGeneration,CAST(b.origin_purchase_order_item_id AS CHAR) originPurchaseOrderItemId,b.settlement_mode settlementMode,b.unit_price unitPrice,b.batch_no batchNo,b.stock,COALESCE(b.unit,c.unit) unit,b.warehouse_id warehouseId,w.name warehouseName,c.generic_name reagentName,c.device_bind_mode deviceBindMode FROM reagent_batch b JOIN reagent_catalog c ON c.id=b.reagent_id LEFT JOIN warehouse w ON w.id=b.warehouse_id WHERE b.stock>0 AND w.level>=2 AND w.status=1 AND b.udi_status IN ('IN_STOCK','IN_USE') AND b.expiry_date>=CURRENT_DATE AND (?='' OR LOCATE(?,b.batch_no)>0 OR LOCATE(?,b.udi_di)>0 OR LOCATE(?,c.generic_name)>0) ORDER BY b.expiry_date,b.id LIMIT 100",q,q,q,q);
     }
     @Override public void unload(Long loadId) {
         var identity=jdbc.queryForList("SELECT device_id,batch_id FROM device_batch_load WHERE id=?",loadId);

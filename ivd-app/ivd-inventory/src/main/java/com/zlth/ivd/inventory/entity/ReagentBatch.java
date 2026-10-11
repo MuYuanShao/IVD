@@ -29,6 +29,9 @@ public class ReagentBatch {
     private UdiStatusEnum udiStatus;
     private Long warehouseId;
     private String locationCode;
+    private Integer inventoryGeneration;
+    private Long originPurchaseOrderItemId;
+    private String settlementMode;
     @Version private Integer version;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;

@@ -32,9 +32,9 @@ public class ConsumptionController {
     public Result<List<Map<String,Object>>> batches(@RequestParam(defaultValue="") String keyword) { return Result.success(instrumentUsageService.availableBatches(keyword)); }
     @GetMapping("/loads")
     public Result<List<Map<String,Object>>> loads() { return Result.success(instrumentUsageService.activeLoads()); }
-    @PostMapping("/load") @RequireRole({"SYSTEM_ADMIN","LAB_TECH"})
+    @PostMapping("/load") @RequireRole({"SYSTEM_ADMIN","LAB_TECH","LAB_DIRECTOR"})
     public Result<Void> load(@RequestParam Long batchId,@RequestParam Long deviceId) { instrumentUsageService.bind(batchId,deviceId);return Result.success(); }
-    @PostMapping("/unload") @RequireRole({"SYSTEM_ADMIN","LAB_TECH"})
+    @PostMapping("/unload") @RequireRole({"SYSTEM_ADMIN","LAB_TECH","LAB_DIRECTOR"})
     public Result<Void> unload(@RequestParam Long loadId) { instrumentUsageService.unload(loadId);return Result.success(); }
 
     @GetMapping
@@ -46,7 +46,7 @@ public class ConsumptionController {
     }
 
     @PostMapping("/consume")
-    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
+    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<String> consume(@RequestParam Long batchId, @RequestParam(required=false) Long deviceId,
                                   @RequestParam @Positive BigDecimal qty, @RequestParam(required = false) String purpose,
                                   @RequestParam(required = false) String remark) {
@@ -63,7 +63,7 @@ public class ConsumptionController {
     }
 
     @PostMapping("/batch-consume")
-    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH"})
+    @RequireRole({"SYSTEM_ADMIN", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<String> batchConsume(@RequestParam String batchNo, @RequestParam(required=false) Long deviceId,
                                        @RequestParam @Positive BigDecimal qty,
                                        @RequestParam(required = false) String purpose,

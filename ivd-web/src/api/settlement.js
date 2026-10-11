@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+export const getSettlementHistory = id => request({ url: `/settlement/${id}/history`, method: 'get' })
 
 /** X2 结算管理 API — 操作人由后端 JWT 自动识别，前端无需传递 operatorId */
 

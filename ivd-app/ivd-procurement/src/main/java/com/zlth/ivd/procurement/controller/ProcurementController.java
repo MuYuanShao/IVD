@@ -58,7 +58,7 @@ public class ProcurementController {
 
     @PostMapping("/requisitions")
     @AuditLog(module = "采购管理", action = "创建申领单")
-    @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<PurchaseRequisition> createRequisition(@RequestBody PurchaseRequisition req) {
         return Result.success(procurementService.createRequisition(req));
     }
@@ -81,7 +81,7 @@ public class ProcurementController {
 
     @PutMapping("/requisitions/{id}/submit")
     @AuditLog(module = "采购管理", action = "提交申领审批")
-    @RequireRole({"SYSTEM_ADMIN", "PURCHASER", "STOREKEEPER"})
+    @RequireRole({"SYSTEM_ADMIN", "PURCHASER", "STOREKEEPER", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<PurchaseRequisitionVO> submitRequisition(@PathVariable Long id) {
         return Result.success(procurementService.submitRequisition(id));
     }
@@ -209,7 +209,7 @@ public class ProcurementController {
     @PostMapping("/receive/direct")
     @AuditLog(module = "采购管理", action = "人工验收直收（无采购订单）")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
-    public Result<Map<String, Object>> receiveDirect(@RequestBody com.zlth.ivd.procurement.dto.DirectReceiveRequest request) {
+    public Result<Map<String, Object>> receiveDirect(@RequestBody @Valid com.zlth.ivd.procurement.dto.DirectReceiveRequest request) {
         return Result.success(procurementService.receiveDirect(request));
     }
 

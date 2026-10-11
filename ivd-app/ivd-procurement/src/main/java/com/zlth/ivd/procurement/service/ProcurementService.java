@@ -19,6 +19,9 @@ import java.util.Map;
  * @since 2026-07-06
  */
 public interface ProcurementService {
+    PurchaseRequisition lockRequisitionForSettlement(Long id);
+    List<PurchaseRequisition> pendingReceipts();
+    List<com.zlth.ivd.consumption.entity.ConsumptionRecord> receivedTransfers(Long requisitionId);
 
     // ── 申领单 ──
     PageVO<PurchaseRequisitionVO> listRequisitions(int page, int pageSize, String status, String keyword);

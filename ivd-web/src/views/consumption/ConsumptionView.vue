@@ -68,6 +68,10 @@
         empty-text="暂无消耗记录"
       >
         <el-table-column prop="occurredAt" label="发生时间" min-width="170" />
+        <el-table-column prop="id" label="消耗来源ID" min-width="190" show-overflow-tooltip />
+        <el-table-column label="结算模式" min-width="130"><template #default="{ row }">{{ row.settlementMode || '历史待核对' }}</template></el-table-column>
+        <el-table-column prop="settlementNo" label="消耗结算单号" min-width="210" />
+        <el-table-column label="结算状态" min-width="170"><template #default="{ row }"><el-tag :type="row.settlementStatus === 'ACTIVE' ? 'success' : row.settlementStatus === 'REVERSED' ? 'danger' : 'info'">{{ billingLabel(row) }}</el-tag></template></el-table-column>
         <el-table-column prop="reagentName" label="试剂" min-width="150" />
         <el-table-column prop="batchNo" label="批号" min-width="170" />
         <el-table-column label="仪器" min-width="120"
@@ -130,7 +134,7 @@
                 ' / 库存 ' +
                 b.stock +
                 ' ' +
-                (b.unit || '')
+                (b.unit || '') + ' / ' + (b.settlementMode || '历史待核对') + ' / 库存ID ' + b.batchId
               " /></el-select
         ></el-form-item>
         <el-form-item label="仪器" :required="requiresDevice"
@@ -190,6 +194,7 @@
   </div>
 </template>
 <script setup>
+import { billingLabel } from '@/utils/settlementFlow.mjs'
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {

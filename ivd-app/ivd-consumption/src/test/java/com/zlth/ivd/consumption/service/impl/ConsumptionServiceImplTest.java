@@ -22,7 +22,7 @@ class ConsumptionServiceImplTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(1L, "token"));
         ConsumptionServiceImpl service = new ConsumptionServiceImpl(
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         assertThrows(BizException.class,
                 () -> service.recordConsumption(10L, 20L, new BigDecimal("-1"), null, null));

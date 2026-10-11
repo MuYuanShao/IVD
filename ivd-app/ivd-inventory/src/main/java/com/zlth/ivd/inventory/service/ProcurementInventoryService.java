@@ -8,7 +8,13 @@ import java.util.List;
 public interface ProcurementInventoryService {
     Warehouse findActiveDeptWarehouse(Long deptId);
     ReagentBatch findBatch(Long reagentId, String batchNo, Long warehouseId);
+    ReagentBatch findUniqueLegacyBatch(Long reagentId,String batchNo,Long warehouseId);
     ReagentBatch getBatch(Long batchId);
+    ReagentBatch lockBatch(Long batchId);
+    Warehouse requireWarehouse(Long warehouseId);
+    Warehouse requireDepartmentWarehouse(Long warehouseId,Long departmentId);
+    Warehouse findActiveCentralWarehouse();
+    ReagentBatch receiveIntoWarehouse(ReagentBatch source,Long targetWarehouseId,java.math.BigDecimal quantity);
     boolean updateBatch(ReagentBatch batch);
     void createBatch(ReagentBatch batch);
     List<ReagentBatch> findInStockBatches(Long reagentId, Long warehouseId);
