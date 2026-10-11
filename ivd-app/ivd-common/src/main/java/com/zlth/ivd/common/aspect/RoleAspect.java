@@ -55,6 +55,10 @@ public class RoleAspect {
             throw new BizException(40100, "未认证，请先登录");
         }
 
+        if (com.zlth.ivd.common.utils.SecurityUtils.isFullAccessAdmin()) {
+            return;
+        }
+
         Set<String> userRoles = auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());

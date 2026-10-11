@@ -20,7 +20,8 @@ import { ElMessage,ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { getImportTemplate,preflightImport,executeImport,getImportBatch } from '@/api/clinical'
 import { allowedImportResources,clinicalError } from '@/utils/clinicalOptions.mjs'
-const auth=useAuthStore(),resources=computed(()=>allowedImportResources(auth.role)),enabled=computed(()=>auth.user?.features?.labPatients===true && resources.value.length>0),resource=ref(''),file=ref(null),batch=ref(null),busy=ref(false),stage=ref(''),error=ref('')
+import { isFullAccessAdmin } from '@/utils/adminAccess.mjs'
+const auth=useAuthStore(),resources=computed(()=>allowedImportResources(auth.role,isFullAccessAdmin(auth.user))),enabled=computed(()=>auth.user?.features?.labPatients===true && resources.value.length>0),resource=ref(''),file=ref(null),batch=ref(null),busy=ref(false),stage=ref(''),error=ref('')
 const stateLabels={ READY:'预检通过，待确认',INVALID:'预检未通过',EXECUTING:'执行中',EXECUTED:'执行完成' }
 let generation=0,timer
 function reset() { ++generation;file.value=null;batch.value=null;error.value='';clearTimeout(timer) }

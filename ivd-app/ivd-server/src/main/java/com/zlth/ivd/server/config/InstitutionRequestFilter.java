@@ -44,6 +44,10 @@ public final class InstitutionRequestFilter extends OncePerRequestFilter {
             String token=header==null?"":header.replaceFirst("^Bearer ","");
             if(!Objects.equals(tokens.getInstitutionId(token),user.getInstitutionId()) || !Objects.equals(tokens.getRole(token),user.getRole()))
                 throw new BizException(40100,"登录归属或权限已变更，请重新登录");
+            // Fixed administrator policy must use the current directory identity, not a stale JWT username.
+            if(authentication instanceof org.springframework.security.authentication.AbstractAuthenticationToken verified) {
+                verified.setDetails(user.getUsername());
+            }
             Long selected=user.getInstitutionId();
             String selectedHeader=request.getHeader("X-Institution-Id");
             if(selectedHeader!=null && !selectedHeader.isBlank()) {

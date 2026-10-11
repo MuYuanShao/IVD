@@ -20,6 +20,14 @@ public final class SecurityUtils {
         // 工具类，禁止实例化
     }
 
+    /** Fixed administrator exception; both authenticated identity and administrator role are required. */
+    public static boolean isFullAccessAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof Long
+                && "admin".equals(auth.getDetails())
+                && auth.getAuthorities().stream().anyMatch(a -> "ROLE_SYSTEM_ADMIN".equals(a.getAuthority()));
+    }
+
     /** 获取当前登录用户 ID */
     public static Long getCurrentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

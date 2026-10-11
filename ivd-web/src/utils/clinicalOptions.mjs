@@ -32,4 +32,4 @@ export const importResources = [
   { value:'PATIENTS',label:'患者档案',clinical:true },{ value:'SAMPLES',label:'样本',clinical:true },{ value:'RESULTS',label:'检测结果',clinical:true },{ value:'REPORTS',label:'报告及结果（整组事务）',clinical:true },
   { value:'ITEMS',label:'检验项目' },{ value:'INTERVALS',label:'参考区间 / 测量范围' },{ value:'DEVICES',label:'设备档案' },{ value:'CAPABILITIES',label:'设备项目能力' },{ value:'INSTITUTIONS',label:'检测机构',adminOnly:true },
 ]
-export function allowedImportResources(role) { return importResources.filter(option=>option.clinical ? ['LAB_TECH','LAB_DOCTOR','LAB_DIRECTOR'].includes(role) : option.adminOnly ? role==='SYSTEM_ADMIN' : ['SYSTEM_ADMIN','LAB_DIRECTOR'].includes(role)) }
+export function allowedImportResources(role, fullAccessAdmin = false) { return importResources.filter(option=>fullAccessAdmin || (option.clinical ? ['LAB_TECH','LAB_DOCTOR','LAB_DIRECTOR'].includes(role) : option.adminOnly ? role==='SYSTEM_ADMIN' : ['SYSTEM_ADMIN','LAB_DIRECTOR'].includes(role))) }
