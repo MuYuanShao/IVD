@@ -47,6 +47,7 @@ export function withBusinessLayout(route) {
       : {}),
   }))
   children.push({ path: 'system/research-projects', name: 'ResearchProjectSettings', component: () => import('@/views/system/ResearchProjectSettings.vue'), meta: { title: '科研项目设置', navGroup: '系统管理' } })
+  children.push({ path: 'inventory/remaining-batches', name: 'RemainingBatches', component: () => import('@/views/inventory/RemainingBatchView.vue'), meta: { title: '在库批次列表', navGroup: '三级库存', roles: ['SYSTEM_ADMIN','STOREKEEPER','FINANCE','LAB_DIRECTOR','LAB_DOCTOR','LAB_TECH','DEPT_ADMIN'] } })
   children.push({ path: 'lab/items', name: 'LabTestItems', component: () => import('@/views/laboratory/LabTestItemsView.vue'), meta: { title: '检验项目', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
   children.push({ path: 'lab/intervals', name: 'LabIntervals', component: () => import('@/views/laboratory/LabIntervalsView.vue'), meta: { title: '参考区间与测量范围', navGroup: '检验业务', feature: 'labCatalog', roles: ['SYSTEM_ADMIN', 'LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })
   children.push({ path: 'lab/patients', name: 'LabPatients', component: () => import('@/views/laboratory/LabPatientsView.vue'), meta: { title: '患者档案', navGroup: '检验业务', feature: 'labPatients', roles: ['LAB_DIRECTOR', 'LAB_DOCTOR', 'LAB_TECH'] } })

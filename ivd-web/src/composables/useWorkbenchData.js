@@ -82,7 +82,7 @@ export function useWorkbenchData(isDemo) {
   }
   function refresh() {
     clearTimeout(searchTimer)
-    return Promise.allSettled([loadSummary(), loadProducts()])
+    return Promise.allSettled([loadSummary()])
   }
   watch(
     isDemo,

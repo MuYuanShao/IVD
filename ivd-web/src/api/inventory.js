@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+export const getRemainingBatches = (params, signal) => request({ url: '/inventory/remaining-batches', params, signal, silentError: true })
 
 /** M06 三级库管理 API */
 

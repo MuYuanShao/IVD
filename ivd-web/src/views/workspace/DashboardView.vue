@@ -218,7 +218,7 @@
       </el-col>
     </el-row>
     <product-table
-      v-if="isDemo || productData || productError"
+      v-if="isDemo"
       :items="products"
       :title="isDemo ? '进销存商品列表' : '在库批次列表'"
       :holder-label="isDemo ? '注册证持有人' : '生产厂家'"

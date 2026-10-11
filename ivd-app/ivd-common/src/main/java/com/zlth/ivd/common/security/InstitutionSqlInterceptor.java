@@ -11,7 +11,7 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
     private static final ThreadLocal<Set<String>> ALIASES = new ThreadLocal<>();
     private static final Pattern CTE = Pattern.compile("(?:\\bWITH\\s+|,\\s*)([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:\\([^)]*\\)\\s*)?AS\\s*\\(", Pattern.CASE_INSENSITIVE);
     private static final Set<String> TABLES = Set.of(
-            "institution","sys_user","sys_dept","warehouse","device","device_batch_load","reagent_batch","reagent_catalog",
+            "institution","sys_user","sys_dept","warehouse","device","device_batch_load","reagent_batch","reagent_catalog","inventory_remaining_batch",
             "consumption_record","purchase_requisition","purchase_requisition_item","purchase_order","purchase_order_item",
             "shortage_order","shortage_order_item","settlement_record","supplier","supplier_license","manufacturer","distributor",
             "reagent_supplier_rel","audit_rule","audit_decision_log","operation_audit_log","udi_unique_code","udi_unique_code_seq",
