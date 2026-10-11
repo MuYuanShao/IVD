@@ -28,6 +28,13 @@ public class CatalogApprovalLogServiceImpl implements CatalogApprovalLogService 
     private final CatalogApprovalLogMapper approvalLogMapper;
 
     @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CatalogApprovalLog lockById(Long id) {
+        return approvalLogMapper.selectOne(new LambdaQueryWrapper<CatalogApprovalLog>()
+                .eq(CatalogApprovalLog::getId, id).last("FOR UPDATE"));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public CatalogApprovalLog createLog(Long reagentId, String changeType, String fieldChanges,
                                          String changeReason, Long submitterId, String submitterName) {

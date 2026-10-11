@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS udi_backlog (
     CONSTRAINT fk_udi_backlog_reagent FOREIGN KEY (reagent_id) REFERENCES reagent_catalog(id)
 );
 
+CREATE TABLE IF NOT EXISTS catalog_draft (
+    reagent_id BIGINT PRIMARY KEY, snapshot TEXT NOT NULL, updated_at TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS catalog_change_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, reagent_id BIGINT NOT NULL, reagent_name VARCHAR(255) NOT NULL,
+    his_code VARCHAR(100) NOT NULL, change_type VARCHAR(20) NOT NULL, field_changes TEXT NOT NULL,
+    operator_id BIGINT, operator_name VARCHAR(100) NOT NULL, created_at TIMESTAMP NOT NULL
+);
 CREATE TABLE IF NOT EXISTS operation_audit_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     operator_id BIGINT,

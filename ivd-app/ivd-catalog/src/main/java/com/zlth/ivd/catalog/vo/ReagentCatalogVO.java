@@ -75,4 +75,6 @@ public class ReagentCatalogVO {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** Detail is a pending working copy rather than the effective catalog fields. */
+    private boolean editingDraft;
 }

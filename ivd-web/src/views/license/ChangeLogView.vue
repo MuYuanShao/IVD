@@ -109,6 +109,11 @@
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.fieldChanges" link type="primary" @click="selectedChange = row">变更详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div style="margin-top:16px;text-align:center">
@@ -123,15 +128,21 @@
         />
       </div>
     </el-card>
+    <change-details-modal v-model="changeVisible" :record="selectedChange" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { Search, RefreshRight } from '@element-plus/icons-vue'
 import { useLicenseStore } from '@/stores/license'
+import ChangeDetailsModal from './components/ChangeDetailsModal.vue'
 
 const licenseStore = useLicenseStore()
+const route = useRoute()
+const selectedChange = ref(null)
+const changeVisible = computed({ get: () => selectedChange.value !== null, set: value => { if (!value) selectedChange.value = null } })
 
 const filterModule = ref('')
 const dateRange = ref(null)
@@ -149,7 +160,11 @@ const keywordPlaceholder = computed(() => {
 const showLicenseCols = computed(() => filterModule.value !== 'CATALOG')
 const showCatalogCols = computed(() => filterModule.value !== 'LICENSE')
 
-onMounted(() => { handleQuery() })
+onMounted(() => {
+  if (route.query.module === 'CATALOG') filterModule.value = 'CATALOG'
+  if (typeof route.query.keyword === 'string') filterKeyword.value = route.query.keyword
+  handleQuery()
+})
 
 function onModuleChange() {
   filterChangeType.value = ''

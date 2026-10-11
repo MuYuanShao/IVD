@@ -40,7 +40,7 @@ public interface CatalogApprovalLogMapper extends BaseMapper<CatalogApprovalLog>
                 AND cal.submitted_at &gt;= #{query.startDate}
             </if>
             <if test='query.endDate != null and query.endDate != ""'>
-                AND cal.submitted_at &lt;= #{query.endDate}
+                AND cal.submitted_at &lt; #{query.endDateExclusive}
             </if>
             <if test='query.keyword != null and query.keyword != ""'>
                 AND (rc.generic_name LIKE CONCAT('%',#{query.keyword},'%')

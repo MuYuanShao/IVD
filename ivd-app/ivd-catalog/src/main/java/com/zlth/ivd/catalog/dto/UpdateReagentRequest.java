@@ -13,7 +13,29 @@ import java.math.BigDecimal;
  * @since 2026-07-03
  */
 @Data
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public class UpdateReagentRequest {
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean stabilityDaysPresent;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean leadTimePresent;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean pricePresent;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean testsPresent;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("leadTimeDays")
+    public void setLeadTimeDays(Integer value) { leadTimePresent = true; leadTimeDays = value; }
+    @com.fasterxml.jackson.annotation.JsonSetter("pricePerUnit")
+    public void setPricePerUnit(BigDecimal value) { pricePresent = true; pricePerUnit = value; }
+    @com.fasterxml.jackson.annotation.JsonSetter("testsPerKit")
+    public void setTestsPerKit(Integer value) { testsPresent = true; testsPerKit = value; }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("stabilityDaysAfterOpen")
+    public void setStabilityDaysAfterOpen(Integer value) {
+        stabilityDaysPresent = true;
+        stabilityDaysAfterOpen = value;
+    }
 
     private String genericName;
     private MaterialTypeEnum materialType;
@@ -28,9 +50,13 @@ public class UpdateReagentRequest {
     private String insuranceCode;
     private String registrationCertNo;
     private String detectionMethod;
+    @jakarta.validation.constraints.Positive
     private Integer testsPerKit;
+    @jakarta.validation.constraints.DecimalMin("0")
     private BigDecimal pricePerUnit;
+    @jakarta.validation.constraints.PositiveOrZero
     private Integer stabilityDaysAfterOpen;
+    @jakarta.validation.constraints.PositiveOrZero
     private Integer leadTimeDays;
     private DeviceBindModeEnum deviceBindMode;
 

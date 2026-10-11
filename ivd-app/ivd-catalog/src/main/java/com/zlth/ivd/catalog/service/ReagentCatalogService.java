@@ -18,6 +18,7 @@ import com.zlth.ivd.common.dto.PageVO;
  * @since 2026-07-01
  */
 public interface ReagentCatalogService {
+    PageVO<com.zlth.ivd.common.vo.ChangeLogVO> pageChangeLogs(com.zlth.ivd.common.dto.ChangeLogQuery query);
 
     /** 分页查询试剂目录列表 */
     PageVO<ReagentCatalogVO> pageList(ReagentCatalogQuery query, int page, int pageSize);

@@ -16,7 +16,7 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
             "shortage_order","shortage_order_item","settlement_record","supplier","supplier_license","manufacturer","distributor",
             "reagent_supplier_rel","audit_rule","audit_decision_log","operation_audit_log","udi_unique_code","udi_unique_code_seq",
             "udi_status_log","udi_backlog","patient_association","inventory_opening_balance","requisition_transfer_receipt",
-            "daily_inventory_snapshot","dept_reagent","five_code_mapping","license_change_log","catalog_approval_log",
+            "daily_inventory_snapshot","dept_reagent","five_code_mapping","license_change_log","catalog_approval_log","catalog_draft","catalog_change_log",
             "catalog_field_option","research_project","smart_replenish_suggestion","qc_result","poct_device","ai_consultation_log");
 
     public InstitutionSqlInterceptor() { super(new InstitutionTenantHandler()); }

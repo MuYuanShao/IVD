@@ -54,8 +54,9 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
     private final FiveCodeMappingService fiveCodeMappingService;
     private final CatalogApprovalLogService approvalLogService;
     private final UdiBacklogService udiBacklogService;
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+    private final com.zlth.ivd.catalog.mapper.CatalogDraftMapper draftMapper;
+    private final com.zlth.ivd.catalog.mapper.CatalogChangeLogMapper changeMapper;
 
     // ──────────────────────────────────────────────
     //  查询
@@ -74,7 +75,9 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         if (entity == null) {
             throw new BizException(40007, "试剂不存在: id=" + id);
         }
-        return toVO(entity);
+        var vo = toVO(workingCopy(entity));
+        vo.setEditingDraft(draftMapper.selectById(id) != null);
+        return vo;
     }
 
     // ──────────────────────────────────────────────
@@ -135,9 +138,11 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         entity.setApprovalStatus(ApprovalStatusEnum.DRAFT);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
+        validateCatalog(entity);
 
         // 4. 持久化
         catalogMapper.insert(entity);
+        appendChange(entity, "CREATE", Map.of("created", Map.of("new", entity.getGenericName())));
         log.info("试剂已创建: id={}, hisCode={}, materialType={}", entity.getId(), entity.getHisCode(), materialType.getCode());
 
         // 5. 条件创建五码映射
@@ -161,10 +166,12 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
 
     @Override
     public ReagentCatalogVO update(Long id, UpdateReagentRequest request) {
-        ReagentCatalog entity = catalogMapper.selectById(id);
+        ReagentCatalog entity = lockCatalog(id);
         if (entity == null) {
             throw new BizException(40007, "试剂不存在: id=" + id);
         }
+        if (approvalLogService.hasPending(id)) throw new BizException(40900, "待审批内容已冻结，请先完成或驳回审批");
+        entity = workingCopy(entity);
 
         // 追踪字段变更（用于审批日志）
         Map<String, Object> changes = new LinkedHashMap<>();
@@ -208,28 +215,39 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         applyIfChanged("insurancePaymentType", entity.getInsurancePaymentType(), request.getInsurancePaymentType(), entity::setInsurancePaymentType, changes);
         applyIfChanged("isChargeable", entity.getIsChargeable(), request.getIsChargeable(), entity::setIsChargeable, changes);
         applyIfChanged("chargeCode", entity.getChargeCode(), request.getChargeCode(), entity::setChargeCode, changes);
+        ReagentCatalog edited = entity;
+        clearIfRequested("stabilityDaysAfterOpen", request.isStabilityDaysPresent(), request.getStabilityDaysAfterOpen(),
+                entity.getStabilityDaysAfterOpen(), () -> edited.setStabilityDaysAfterOpen(null), changes);
+        clearIfRequested("pricePerUnit", request.isPricePresent(), request.getPricePerUnit(),
+                entity.getPricePerUnit(), () -> edited.setPricePerUnit(null), changes);
+        clearIfRequested("testsPerKit", request.isTestsPresent(), request.getTestsPerKit(),
+                entity.getTestsPerKit(), () -> edited.setTestsPerKit(null), changes);
+        if (request.isLeadTimePresent() && request.getLeadTimeDays() == null)
+            applyIfChanged("leadTimeDays", entity.getLeadTimeDays(), 7, entity::setLeadTimeDays, changes);
+        validateCatalog(entity);
 
         if (changes.isEmpty()) {
             log.info("试剂编辑无变更: id={}", id);
-            return toVO(entity);
+            var unchanged = toVO(entity);
+            unchanged.setEditingDraft(draftMapper.selectById(id) != null);
+            return unchanged;
         }
 
         entity.setUpdatedAt(LocalDateTime.now());
-        catalogMapper.updateById(entity);
+        entity.setApprovalStatus(ApprovalStatusEnum.DRAFT);
+        saveDraft(entity);
+        catalogMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ReagentCatalog>()
+                .eq(ReagentCatalog::getId, id).set(ReagentCatalog::getApprovalStatus, ApprovalStatusEnum.DRAFT)
+                .set(ReagentCatalog::getUpdatedAt, entity.getUpdatedAt()));
+        appendChange(entity, "UPDATE", changes);
         log.info("试剂已编辑: id={}, changes={}", id, changes.keySet());
 
         // 条件更新五码映射
-        if (entity.getMaterialType().requiresFiveCodeMapping()) {
-            fiveCodeMappingService.updateMapping(
-                    entity.getId(),
-                    request.getUdiDi(),
-                    request.getGtin(),
-                    request.getInsuranceCode(),
-                    request.getRegistrationCertNo()
-            );
-        }
+        // Mapping and effective catalog fields are applied only when this draft is approved.
 
-        return toVO(entity);
+        var vo = toVO(entity);
+        vo.setEditingDraft(true);
+        return vo;
     }
 
     // ──────────────────────────────────────────────
@@ -238,10 +256,12 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
 
     @Override
     public void delete(Long id) {
-        ReagentCatalog entity = catalogMapper.selectById(id);
+        ReagentCatalog entity = lockCatalog(id);
         if (entity == null) {
             throw new BizException(40007, "试剂不存在: id=" + id);
         }
+        if (approvalLogService.hasPending(id)) throw new BizException(40900, "待审批试剂不能删除");
+        appendChange(entity, "DELETE", Map.of("isDeleted", Map.of("old", 0, "new", 1)));
         // MyBatis-Plus @TableLogic 自动执行软删除
         catalogMapper.deleteById(id);
         // 硬删除五码映射（该表无 is_deleted）
@@ -255,7 +275,7 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
 
     @Override
     public void submitApproval(Long id, SubmitApprovalRequest request) {
-        ReagentCatalog entity = catalogMapper.selectById(id);
+        ReagentCatalog entity = lockCatalog(id);
         if (entity == null) {
             throw new BizException(40007, "试剂不存在: id=" + id);
         }
@@ -264,17 +284,18 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         if (approvalLogService.hasPending(id)) {
             throw new ApprovalPendingException(id);
         }
+        entity = workingCopy(entity);
+        validateCatalog(entity);
 
         // 按现有实体快照构建 field_changes JSON
         String changeType = (entity.getApprovalStatus() == ApprovalStatusEnum.DRAFT
-                && entity.getCreatedAt().equals(entity.getUpdatedAt())) ? "CREATE" : "UPDATE";
+                && draftMapper.selectById(id) == null) ? "CREATE" : "UPDATE";
 
         String fieldChangesJson;
         try {
-            fieldChangesJson = OBJECT_MAPPER.writeValueAsString(entity);
+            fieldChangesJson = objectMapper.writeValueAsString(entity);
         } catch (JsonProcessingException e) {
-            log.error("序列化试剂实体失败: id={}", id, e);
-            fieldChangesJson = "{}";
+            throw new BizException(50000, "审批快照保存失败，未提交审批");
         }
 
         // 创建审批日志
@@ -287,7 +308,9 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         // 试剂状态 → PENDING
         entity.setApprovalStatus(ApprovalStatusEnum.PENDING);
         entity.setUpdatedAt(LocalDateTime.now());
-        catalogMapper.updateById(entity);
+        catalogMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ReagentCatalog>()
+                .eq(ReagentCatalog::getId, id).set(ReagentCatalog::getApprovalStatus, ApprovalStatusEnum.PENDING)
+                .set(ReagentCatalog::getUpdatedAt, entity.getUpdatedAt()));
 
         log.info("审批已提交: reagentId={}, changeType={}, submitterId={}",
                 id, changeType, request.getSubmitterId());
@@ -303,8 +326,29 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         if (logEntry == null) {
             throw new BizException(40400, "审批记录不存在: id=" + approvalLogId);
         }
+        ReagentCatalog locked = lockCatalog(logEntry.getReagentId());
+        logEntry = approvalLogService.lockById(approvalLogId);
         if (!"PENDING".equals(logEntry.getReviewStatus())) {
             throw new BizException(40005, "该审批记录已处理，当前状态: " + logEntry.getReviewStatus());
+        }
+        if (locked == null) throw new BizException(40400, "试剂不存在");
+        com.zlth.ivd.catalog.entity.CatalogDraft draft = draftMapper.selectById(locked.getId());
+        ReagentCatalog submitted = readSnapshot(logEntry.getFieldChanges());
+        ReagentCatalog expected = draft == null ? locked : readSnapshot(draft.getSnapshot());
+        if (!java.util.Objects.equals(submitted.getId(), locked.getId()) || !sameEditableFields(submitted, expected))
+            throw new BizException(40900, "提交快照与当前待审批版本不一致，请驳回后重新提交");
+        if (draft != null) {
+            ReagentCatalog candidate = readSnapshot(draft.getSnapshot());
+            validateCatalog(candidate);
+            applyApprovedFields(candidate);
+            if (candidate.getMaterialType().requiresFiveCodeMapping()) {
+                if (fiveCodeMappingService.getByReagentId(candidate.getId()) == null) {
+                    fiveCodeMappingService.createMapping(candidate.getId(), candidate.getHisCode(), candidate.getUdiDi(),
+                            candidate.getGtin(), candidate.getInsuranceCode(), candidate.getRegistrationCertNo());
+                } else fiveCodeMappingService.updateMapping(candidate.getId(), candidate.getUdiDi(), candidate.getGtin(),
+                        candidate.getInsuranceCode(), candidate.getRegistrationCertNo());
+            }
+            draftMapper.deleteById(locked.getId());
         }
 
         // 更新审批日志
@@ -332,6 +376,8 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         if (logEntry == null) {
             throw new BizException(40400, "审批记录不存在: id=" + approvalLogId);
         }
+        lockCatalog(logEntry.getReagentId());
+        logEntry = approvalLogService.lockById(approvalLogId);
         if (!"PENDING".equals(logEntry.getReviewStatus())) {
             throw new BizException(40005, "该审批记录已处理，当前状态: " + logEntry.getReviewStatus());
         }
@@ -463,12 +509,127 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
                                            java.util.function.Consumer<T> setter,
                                            Map<String, Object> changes) {
         if (newVal == null) return;
+        if (newVal instanceof BigDecimal next && oldVal instanceof BigDecimal previous && next.compareTo(previous) == 0) return;
         if (newVal.equals(oldVal)) return;
-        changes.put(fieldName, Map.of("old", oldVal != null ? oldVal : "null", "new", newVal));
+        Map<String,Object> difference = new LinkedHashMap<>();
+        difference.put("old", oldVal); difference.put("new", newVal);
+        changes.put(fieldName, difference);
         setter.accept(newVal);
     }
 
     private boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    private void clearIfRequested(String field, boolean present, Object requested, Object existing,
+                                  Runnable clear, Map<String,Object> changes) {
+        if (!present || requested != null || existing == null) return;
+        var difference = new LinkedHashMap<String,Object>();
+        difference.put("old", existing); difference.put("new", null);
+        changes.put(field, difference); clear.run();
+    }
+
+    private ReagentCatalog lockCatalog(Long id) {
+        return catalogMapper.selectOne(new LambdaQueryWrapper<ReagentCatalog>()
+                .eq(ReagentCatalog::getId, id).last("FOR UPDATE"));
+    }
+
+    private ReagentCatalog workingCopy(ReagentCatalog entity) {
+        var draft = draftMapper.selectById(entity.getId());
+        if (draft == null) return entity;
+        ReagentCatalog copy = readSnapshot(draft.getSnapshot());
+        copy.setApprovalStatus(entity.getApprovalStatus());
+        return copy;
+    }
+
+    private ReagentCatalog readSnapshot(String json) {
+        try {
+            var node = objectMapper.readTree(json);
+            if (!(node instanceof com.fasterxml.jackson.databind.node.ObjectNode object))
+                throw new BizException(40900, "审批快照格式无效");
+            for (String field : new String[]{"createdAt", "updatedAt"}) {
+                var value = object.get(field);
+                if (value != null && value.isTextual()) object.put(field, value.asText().replace(' ', 'T'));
+            }
+            return objectMapper.treeToValue(object, ReagentCatalog.class);
+        }
+        catch (JsonProcessingException e) { throw new BizException(50000, "目录草稿损坏，操作已拒绝"); }
+    }
+
+    private void saveDraft(ReagentCatalog entity) {
+        var draft = new com.zlth.ivd.catalog.entity.CatalogDraft();
+        draft.setReagentId(entity.getId());
+        try { draft.setSnapshot(objectMapper.writeValueAsString(entity)); }
+        catch (JsonProcessingException e) { throw new BizException(50000, "目录草稿保存失败"); }
+        draft.setUpdatedAt(LocalDateTime.now());
+        if (draftMapper.selectById(entity.getId()) == null) draftMapper.insert(draft);
+        else draftMapper.updateById(draft);
+    }
+
+    private void appendChange(ReagentCatalog entity, String type, Map<String,Object> changes) {
+        var entry = new com.zlth.ivd.catalog.entity.CatalogChangeLog();
+        entry.setReagentId(entity.getId()); entry.setReagentName(entity.getGenericName()); entry.setHisCode(entity.getHisCode());
+        entry.setChangeType(type);
+        try { entry.setFieldChanges(objectMapper.writeValueAsString(changes)); }
+        catch (JsonProcessingException e) { throw new BizException(50000, "目录变更记录保存失败"); }
+        entry.setOperatorId(com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserIdOrNull());
+        entry.setOperatorName(com.zlth.ivd.common.utils.SecurityUtils.getCurrentUsername());
+        entry.setCreatedAt(LocalDateTime.now());
+        changeMapper.insert(entry);
+    }
+
+    private void validateCatalog(ReagentCatalog entity) {
+        if (isBlank(entity.getGenericName()) || isBlank(entity.getManufacturer()) || isBlank(entity.getDistributor())
+                || entity.getMaterialType() == null) throw new BizException(40001, "名称、厂家、配送商及物料类型必填");
+        if (entity.getMaterialType().isRegistrationCertRequired() && isBlank(entity.getRegistrationCertNo()))
+            throw new BizException(40003, "该物料类型必须填写注册证号");
+        if (entity.getMaterialType().isTestsPerKitRequired() && entity.getTestsPerKit() == null)
+            throw new BizException(40004, "试剂必须填写标称测试数");
+        if (entity.getTestsPerKit() != null && entity.getTestsPerKit() <= 0
+                || entity.getPricePerUnit() != null && entity.getPricePerUnit().signum() < 0
+                || entity.getStabilityDaysAfterOpen() != null && entity.getStabilityDaysAfterOpen() < 0
+                || entity.getLeadTimeDays() == null || entity.getLeadTimeDays() < 0)
+            throw new BizException(40001, "测试数须大于零，单价及天数不得为负");
+        for (Integer flag : new Integer[]{entity.getEnableUniqueCode(), entity.getIsVolumeBased(),
+                entity.getIsInsurancePayment(), entity.getIsChargeable()})
+            if (flag != null && flag != 0 && flag != 1) throw new BizException(40001, "开关字段仅允许0或1");
+    }
+
+    private void applyApprovedFields(ReagentCatalog entity) {
+        var update = new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ReagentCatalog>().eq("id", entity.getId());
+        // Exact draft application including explicit nulls; DTO fields define editable properties.
+        var bean = new org.springframework.beans.BeanWrapperImpl(entity);
+        for (var field : UpdateReagentRequest.class.getDeclaredFields()) {
+            if (!bean.isReadableProperty(field.getName())) continue;
+            String column = field.getName().replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(java.util.Locale.ROOT);
+            update.set(column, bean.getPropertyValue(field.getName()));
+        }
+        catalogMapper.update(null, update);
+    }
+
+    private boolean sameEditableFields(ReagentCatalog left, ReagentCatalog right) {
+        var a = new org.springframework.beans.BeanWrapperImpl(left);
+        var b = new org.springframework.beans.BeanWrapperImpl(right);
+        for (var field : UpdateReagentRequest.class.getDeclaredFields()) {
+            if (!a.isReadableProperty(field.getName())) continue;
+            Object x = a.getPropertyValue(field.getName()), y = b.getPropertyValue(field.getName());
+            if (x instanceof BigDecimal dx && y instanceof BigDecimal dy) {
+                if (dx.compareTo(dy) != 0) return false;
+            } else if (!java.util.Objects.equals(x, y)) return false;
+        }
+        return true;
+    }
+
+    @Override
+    public PageVO<com.zlth.ivd.common.vo.ChangeLogVO> pageChangeLogs(com.zlth.ivd.common.dto.ChangeLogQuery query) {
+        if (query.getPage() == null || query.getPage() < 1 || query.getPageSize() == null
+                || query.getPageSize() < 1 || query.getPageSize() > 10000)
+            throw new BizException(40001, "目录变更记录分页参数非法");
+        var requestPage = new Page<com.zlth.ivd.common.vo.ChangeLogVO>(query.getPage(),query.getPageSize());
+        requestPage.setMaxLimit((long)query.getPageSize());
+        var page = changeMapper.pageChanges(requestPage, query);
+        page.getRecords().forEach(vo -> { vo.setModule("CATALOG"); vo.setModuleLabel("试剂目录");
+            vo.setChangeTypeLabel(switch (vo.getChangeType()) { case "CREATE" -> "新增试剂"; case "UPDATE" -> "编辑试剂"; case "DELETE" -> "删除试剂"; default -> vo.getChangeType(); }); });
+        return PageVO.of(page);
     }
 }

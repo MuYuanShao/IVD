@@ -151,10 +151,11 @@
             {{ row.approvalStatusLabel }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :icon="Edit" @click="handleEdit(row.id)">编辑</el-button>
+            <el-button link type="primary" size="small" :icon="Edit" :disabled="row.approvalStatus === 'PENDING'" @click="handleEdit(row.id)">编辑</el-button>
             <el-button link type="primary" size="small" :icon="View" @click="handleViewDetail(row)">查看</el-button>
+            <el-button link type="primary" size="small" @click="router.push({ path: '/change-log', query: { module: 'CATALOG', keyword: row.hisCode } })">变更记录</el-button>
             <el-button
               v-if="row.approvalStatus === 'DRAFT' || row.approvalStatus === 'REJECTED'"
               link type="warning" size="small" :icon="DocumentChecked" @click="handleSubmitApproval(row)">提交审批</el-button>
@@ -319,6 +320,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Upload, Download, Edit, View, DocumentChecked, Delete, Check, Close, Box } from '@element-plus/icons-vue'
 import { useCatalogStore } from '@/stores/catalog'
@@ -331,6 +333,7 @@ import RejectReasonDialog from './components/RejectReasonDialog.vue'
 import { useCatalogFieldOptions } from '@/composables/useCatalogFieldOptions'
 
 const catalogStore = useCatalogStore()
+const router = useRouter()
 const { optionGroups, loadCatalogFieldOptions } = useCatalogFieldOptions()
 
 // ── 五码映射数据 — 由后端 API 填充，初始为空

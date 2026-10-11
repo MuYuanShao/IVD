@@ -6,6 +6,19 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class InstitutionSqlTest {
+    @Test void catalogDraftAndHistoryCannotBypassInstitutionIsolation() {
+        InstitutionContext.within(new InstitutionContext.Scope(11L,2L,3L,"SYSTEM_ADMIN"), () -> {
+            var interceptor = new InstitutionSqlInterceptor();
+            for (String table : java.util.List.of("catalog_draft", "catalog_change_log")) {
+                assertTrue(interceptor.parserSingle("SELECT * FROM " + table, null).contains("institution_id = 11"));
+                assertTrue(interceptor.parserSingle("INSERT INTO " + table + " (reagent_id) VALUES (1)", null).contains("institution_id"));
+            }
+            String query = "SELECT id FROM (SELECT id FROM catalog_change_log UNION ALL SELECT id FROM catalog_approval_log) history";
+            String rewritten = interceptor.parserSingle(query, null);
+            assertEquals(2, rewritten.split("institution_id = 11", -1).length - 1, rewritten);
+            return null;
+        });
+    }
     @Test void selectUpdateAndDeleteAreRestrictedToTheActiveInstitution() {
         var scope = new InstitutionContext.Scope(11L, 2L, 3L, "LAB_TECH");
         InstitutionContext.within(scope, () -> {

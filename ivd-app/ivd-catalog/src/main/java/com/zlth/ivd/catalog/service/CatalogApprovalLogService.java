@@ -10,6 +10,7 @@ import com.zlth.ivd.catalog.entity.CatalogApprovalLog;
  * @since 2026-07-03
  */
 public interface CatalogApprovalLogService {
+    CatalogApprovalLog lockById(Long id);
 
     /**
      * 创建审批日志（提交审批时调用）

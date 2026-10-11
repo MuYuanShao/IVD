@@ -16,6 +16,7 @@
 
     <div v-loading="loading" class="detail-body">
       <template v-if="detail">
+        <el-alert v-if="detail.editingDraft" title="当前展示待审批草稿，正式业务仍使用审批前的字段值。" type="warning" :closable="false" show-icon />
         <section class="detail-section">
           <div class="section-title"><span>01</span><div><strong>基础信息</strong><small>目录身份、产品属性与使用配置</small></div></div>
           <el-descriptions :column="3" border size="small">

@@ -18,4 +18,7 @@ public class ChangeLogQuery {
     private String keyword;      // 模糊搜索：供应商名称/证号（证照）或 试剂名称/院内编码（试剂）
     private Integer page = 1;
     private Integer pageSize = 20;
+    public java.time.LocalDateTime getEndDateExclusive() {
+        return endDate == null || endDate.isBlank() ? null : java.time.LocalDate.parse(endDate).plusDays(1).atStartOfDay();
+    }
 }

@@ -17,7 +17,6 @@ import com.zlth.ivd.license.dto.CreateLicenseRequest;
 import com.zlth.ivd.license.dto.LicenseQuery;
 import com.zlth.ivd.license.dto.UpdateLicenseRequest;
 import com.zlth.ivd.license.entity.LicenseChangeLog;
-import com.zlth.ivd.catalog.mapper.CatalogApprovalLogMapper;
 import com.zlth.ivd.license.entity.SupplierLicense;
 import com.zlth.ivd.license.mapper.LicenseChangeLogMapper;
 import com.zlth.ivd.license.mapper.ReagentSupplierRelMapper;
@@ -70,7 +69,7 @@ public class LicenseServiceImpl implements LicenseService {
     private final SupplierMapper supplierMapper;
     private final LicenseChangeLogMapper changeLogMapper;
     private final ReagentSupplierRelMapper reagentSupplierRelMapper;
-    private final CatalogApprovalLogMapper catalogApprovalLogMapper;
+    private final com.zlth.ivd.catalog.service.ReagentCatalogService catalogService;
     private final MinioClient minioClient;
     private final MinioProperties minioProps;
 
@@ -488,16 +487,30 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public PageVO<ChangeLogVO> listChangeLogs(ChangeLogQuery query) {
+        if (query.getPage() == null || query.getPage() < 1 || query.getPageSize() == null
+                || query.getPageSize() < 1 || query.getPageSize() > 100)
+            throw new BizException(40001, "变更记录分页参数非法");
         String module = query.getModule();
         boolean queryLicense = module == null || module.isEmpty() || "LICENSE".equalsIgnoreCase(module);
         boolean queryCatalog = module == null || module.isEmpty() || "CATALOG".equalsIgnoreCase(module);
+        if (!queryLicense && !queryCatalog) throw new BizException(40001, "未知变更模块");
+        boolean combined = queryLicense && queryCatalog;
+        int requestedPage = query.getPage();
+        int requestedSize = query.getPageSize();
+        long prefix = (long) requestedPage * requestedSize;
+        if (combined && prefix > 10000) throw new BizException(40001, "请筛选模块或日期后查询深页历史");
+        int prefixSize = combined ? (int)prefix : requestedSize;
+        ChangeLogQuery sourceQuery = new ChangeLogQuery();
+        org.springframework.beans.BeanUtils.copyProperties(query, sourceQuery);
+        if (combined) { sourceQuery.setPage(1); sourceQuery.setPageSize(prefixSize); }
 
         List<ChangeLogVO> merged = new ArrayList<>();
         long total = 0;
 
         if (queryLicense) {
-            Page<ChangeLogVO> page = new Page<>(query.getPage(), query.getPageSize());
-            IPage<ChangeLogVO> result = changeLogMapper.findAllWithLicense(page, query);
+            Page<ChangeLogVO> page = new Page<>(sourceQuery.getPage(), sourceQuery.getPageSize());
+            page.setMaxLimit((long)sourceQuery.getPageSize()); // Checked internal prefix, not the public page size.
+            IPage<ChangeLogVO> result = changeLogMapper.findAllWithLicense(page, sourceQuery);
             for (ChangeLogVO vo : result.getRecords()) {
                 vo.setModule("LICENSE");
                 vo.setModuleLabel("证照管理");
@@ -515,8 +528,7 @@ public class LicenseServiceImpl implements LicenseService {
         }
 
         if (queryCatalog) {
-            Page<ChangeLogVO> page = new Page<>(query.getPage(), query.getPageSize());
-            IPage<ChangeLogVO> result = catalogApprovalLogMapper.findAllWithReagent(page, query);
+            PageVO<ChangeLogVO> result = catalogService.pageChangeLogs(sourceQuery);
             for (ChangeLogVO vo : result.getRecords()) {
                 vo.setModule("CATALOG");
                 vo.setModuleLabel("试剂目录");
@@ -541,7 +553,10 @@ public class LicenseServiceImpl implements LicenseService {
                 if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
                 if (a.getCreatedAt() == null) return 1;
                 if (b.getCreatedAt() == null) return -1;
-                return b.getCreatedAt().compareTo(a.getCreatedAt());
+                int time = b.getCreatedAt().compareTo(a.getCreatedAt());
+                if (time != 0) return time;
+                int moduleOrder = a.getModule().compareTo(b.getModule());
+                return moduleOrder != 0 ? moduleOrder : b.getId().compareTo(a.getId());
             });
             // 截取当前页
             int start = (query.getPage() - 1) * query.getPageSize();

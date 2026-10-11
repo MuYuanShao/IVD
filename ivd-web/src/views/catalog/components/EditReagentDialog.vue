@@ -14,6 +14,7 @@
       label-position="right"
       v-loading="loadingDetail"
     >
+      <el-alert title="保存的是编辑草稿；审批通过后正式生效。待审批版本不能继续编辑。" type="info" :closable="false" show-icon style="margin-bottom:16px" />
       <el-divider content-position="left">基础信息</el-divider>
 
       <el-form-item label="院内编码">
@@ -208,7 +209,7 @@ import { useCatalogFieldOptions } from '@/composables/useCatalogFieldOptions'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  reagentId: { type: Number, default: null }
+  reagentId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits(['update:modelValue', 'updated'])
@@ -361,7 +362,7 @@ async function handleSubmit() {
       isChargeable: form.isChargeable ? 1 : 0
     }
     await catalogStore.update(props.reagentId, payload)
-    ElMessage.success('物料编辑成功')
+    ElMessage.success('编辑草稿已保存，审批通过后生效')
     emit('updated')
     visible.value = false
   } catch {

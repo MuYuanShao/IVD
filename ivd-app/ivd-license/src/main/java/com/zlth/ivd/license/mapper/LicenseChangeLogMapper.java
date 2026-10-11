@@ -39,14 +39,14 @@ public interface LicenseChangeLogMapper extends BaseMapper<LicenseChangeLog> {
                 AND lcl.created_at &gt;= #{query.startDate}
             </if>
             <if test='query.endDate != null and query.endDate != ""'>
-                AND lcl.created_at &lt;= #{query.endDate}
+                AND lcl.created_at &lt; #{query.endDateExclusive}
             </if>
             <if test='query.keyword != null and query.keyword != ""'>
                 AND (s.name LIKE CONCAT('%',#{query.keyword},'%')
                      OR sl.cert_no LIKE CONCAT('%',#{query.keyword},'%'))
             </if>
         </where>
-        ORDER BY lcl.created_at DESC
+        ORDER BY lcl.created_at DESC, lcl.id DESC
         </script>
     """)
     IPage<ChangeLogVO> findAllWithLicense(Page<ChangeLogVO> page, @Param("query") ChangeLogQuery query);

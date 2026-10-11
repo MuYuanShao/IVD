@@ -13,7 +13,7 @@ class ClinicalFlywayIntegrationTest {
         // The schema-only copy contains an empty legacy history table. Do not delete or
         // repair it: this test uses a separate history table confined to the task DB.
         if(flyway.info().current()==null)flyway.baseline();
-        int pending=flyway.info().pending().length;assertTrue(pending==0 || pending==4);
-        assertEquals(pending,flyway.migrate().migrationsExecuted);assertEquals("20261011004",flyway.info().current().getVersion().getVersion());assertDoesNotThrow(flyway::validate);
+        int pending=flyway.info().pending().length;assertTrue(pending==0 || pending==5);
+        assertEquals(pending,flyway.migrate().migrationsExecuted);assertEquals("20261011005",flyway.info().current().getVersion().getVersion());assertDoesNotThrow(flyway::validate);
     }
 }
