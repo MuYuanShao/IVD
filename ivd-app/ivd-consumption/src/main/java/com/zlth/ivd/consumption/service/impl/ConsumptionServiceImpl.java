@@ -107,7 +107,14 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         if(selected==null) throw new BizException(40400,"库存批次不存在");
         ReagentCatalog catalog=catalogs.findById(selected.getReagentId());
         if(catalog==null) throw new BizException(40400,"试剂目录不存在");
-        if(catalog.getDeviceBindMode()==com.zlth.ivd.common.enums.DeviceBindModeEnum.FORCE && deviceId==null) throw new BizException(40001,"该试剂必须绑定仪器后消耗");
+        if (selected.getUnitPrice() == null || selected.getUnitPrice().signum() < 0)
+            throw new BizException(40001, "批次缺少有效权威单价，请先核对；不能以库存均价推测消耗金额");
+        var materialType = selected.getMaterialType() != null ? selected.getMaterialType() : catalog.getMaterialType();
+        if (materialType == null) throw new BizException(40001, "批次未维护物料类型");
+        boolean usesInstrument = materialType.entersUdiStateMachine();
+        if (!usesInstrument && deviceId != null) throw new BizException(40001, "耗材和其他物料直接领用，不得绑定仪器");
+        if (usesInstrument && catalog.getDeviceBindMode()==com.zlth.ivd.common.enums.DeviceBindModeEnum.FORCE && deviceId==null)
+            throw new BizException(40001,"该试剂必须绑定仪器后消耗");
         if(Integer.valueOf(1).equals(catalog.getEnableUniqueCode()) && qty.stripTrailingZeros().scale()>0) throw new BizException(40001,"唯一码管控试剂须按完整单位消耗");
         if(deviceId!=null) instrumentUsageService.bind(batchId,deviceId);
         // 带乐观锁重试的库存扣减
@@ -121,7 +128,7 @@ public class ConsumptionServiceImpl implements ConsumptionService {
         record.setPurchaseOrderItemId(batch.getOriginPurchaseOrderItemId());
         record.setSettlementMode(batch.getSettlementMode());
         record.setUnit(batch.getUnit()!=null ? batch.getUnit() : catalog.getUnit());
-        record.setMaterialType(catalog.getMaterialType().name());
+        record.setMaterialType(materialType.name());
         record.setReagentId(batch.getReagentId());
         // 结算库房 = 操作人所在科室的二级库；若操作人无科室或无对应二级库，回退到批次所在库房
         record.setWarehouseId(batch.getWarehouseId());

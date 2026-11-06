@@ -13,7 +13,7 @@ import java.util.Map;
 @Mapper
 public interface DailyInventorySnapshotMapper extends BaseMapper<DailyInventorySnapshot> {
 
-    @Select("SELECT id FROM warehouse ORDER BY id FOR UPDATE")
+    @Select("SELECT id FROM warehouse FOR UPDATE")
     List<Long> lockWarehouses();
 
     @Select("SELECT (SELECT COUNT(*) FROM reagent_batch WHERE stock<>0 AND unit_price IS NULL AND avg_cost IS NULL) + " +
@@ -82,14 +82,28 @@ public interface DailyInventorySnapshotMapper extends BaseMapper<DailyInventoryS
     java.math.BigDecimal getOpeningBalance(@Param("date") LocalDate date);
 
     /** 进销存汇总（日期范围内） */
-    @Select("SELECT COALESCE(SUM(opening), 0) as totalOpening, " +
+    @Select("SELECT COALESCE(SUM(CASE WHEN first_day=1 THEN opening ELSE 0 END), 0) as totalOpening, " +
             "COALESCE(SUM(inbound), 0) as totalInbound, " +
             "COALESCE(SUM(outbound), 0) as totalOutbound, " +
             "COALESCE(SUM(adjustment), 0) as totalAdjustment, " +
-            "COALESCE(SUM(closing), 0) as totalClosing, " +
+            "COALESCE(SUM(CASE WHEN last_day=1 THEN closing ELSE 0 END), 0) as totalClosing, " +
             "COUNT(*) as reagentCount, " +
             "SUM(CASE WHEN is_balanced = 0 THEN 1 ELSE 0 END) as unbalancedCount " +
-            "FROM daily_inventory_snapshot " +
-            "WHERE snapshot_date >= #{startDate} AND snapshot_date <= #{endDate}")
+            "FROM (SELECT opening,inbound,outbound,adjustment,closing,is_balanced, " +
+            "ROW_NUMBER() OVER (PARTITION BY institution_id,reagent_id,warehouse_id ORDER BY snapshot_date,id) first_day, " +
+            "ROW_NUMBER() OVER (PARTITION BY institution_id,reagent_id,warehouse_id ORDER BY snapshot_date DESC,id DESC) last_day " +
+            "FROM daily_inventory_snapshot WHERE snapshot_date >= #{startDate} AND snapshot_date <= #{endDate}) period_rows")
     Map<String, Object> getBalanceAggregation(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    @Select("SELECT COUNT(DISTINCT snapshot_date) FROM daily_inventory_snapshot WHERE snapshot_date BETWEEN #{start} AND #{end}")
+    long countCoveredDays(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    @org.apache.ibatis.annotations.Insert("""
+            INSERT INTO monthly_inventory_close
+                (period_month, opening, inbound, outbound, adjustment, closing, snapshot_count, unbalanced_count, closed_by)
+            VALUES (#{month}, #{summary.totalOpening}, #{summary.totalInbound}, #{summary.totalOutbound},
+                    #{summary.totalAdjustment}, #{summary.totalClosing}, #{summary.reagentCount}, #{summary.unbalancedCount}, #{actor})
+            """)
+    int insertMonthlyClose(@Param("month") String month, @Param("summary") Map<String, Object> summary,
+                           @Param("actor") Long actor);
 }

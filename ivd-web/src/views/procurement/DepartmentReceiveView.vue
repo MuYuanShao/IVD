@@ -53,7 +53,7 @@
     <!-- 申领单列表 -->
     <el-table :data="records" v-loading="loading" stripe class="data-table" @sort-change="onSortChange">
       <el-table-column prop="reqNo" label="申领单号" width="200" fixed />
-      <el-table-column prop="fromDeptName" label="申领科室" width="140" />
+      <el-table-column prop="deptName" label="申领科室" width="140" />
       <el-table-column prop="status" label="状态" width="110">
         <template #default="{ row }">
           <el-tag v-if="row.status === 'SHIPPED'" type="warning" size="small">待签收</el-tag>
@@ -62,9 +62,11 @@
           <el-tag v-else size="small">{{ row.status }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="itemCount" label="申领品种数" width="100" align="center" />
+      <el-table-column label="申领品种数" width="100" align="center">
+        <template #default="{ row }">{{ Array.isArray(row.items) ? row.items.length : '—' }}</template>
+      </el-table-column>
       <el-table-column prop="totalQty" label="申领总量" width="100" align="center" />
-      <el-table-column prop="fulfilledQty" label="已发货量" width="100" align="center" />
+      <el-table-column prop="shippedQty" label="已发货量" width="100" align="center" />
       <el-table-column prop="createdAt" label="创建时间" width="170" sortable="custom" />
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">

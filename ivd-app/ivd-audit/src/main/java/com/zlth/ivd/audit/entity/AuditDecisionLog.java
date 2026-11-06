@@ -10,10 +10,12 @@ import java.time.LocalDateTime;
 public class AuditDecisionLog {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
+    private Long departmentId;
     private String observationId;
     private String patientIdHash;
     private String testItemCode;
     private BigDecimal testValue;
+    private String testValueText;
     private String deviceId;
     private LocalDateTime testDatetime;
     private String batchNo;

@@ -52,18 +52,33 @@ class SettlementEvidenceTest {
         var jdbc=new JdbcTemplate(ds);
         for(String sql:List.of(
                 "CREATE TABLE consumption_record(id BIGINT,batch_id BIGINT,batch_no VARCHAR,record_type VARCHAR,reagent_id BIGINT,device_id BIGINT,warehouse_id BIGINT,operator_id INT,unit VARCHAR,unit_price DECIMAL(12,2),quantity DECIMAL(10,2),amount DECIMAL(12,2),occurred_at TIMESTAMP)",
-                "CREATE TABLE settlement_record(id BIGINT,settlement_no VARCHAR,settlement_type VARCHAR,source_id BIGINT,status VARCHAR,settled_at TIMESTAMP)",
+                "CREATE TABLE settlement_record(id BIGINT,settlement_no VARCHAR,settlement_type VARCHAR,source_id BIGINT,status VARCHAR,amount DECIMAL(12,2),settled_at TIMESTAMP)",
                 "CREATE TABLE reagent_batch(id BIGINT,batch_no VARCHAR,reagent_id BIGINT,warehouse_id BIGINT,unit_price DECIMAL(12,2))",
                 "CREATE TABLE reagent_catalog(id BIGINT,is_deleted INT,generic_name VARCHAR,specification VARCHAR,manufacturer VARCHAR,distributor VARCHAR,unit VARCHAR,is_volume_based INT,registration_cert_no VARCHAR,is_insurance_payment INT,volume_type VARCHAR,insurance_payment_type VARCHAR,is_chargeable INT)",
                 "CREATE TABLE device(id BIGINT,device_code VARCHAR,name VARCHAR)","CREATE TABLE warehouse(id BIGINT,name VARCHAR)","CREATE TABLE sys_user(id BIGINT,real_name VARCHAR,dept_id BIGINT)","CREATE TABLE sys_dept(id BIGINT,dept_name VARCHAR)")) jdbc.execute(sql);
         jdbc.update("INSERT INTO consumption_record VALUES(10,NULL,'LOT','CONSUME',1,NULL,NULL,1,'box',10,1,10,CURRENT_TIMESTAMP),(11,NULL,'LOT','CONSUME',1,NULL,NULL,1,'box',10,1,10,CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO reagent_batch VALUES(1,'LOT',1,1,10),(2,'LOT',1,2,10)");
-        jdbc.update("INSERT INTO settlement_record VALUES(99,'REAL-99','CONSUMPTION',10,'ACTIVE',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO settlement_record VALUES(99,'REAL-99','CONSUMPTION',10,'ACTIVE',8,CURRENT_TIMESTAMP)");
         var result=new SettlementServiceImpl(null,null,null,jdbc,null).getConsumptionDetails(1,10,null,null,null);
         assertEquals(2,result.getTotal());
         var settled=result.getRecords().stream().filter(r->r.getConsumptionRecordId()==10L).findFirst().orElseThrow();
         assertEquals(99L,settled.getSettlementId());assertEquals("REAL-99",settled.getSettlementNo());assertEquals("LOT",settled.getBatchNo());
         var unsettled=result.getRecords().stream().filter(r->r.getConsumptionRecordId()==11L).findFirst().orElseThrow();
         assertNull(unsettled.getSettlementId());assertEquals("UNSETTLED",unsettled.getSettlementStatus());
+        jdbc.update("INSERT INTO consumption_record VALUES(12,NULL,'LOT','CONSUME',2,NULL,NULL,1,'box',90,1,90,CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO settlement_record VALUES(100,'REVERSED','CONSUMPTION',12,'REVERSED',90,CURRENT_TIMESTAMP),(101,'INBOUND','INBOUND',11,'ACTIVE',55,CURRENT_TIMESTAMP)");
+        var service = new SettlementServiceImpl(null,null,null,jdbc,null);
+        for (int page : List.of(1, 2, 4)) {
+            var details = (com.zlth.ivd.settlement.vo.ConsumptionDetailsPageVO)
+                    service.getConsumptionDetails(page, 1, null, null, null);
+            assertEquals(3, details.getTotal());
+            assertEquals(2, details.getSummary().reagentCount());
+            assertEquals(1, details.getSummary().activeSettlementCount());
+            assertEquals(new BigDecimal("8.00"), details.getSummary().activeSettlementAmount());
+        }
+        jdbc.update("UPDATE settlement_record SET amount=NULL WHERE id=99");
+        var missing = (com.zlth.ivd.settlement.vo.ConsumptionDetailsPageVO)
+                service.getConsumptionDetails(1, 1, null, null, null);
+        assertNull(missing.getSummary().activeSettlementAmount());
     }
 }

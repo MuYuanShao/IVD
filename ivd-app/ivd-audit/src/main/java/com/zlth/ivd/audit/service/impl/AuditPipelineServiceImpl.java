@@ -55,6 +55,12 @@ public class AuditPipelineServiceImpl implements AuditPipelineService {
                                              String testValue, String deviceId, LocalDateTime testDatetime,
                                              String batchNo, Map<String, Object> ruleContext) {
         long start = System.currentTimeMillis();
+        if (testValue != null && testValue.codePointCount(0, testValue.length()) > 1000)
+            throw new com.zlth.ivd.common.exception.BizException(40001, "审核结果输入过长，不能完整保存审核依据");
+        var scope = com.zlth.ivd.common.security.InstitutionContext.current().orElse(null);
+        if (scope != null && Set.of("LAB_TECH", "LAB_DOCTOR", "LAB_DIRECTOR").contains(scope.role())
+                && scope.departmentId() == null)
+            throw new com.zlth.ivd.common.exception.BizException(40300, "临床审核需要明确科室归属");
 
         // 1. 批次关联
         String resolvedBatch = batchNo != null ? batchNo : resolveBatch(deviceId, testDatetime.toString());
@@ -107,9 +113,20 @@ public class AuditPipelineServiceImpl implements AuditPipelineService {
 
         // 4. 写入决策日志
         AuditDecisionLog logEntry = new AuditDecisionLog();
+        logEntry.setDepartmentId(scope == null ? null : scope.departmentId());
         logEntry.setObservationId(observationId);
         logEntry.setPatientIdHash(patientIdHash);
         logEntry.setTestItemCode(testItemCode);
+        logEntry.setTestValueText(testValue);
+        if (testValue != null) {
+            try {
+                var numeric = new java.math.BigDecimal(testValue.strip()).stripTrailingZeros();
+                if (numeric.scale() <= 2 && numeric.abs().compareTo(new java.math.BigDecimal("10000000000")) < 0)
+                    logEntry.setTestValue(numeric);
+            } catch (NumberFormatException ignored) {
+                // 定性或非数值结果仍以原输入保存，不伪造数值投影。
+            }
+        }
         logEntry.setDeviceId(deviceId);
         logEntry.setTestDatetime(testDatetime);
         logEntry.setBatchNo(resolvedBatch);

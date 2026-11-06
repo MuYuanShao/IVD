@@ -20,6 +20,7 @@ import java.util.Map;
  * @since 2026-07-06
  */
 public interface LicenseService {
+    LicenseVO approveRenewal(Long id, com.zlth.ivd.license.dto.ApproveLicenseRenewalRequest request);
 
     /** 分页查询证照列表 */
     PageVO<LicenseVO> listLicenses(LicenseQuery query);

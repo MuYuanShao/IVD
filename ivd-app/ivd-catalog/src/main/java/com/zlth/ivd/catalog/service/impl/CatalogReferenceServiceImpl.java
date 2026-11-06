@@ -20,6 +20,13 @@ public class CatalogReferenceServiceImpl implements CatalogReferenceService {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ReagentCatalog lockForBusiness(Long id) {
+        return mapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ReagentCatalog>()
+                .eq(ReagentCatalog::getId, id).last("FOR UPDATE"));
+    }
+
+    @Override
     public List<ReagentCatalog> findByIds(Collection<Long> ids) {
         return ids == null || ids.isEmpty() ? List.of() : mapper.selectBatchIds(ids);
     }

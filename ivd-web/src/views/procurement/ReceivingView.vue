@@ -27,6 +27,16 @@
       </div>
       <div v-else style="display:flex;align-items:center;gap:16px;font-size:13px;flex-wrap:wrap;">
         <strong style="color:#f59e0b;">⚡ 无采购订单 · 直接验收入库</strong>
+        <el-select :model-value="null" placeholder="选择采购订单" filterable
+          aria-label="选择采购订单" :disabled="submitting || loadingOrder" style="width:200px"
+          @change="onOrderSelect">
+          <el-option v-for="o in orderOptions" :key="o.id" :label="o.poNo" :value="o.id" />
+        </el-select>
+        <el-select v-model="directSupplierId" placeholder="请选择验收供应商" filterable
+          aria-label="验收供应商" :disabled="submitting" style="width:220px">
+          <el-option v-for="supplier in activeSuppliers" :key="supplier.id"
+            :label="supplier.name" :value="supplier.id" />
+        </el-select>
         <span style="color:var(--text-tertiary)">通过导入Excel或手动添加试剂，直接生成库存批次</span>
       </div>
     </el-card>
@@ -34,11 +44,11 @@
     <!-- 工具栏 -->
     <el-card shadow="never" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <el-button type="primary" :icon="Upload" @click="triggerImport">导入Excel</el-button>
+        <el-button type="primary" :icon="Upload" :disabled="submitting || loadingOrder" @click="triggerImport">导入Excel</el-button>
         <el-button :icon="Download" @click="exportExcel" :disabled="!receiveItems.length">导出Excel</el-button>
         <el-button :icon="Document" @click="downloadTemplate" plain>下载模板</el-button>
-        <el-button :icon="Plus" @click="openAddDialog" type="success" plain>添加行</el-button>
-        <el-button :icon="Delete" @click="clearAll" :disabled="!receiveItems.length" type="danger" plain>清空</el-button>
+        <el-button :icon="Plus" @click="openAddDialog" :disabled="submitting || loadingOrder" type="success" plain>添加行</el-button>
+        <el-button :icon="Delete" @click="clearAll" :disabled="!receiveItems.length || submitting || loadingOrder" type="danger" plain>清空</el-button>
         <input ref="importFileRef" type="file" accept=".xlsx,.xls,.csv" style="display:none" @change="handleImportFile" />
         <span v-if="receiveItems.length" style="font-size:12px;color:var(--text-tertiary);margin-left:auto">
           {{ receiveSummary.totalItems }} 项，待收 {{ receiveSummary.totalRemaining }} 件
@@ -80,13 +90,13 @@
         </el-table-column>
         <el-table-column label="批号" width="130">
           <template #default="{row}">
-            <el-input v-if="row.receiveQty > 0" v-model="row.batchNo" placeholder="必填批号" size="small" style="width:110px" />
+            <el-input v-if="row.receiveQty > 0" v-model="row.batchNo" :placeholder="requiresReceiptTracking(row) ? '必填批号' : '留空自动生成'" size="small" style="width:110px" />
             <span v-else style="color:#94a3b8;font-size:12px">—</span>
           </template>
         </el-table-column>
         <el-table-column label="效期" width="130">
           <template #default="{row}">
-            <el-date-picker v-if="row.receiveQty > 0" v-model="row.expiryDate" type="date" placeholder="必填有效期" size="small" style="width:110px" value-format="YYYY-MM-DD" />
+            <el-date-picker v-if="row.receiveQty > 0" v-model="row.expiryDate" type="date" :placeholder="requiresReceiptTracking(row) ? '必填有效期' : '无效期可不填'" size="small" style="width:110px" value-format="YYYY-MM-DD" />
             <span v-else style="color:#94a3b8;font-size:12px">—</span>
           </template>
         </el-table-column>
@@ -98,6 +108,19 @@
         </el-table-column>
         <el-table-column label="供应商" width="120" show-overflow-tooltip>
           <template #default="{row}">{{ row.supplier || poContext.supplierName || '—' }}</template>
+        </el-table-column>
+        <el-table-column v-if="!poContext.orderId" label="收货库房" width="155">
+          <template #default="{row}">
+            <el-select v-model="row.warehouseId" placeholder="机构默认中心库" clearable size="small" :disabled="submitting">
+              <el-option v-for="w in centralWarehouses" :key="w.id" :label="w.name" :value="w.id" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="UDI-DI" width="145">
+          <template #default="{row}">
+            <el-input v-if="row.receiveQty > 0" v-model="row.udi" placeholder="选填" size="small" />
+            <span v-else>—</span>
+          </template>
         </el-table-column>
         <el-table-column label="厂家" min-width="100" show-overflow-tooltip>
           <template #default="{row}">{{ row.manufacturer || '—' }}</template>
@@ -113,7 +136,7 @@
         </el-table-column>
         <el-table-column label="操作" width="60" align="center" fixed="right">
           <template #default="{ $index }">
-            <el-button link type="danger" size="small" :icon="Delete" @click="receiveItems.splice($index, 1)" />
+            <el-button link type="danger" size="small" :icon="Delete" :disabled="submitting || loadingOrder" @click="clearReceiptLine($index)" />
           </template>
         </el-table-column>
       </el-table>
@@ -134,16 +157,11 @@
         <el-form :model="addHeader" label-width="90px" inline>
           <el-form-item label="收货库房" required>
             <el-select v-model="addHeader.warehouseId" placeholder="选择收货库房" style="width:170px" filterable>
-              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+              <el-option v-for="w in centralWarehouses" :key="w.id" :label="w.name" :value="w.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="配送商">
             <el-input v-model="addHeader.distributor" placeholder="配送商名称" style="width:170px" />
-          </el-form-item>
-          <el-form-item label="采购订单">
-            <el-select v-model="addHeader.orderId" placeholder="选择采购订单（可选）" style="width:200px" filterable clearable @change="onOrderSelect">
-              <el-option v-for="o in orderOptions" :key="o.id" :label="o.poNo" :value="o.id" />
-            </el-select>
           </el-form-item>
           <el-form-item label="验收单号">
             <el-input :model-value="addHeader.acceptanceNo" disabled style="width:190px" />
@@ -268,6 +286,8 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { getSuppliers } from '@/api/license'
+import { stageOrderReceipt, receiptUdi, directReceiptWarehouse, requiresReceiptTracking } from '@/utils/receivingLines.mjs'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload, Download, Document, Delete, Camera } from '@element-plus/icons-vue'
@@ -283,14 +303,18 @@ const router = useRouter()
 const store = useProcurementStore()
 
 const submitting = ref(false)
+const loadingOrder = ref(Boolean(route.query.orderId))
+const directSupplierId = ref(null)
+const activeSuppliers = ref([])
 const importFileRef = ref(null)
 const showAddDialog = ref(false)
 const catalogMap = ref({})
 const reagentOptions = ref([])
 const warehouses = ref([])
+const centralWarehouses = computed(() => warehouses.value.filter(w => Number(w.level) === 1))
 const orderOptions = ref([])
 
-const poContext = reactive({ poNo: '', poStatus: '', supplierName: '', sourceType: '', orderId: null })
+const poContext = reactive({ poNo: route.query.orderId ? route.query.poNo || '—' : '', poStatus: '', supplierName: '', sourceType: '', orderId: route.query.orderId || null })
 const receiveItems = ref([])
 
 // ── 添加验收明细（新对话框）──
@@ -308,7 +332,6 @@ function generateAcceptanceNo() {
 const addHeader = reactive({
   warehouseId: null,
   distributor: '',
-  orderId: null,
   acceptanceNo: '',
   createdAt: '',
   agentName: '',
@@ -401,6 +424,7 @@ function onReagentSelect(row, reagentId) {
   const opt = reagentOptions.value.find(r => r.value === reagentId)
   if (!opt) return
   row.genericName = opt.genericName || ''
+  row.materialType = opt.materialType
   row.specification = opt.specification || ''
   row.reagentCode = opt.hisCode || ''
   row.unit = opt.unit || '盒'
@@ -408,18 +432,32 @@ function onReagentSelect(row, reagentId) {
   calcAmount(row)
 }
 
-function onOrderSelect(orderId) {
-  if (!orderId) return
-  const order = orderOptions.value.find(o => o.id === orderId)
-  if (order) {
-    addHeader.distributor = order.distributor || addHeader.distributor
+async function onOrderSelect(orderId) {
+  if (!orderId || loadingOrder.value || submitting.value) return
+  if (receiveItems.value.length) {
+    ElMessage.warning('请先处理或清空当前验收明细，再选择采购订单')
+    return
   }
+  await loadReceivingOrder(orderId)
+}
+
+async function loadReceivingOrder(orderId, poNo) {
+  loadingOrder.value = true
+  try {
+    const order = await store.fetchOrderDetail(orderId)
+    if (!order) throw new Error('采购订单不存在')
+    Object.assign(poContext, {
+      orderId, poNo: order.poNo || poNo || '—', poStatus: order.status || 'DRAFT',
+      supplierName: order.supplierName || '—', sourceType: order.sourceType || ''
+    })
+    receiveItems.value = (order.items || []).map(it => buildItem(it.reagentId, it))
+  } catch { ElMessage.error('加载采购订单数据失败') }
+  finally { loadingOrder.value = false }
 }
 
 function resetAddForm() {
   addHeader.warehouseId = null
   addHeader.distributor = ''
-  addHeader.orderId = null
   addHeader.acceptanceNo = ''
   addHeader.createdAt = ''
   addHeader.agentName = ''
@@ -432,11 +470,19 @@ function confirmAddItems() {
   if (!validLines.length) { ElMessage.warning('请至少添加一行明细并选择试剂'); return }
   if (!addHeader.warehouseId) { ElMessage.warning('请选择收货库房'); return }
 
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+  if (poContext.orderId) {
+    try {
+      receiveItems.value = stageOrderReceipt(receiveItems.value,
+        validLines.map(line => ({ ...line, warehouseId: addHeader.warehouseId })))
+    } catch (err) { ElMessage.warning(err.message); return }
+    showAddDialog.value = false
+    return
+  }
   for (const line of validLines) {
     receiveItems.value.push({
       itemId: null,
       reagentId: line.reagentId,
+      materialType: line.materialType || catalogMap.value[line.reagentId]?.materialType,
       reagentName: line.genericName || `试剂#${line.reagentId}`,
       specification: line.specification || '—',
       manufacturer: reagentOptions.value.find(r => r.value === line.reagentId)?.manufacturer || '—',
@@ -444,11 +490,12 @@ function confirmAddItems() {
       supplier: addHeader.distributor || poContext.supplierName || '',
       qtyOrdered: line.receiveQty,
       qtyReceived: 0,
-      remaining: poContext.orderId || addHeader.orderId ? line.receiveQty : 0,
+      remaining: 0,
       receiveQty: line.receiveQty,
       batchNo: line.batchNo,
       expiryDate: line.expiryDate,
       productionDate: line.productionDate,
+      udi: line.udi,
       // 附加验收头信息
       warehouseId: addHeader.warehouseId,
       acceptanceNo: addHeader.acceptanceNo,
@@ -474,7 +521,7 @@ const receiveSummary = computed(() => {
 function openAddDialog() {
   addHeader.acceptanceNo = generateAcceptanceNo()
   addHeader.createdAt = new Date().toISOString().replace('T', ' ').slice(0, 19)
-  addHeader.warehouseId = addHeader.warehouseId || (warehouses.value.length > 0 ? warehouses.value[0].id : null)
+  addHeader.warehouseId = centralWarehouses.value.length === 1 ? centralWarehouses.value[0].id : null
   if (!detailLines.value.length) detailLines.value.push(createEmptyDetail())
   showAddDialog.value = true
 }
@@ -501,7 +548,7 @@ function buildItem(reagentId, source = {}) {
   const qtyReceived = source.qtyReceived || 0
   const remaining = Math.max(0, qtyOrdered - qtyReceived)
   return {
-    itemId: source.id || null, reagentId,
+    itemId: source.id || null, reagentId, materialType: source.materialType || cat.materialType,
     reagentName: cat.genericName || `试剂#${reagentId}`,
     specification: cat.specification || '—',
     manufacturer: cat.manufacturer || '—',
@@ -514,6 +561,9 @@ function buildItem(reagentId, source = {}) {
 }
 
 onMounted(async () => {
+  getSuppliers().then(list => {
+    activeSuppliers.value = (Array.isArray(list) ? list : []).filter(s => s.isActive === true)
+  }).catch(() => { ElMessage.warning('供应商列表加载失败，请刷新后重试') })
   // 加载试剂目录
   try {
     const catalogRes = await getCatalogList({ page: 1, pageSize: 500, approvalStatus: 'APPROVED' })
@@ -523,10 +573,10 @@ onMounted(async () => {
       value: r.id, label: `${r.genericName || r.name || '—'} (${r.specification || '—'})`,
       genericName: r.genericName || r.name, specification: r.specification,
       manufacturer: r.manufacturer, hisCode: r.hisCode, pricePerUnit: r.pricePerUnit,
-      unit: r.unit || '盒'
+      unit: r.unit || '盒', materialType: r.materialType
     }))
     for (const r of list) {
-      catalogMap.value[r.id] = { genericName: r.genericName || r.name || '—', specification: r.specification || '—', manufacturer: r.manufacturer || '—', pricePerUnit: r.pricePerUnit, unit: r.unit || '盒' }
+      catalogMap.value[r.id] = { genericName: r.genericName || r.name || '—', specification: r.specification || '—', manufacturer: r.manufacturer || '—', pricePerUnit: r.pricePerUnit, unit: r.unit || '盒', materialType: r.materialType }
     }
   } catch { /* 静默 */ }
 
@@ -550,14 +600,7 @@ onMounted(async () => {
   const { orderId, poNo } = route.query
   if (!orderId) return
   poContext.orderId = orderId; poContext.poNo = poNo || '—'
-  try {
-    const order = await store.fetchOrderDetail(orderId)
-    if (order) {
-      poContext.poNo = order.poNo || poNo || '—'; poContext.poStatus = order.status || 'DRAFT'
-      poContext.supplierName = order.supplierName || '—'; poContext.sourceType = order.sourceType || ''
-      receiveItems.value = (order.items || []).map(it => buildItem(it.reagentId, it))
-    }
-  } catch { ElMessage.error('加载采购订单数据失败') }
+  await loadReceivingOrder(orderId, poNo)
 })
 
 // ── Excel 导入 ──
@@ -566,8 +609,13 @@ function triggerImport() { importFileRef.value?.click() }
 function handleImportFile(e) {
   const file = e.target.files[0]
   if (!file) return
+  const targetOrder = poContext.orderId
   const reader = new FileReader()
   reader.onload = (ev) => {
+    if (loadingOrder.value || submitting.value || targetOrder !== poContext.orderId) {
+      ElMessage.warning('验收上下文已变化，请重新导入')
+      return
+    }
     try {
       const wb = XLSX.read(ev.target.result, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
@@ -579,16 +627,21 @@ function handleImportFile(e) {
         if (!nameOrCode || qty <= 0) { skipped++; continue }
         const matched = findReagent(nameOrCode)
         if (!matched) { skipped++; continue }
-        receiveItems.value.push({
-          itemId: null, reagentId: matched.value,
+        const line = {
+          itemId: null, reagentId: matched.value, materialType: matched.materialType,
           reagentName: matched.genericName || '—', specification: matched.specification || '—',
           manufacturer: matched.manufacturer || '—', unitPrice: matched.pricePerUnit || null,
           supplier: poContext.supplierName || '',
           qtyOrdered: qty, qtyReceived: 0, remaining: poContext.orderId ? qty : 0, receiveQty: qty,
           batchNo: (row['批号'] || row['batchNo'] || '').toString().trim(),
           expiryDate: (row['效期'] || row['expiryDate'] || '').toString().trim(),
-          productionDate: (row['生产日期'] || row['productionDate'] || '').toString().trim()
-        })
+          productionDate: (row['生产日期'] || row['productionDate'] || '').toString().trim(),
+          udi: (row['UDI-DI'] || row.udiDi || '').toString().trim()
+        }
+        if (poContext.orderId) {
+          try { receiveItems.value = stageOrderReceipt(receiveItems.value, [line]) }
+          catch { skipped++; continue }
+        } else receiveItems.value.push(line)
         added++
       }
       ElMessage.success(`导入完成：成功 ${added} 项，跳过 ${skipped} 项`)
@@ -622,27 +675,52 @@ function downloadTemplate() {
   XLSX.writeFile(wb, '人工验收导入模板.xlsx')
 }
 
+function resetReceiptLine(row) {
+  return { ...row, receiveQty: 0, batchNo: '', expiryDate: '', productionDate: '', udi: '', warehouseId: null }
+}
+
+function clearReceiptLine(index) {
+  if (poContext.orderId) receiveItems.value[index] = resetReceiptLine(receiveItems.value[index])
+  else receiveItems.value.splice(index, 1)
+}
+
 function clearAll() {
   ElMessageBox.confirm('确定要清空所有验收明细吗？', '确认清空', { type: 'warning' })
-    .then(() => { receiveItems.value = [] }).catch(() => {})
+    .then(() => {
+      if (submitting.value || loadingOrder.value) return
+      receiveItems.value = poContext.orderId ? receiveItems.value.map(resetReceiptLine) : []
+    }).catch(() => {})
 }
 
 // ── 确认入库 ──
 async function confirmReceiving() {
+  if (submitting.value || loadingOrder.value) return
   const toReceive = receiveItems.value.filter(i => i.receiveQty > 0)
   if (!toReceive.length) return
-  if (toReceive.some(item => !item.batchNo?.trim() || !item.expiryDate)) {
+  if (poContext.orderId && toReceive.some(item => item.itemId == null || item.receiveQty > item.remaining)) {
+    ElMessage.warning('验收明细必须关联订单行，且不得超过剩余数量')
+    return
+  }
+  if (!poContext.orderId && !directSupplierId.value) {
+    ElMessage.warning('请选择验收供应商')
+    return
+  }
+  let directWarehouseId
+  if (!poContext.orderId) {
+    try { directWarehouseId = directReceiptWarehouse(toReceive) }
+    catch (error) { ElMessage.warning(error.message); return }
+  }
+  if (toReceive.some(item => requiresReceiptTracking(item) && (!item.batchNo?.trim() || !item.expiryDate))) {
     ElMessage.warning('请为每项验收物料填写批号和有效期，收货成功必须对应实际入库')
     return
   }
+  submitting.value = true
   try {
     await ElMessageBox.confirm(
       `确认对 ${toReceive.length} 项试剂进行人工验收入库，共 ${toReceive.reduce((s, i) => s + i.receiveQty, 0)} 件？`,
       '确认入库', { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
     )
-  } catch { return }
-
-  submitting.value = true
+  } catch { submitting.value = false; return }
   try {
     if (poContext.orderId) {
       let s = 0, f = 0
@@ -651,24 +729,28 @@ async function confirmReceiving() {
           await receiveOrder({
             orderId: poContext.orderId, itemId: item.itemId, qtyReceived: item.receiveQty,
             batchNo: item.batchNo || undefined, productionDate: item.productionDate || undefined,
-            expiryDate: item.expiryDate || undefined, warehouseId: item.warehouseId || 1
+            expiryDate: item.expiryDate || undefined, warehouseId: item.warehouseId || undefined,
+            udiDi: receiptUdi(item)
           })
           s++
-        } catch (e) { f++; console.error(`验收失败 itemId=${item.itemId}:`, e) }
+          item.remaining -= item.receiveQty
+          item.qtyReceived = Number(item.qtyReceived) + item.receiveQty
+          item.receiveQty = 0
+        } catch (e) { f++; console.error(`验收未确认 itemId=${item.itemId}:`, e); break }
       }
-      if (s > 0) ElMessage.success(`验收完成：成功 ${s} 项` + (f > 0 ? `，失败 ${f} 项` : ''))
-      else ElMessage.error('验收失败')
-      try {
+      if (f) ElMessage.warning(`已确认 ${s} 项；未确认及未提交明细已保留，请核对后重试`)
+      else ElMessage.success(`验收完成：成功 ${s} 项`)
+      if (!f) try {
         const order = await store.fetchOrderDetail(poContext.orderId)
         if (order) { poContext.poStatus = order.status || poContext.poStatus; receiveItems.value = (order.items || []).map(it => buildItem(it.reagentId, it)) }
       } catch { /* 静默 */ }
     } else {
       const res = await receiveDirect({
-        supplierId: 1, warehouseId: toReceive[0]?.warehouseId || 1,
+        supplierId: directSupplierId.value, warehouseId: directWarehouseId,
         items: toReceive.map(i => ({
           reagentId: i.reagentId, qtyReceived: i.receiveQty,
           batchNo: i.batchNo || null, productionDate: i.productionDate || null,
-          expiryDate: i.expiryDate || null, unitPrice: i.unitPrice
+          expiryDate: i.expiryDate || null, unitPrice: i.unitPrice, udiDi: receiptUdi(i)
         }))
       })
       ElMessage.success(`直收完成：PO ${res.poNo}，成功 ${res.successCount} 项，总金额 ¥${res.totalAmount}`)

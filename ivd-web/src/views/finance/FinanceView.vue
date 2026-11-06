@@ -11,7 +11,7 @@
         <el-tag :type="settleStatus === '已日结' ? 'success' : 'warning'" size="small">{{ settleStatus }}</el-tag>
       </span>
       <div class="header-right">
-        <el-date-picker v-model="settleDate" type="date" placeholder="选择结算日期" size="small" style="width:150px" @change="onDateChange" />
+        <el-date-picker v-model="settleDate" type="date" value-format="YYYY-MM-DD" placeholder="选择结算日期" size="small" style="width:150px" @change="onDateChange" />
         <el-button type="primary" size="small" style="margin-left:8px" @click="doDailySettle">执行日结</el-button>
         <el-button size="small" @click="doMonthlySettle">执行月结</el-button>
       </div>
@@ -27,20 +27,20 @@
       </el-col>
       <el-col :span="6">
         <div class="kpi-card kpi-card--info">
-          <div class="kpi-label">总消耗数量</div>
-          <div class="kpi-value" style="color:var(--ivd-danger)">{{ formatNum(totalQuantity) }}<span class="unit"> 盒</span></div>
+          <div class="kpi-label">有效消耗结算笔数</div>
+          <div class="kpi-value" style="color:var(--ivd-danger)">{{ activeSettlementCount ?? '—' }}<span class="unit"> 笔</span></div>
         </div>
       </el-col>
       <el-col :span="6">
         <div class="kpi-card kpi-card--warn">
-          <div class="kpi-label">总结算金额</div>
-          <div class="kpi-value" style="color:var(--ivd-warning)">{{ formatMoney(totalAmount) }}<span class="unit"> 元</span></div>
+          <div class="kpi-label">有效消耗结算金额</div>
+          <div class="kpi-value" style="color:var(--ivd-warning)">{{ formatMoney(totalAmount) }}<span v-if="totalAmount != null" class="unit"> 元</span></div>
         </div>
       </el-col>
       <el-col :span="6">
         <div class="kpi-card kpi-card--success">
           <div class="kpi-label">涉及试剂数</div>
-          <div class="kpi-value" style="color:var(--ivd-success)">{{ reagentCount }}<span class="unit"> 种</span></div>
+          <div class="kpi-value" style="color:var(--ivd-success)">{{ reagentCount ?? '—' }}<span class="unit"> 种</span></div>
         </div>
       </el-col>
     </el-row>
@@ -48,11 +48,11 @@
     <!-- 过滤工具栏 -->
     <el-card shadow="never" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <el-input v-model="filterReagent" placeholder="试剂名称" clearable style="width:160px" @keyup.enter="fetchData" />
-        <el-select v-model="filterWarehouse" placeholder="全部库房" clearable style="width:150px" @change="fetchData">
+        <el-input v-model="filterReagent" placeholder="试剂名称或院内编码" clearable maxlength="100" style="width:160px" @keyup.enter="applyFilters" @clear="applyFilters" />
+        <el-select v-model="filterWarehouse" placeholder="全部库房" clearable style="width:150px" @change="applyFilters">
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
-        <el-button type="primary" @click="fetchData">查询</el-button>
+        <el-button type="primary" @click="applyFilters">查询</el-button>
         <el-button @click="resetFilters">重置</el-button>
       </div>
     </el-card>
@@ -75,7 +75,7 @@
         <el-table-column prop="unitPrice" label="单价" width="80" align="right" />
         <el-table-column prop="batchUnitPrice" label="批次单价" width="90" align="right" />
         <el-table-column prop="quantity" label="结算数量" width="85" align="center" />
-        <el-table-column prop="amount" label="结算金额" width="100" align="right" />
+        <el-table-column prop="amount" label="流水消耗金额" width="120" align="right" />
         <el-table-column prop="consumerName" label="消耗人" width="90" />
         <el-table-column label="是否带量" width="85" align="center">
           <template #default="{ row }">
@@ -114,10 +114,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { dailySettle, monthlySettle, getFinanceStats } from '@/api/finance'
 import { getConsumptionDetails } from '@/api/settlement'
 import { getWarehouseList } from '@/api/inventory'
+import { localSettlementDate, settlementPeriod } from '@/utils/settlementDate.mjs'
 
 const page = ref(1), pageSize = ref(20)
 const records = ref([]), loading = ref(false), total = ref(0)
-const settleDate = ref(new Date().toISOString().slice(0, 10))
+const settleDate = ref(localSettlementDate())
 const settleStatus = ref('待日结')
 const warehouses = ref([])
 
@@ -125,7 +126,7 @@ const warehouses = ref([])
 const filterReagent = ref(''), filterWarehouse = ref(null)
 
 // KPI
-const totalRecords = ref(0), totalQuantity = ref(0), totalAmount = ref(0), reagentCount = ref(0)
+const totalRecords = ref(0), activeSettlementCount = ref(null), totalAmount = ref(null), reagentCount = ref(null)
 
 onMounted(() => { fetchData(); loadWarehouses(); fetchStats() })
 
@@ -133,51 +134,68 @@ async function loadWarehouses() {
   try { const d = await getWarehouseList({ pageSize: 50 }); warehouses.value = d.records || [] } catch {}
 }
 
-function onDateChange() { fetchData(); fetchStats() }
+function applyFilters() { page.value = 1; fetchData() }
+function onDateChange() { applyFilters(); fetchStats() }
 
-function resetFilters() { filterReagent.value = ''; filterWarehouse.value = null; fetchData() }
+function resetFilters() { filterReagent.value = ''; filterWarehouse.value = null; applyFilters() }
+
+let detailsRequest = 0
+function clearDetails() {
+  records.value = []; total.value = 0; totalRecords.value = 0
+  activeSettlementCount.value = null; totalAmount.value = null; reagentCount.value = null
+}
 
 async function fetchData() {
+  const requestId = ++detailsRequest
+  const period = settlementPeriod(settleDate.value)
+  if (!period) { clearDetails(); loading.value = false; return }
   loading.value = true
   try {
-    const params = { page: page.value, pageSize: pageSize.value }
+    const params = { page: page.value, pageSize: pageSize.value, date: period.date }
     if (filterWarehouse.value) params.warehouseId = filterWarehouse.value
+    const keyword = filterReagent.value.trim()
+    if (keyword) params.keyword = keyword
     const d = await getConsumptionDetails(params)
+    if (requestId !== detailsRequest) return
     records.value = d.records || []
     total.value = d.total || 0
 
-    // Compute KPIs from all records (frontend aggregation for summary)
-    const all = records.value
     totalRecords.value = total.value
-    totalQuantity.value = all.reduce((s, r) => s + (Number(r.quantity) || 0), 0)
-    totalAmount.value = all.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    const reagentSet = new Set(all.map(r => r.reagentName).filter(Boolean))
-    reagentCount.value = reagentSet.size
-  } catch { records.value = []; total.value = 0 } finally { loading.value = false }
+    activeSettlementCount.value = d.summary?.activeSettlementCount ?? null
+    totalAmount.value = d.summary?.activeSettlementAmount ?? null
+    reagentCount.value = d.summary?.reagentCount ?? null
+  } catch { if (requestId === detailsRequest) clearDetails() }
+  finally { if (requestId === detailsRequest) loading.value = false }
 }
 
 async function fetchStats() {
+  const period = settlementPeriod(settleDate.value)
+  settleStatus.value = period ? '待日结' : '未选择日期'
+  if (!period) return
   try {
-    const stats = await getFinanceStats(settleDate.value)
-    if (stats) settleStatus.value = (stats.totalReagents > 0) ? '已日结' : '待日结'
+    const stats = await getFinanceStats(period.date)
+    if (stats && settleDate.value === period.date) settleStatus.value = (stats.totalReagents > 0) ? '已日结' : '待日结'
   } catch {}
 }
 
-function formatNum(n) { return (Number(n) || 0).toFixed(0) }
-function formatMoney(n) { return (Number(n) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function formatMoney(n) { return n == null ? '未知' : Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
 async function doDailySettle() {
+  const period = settlementPeriod(settleDate.value)
+  if (!period) { ElMessage.warning('请选择有效的结算日期'); return }
   try {
-    await ElMessageBox.confirm(`确认对 ${settleDate.value} 执行日结？`, '确认日结', { type: 'info' })
-    await dailySettle(settleDate.value)
+    await ElMessageBox.confirm(`确认对 ${period.date} 执行日结？`, '确认日结', { type: 'info' })
+    await dailySettle(period.date)
     ElMessage.success('日结完成')
-    settleStatus.value = '已日结'
+    if (settleDate.value === period.date) settleStatus.value = '已日结'
     await fetchData()
   } catch { /* cancelled */ }
 }
 
 async function doMonthlySettle() {
-  const ym = settleDate.value.slice(0, 7)
+  const period = settlementPeriod(settleDate.value)
+  if (!period) { ElMessage.warning('请选择有效的结算日期'); return }
+  const ym = period.yearMonth
   try {
     await ElMessageBox.confirm(`确认对 ${ym} 执行月结？`, '确认月结', { type: 'warning' })
     await monthlySettle(ym)

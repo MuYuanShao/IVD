@@ -238,7 +238,7 @@ onBeforeUnmount(() => { clearTimeout(searchTimer) })
 
 async function loadSuppliers() {
   try {
-    const list = await getSuppliers()
+    const list = (await getSuppliers() || []).filter(s => s.isActive === true)
     if (list && list.length) {
       suppliers.value = list.map(s => ({ value: s.id, label: s.name }))
     } else {
@@ -267,7 +267,7 @@ async function loadSmartReplenish() {
 
 // 批量生成采购单
 async function doBatchCreatePO() {
-  if (!selectedReplenish.value.length) return
+  if (replenishCreating.value || !selectedReplenish.value.length) return
   replenishCreating.value = true
   try {
     const items = selectedReplenish.value.map(s => ({

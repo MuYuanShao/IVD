@@ -155,24 +155,34 @@ public class UniqueCodeService {
     @Transactional(rollbackFor = Exception.class)
     public int transferUniqueCodes(Long sourceBatchId, Long targetBatchId, int count) {
         if (count <= 0) return 0;
+        if (sourceBatchId == null || targetBatchId == null || sourceBatchId.equals(targetBatchId))
+            throw new com.zlth.ivd.common.exception.BizException(40001, "唯一码调拨源批次与目标批次无效");
 
         List<UdiUniqueCode> codes = uniqueCodeMapper.selectList(
                 new LambdaQueryWrapper<UdiUniqueCode>()
                         .eq(UdiUniqueCode::getBatchId, sourceBatchId)
                         .eq(UdiUniqueCode::getStatus, "IN_STOCK")
-                        .orderByAsc(UdiUniqueCode::getUniqueCode)
-                        .last("LIMIT " + count));
+                        .last("FOR UPDATE"));
+
+        // 当前SQL重写器会错误前置ORDER/LIMIT后的FOR UPDATE；先锁来源集合，再在内存稳定选码。
+        codes.sort(java.util.Comparator.comparing(UdiUniqueCode::getUniqueCode));
+        if (codes.size() > count) codes = new ArrayList<>(codes.subList(0, count));
 
         if (codes.isEmpty()) return 0;
 
         LocalDateTime now = LocalDateTime.now();
         int updated = 0;
         for (UdiUniqueCode code : codes) {
-            code.setBatchId(targetBatchId);
-            // Called after target stock has actually been received, not while shipment is in transit.
-            code.setStatus("IN_STOCK");
-            code.setUpdatedAt(now);
-            uniqueCodeMapper.updateById(code);
+            // 行锁之外再校验旧归属，禁止等待锁期间被他人迁移的码被覆盖。
+            int changed = uniqueCodeMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<UdiUniqueCode>()
+                            .eq(UdiUniqueCode::getId, code.getId())
+                            .eq(UdiUniqueCode::getBatchId, sourceBatchId)
+                            .eq(UdiUniqueCode::getStatus, "IN_STOCK")
+                            .set(UdiUniqueCode::getBatchId, targetBatchId)
+                            .set(UdiUniqueCode::getStatus, "IN_STOCK")
+                            .set(UdiUniqueCode::getUpdatedAt, now));
+            if (changed != 1) throw new com.zlth.ivd.common.exception.BizException(40900, "唯一码归属已变化，操作已回滚");
             updated++;
         }
 

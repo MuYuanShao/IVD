@@ -49,6 +49,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 public class ReagentCatalogServiceImpl implements ReagentCatalogService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.zlth.ivd.common.service.CatalogDeletionGuard deletionGuard;
 
     private final ReagentCatalogMapper catalogMapper;
     private final FiveCodeMappingService fiveCodeMappingService;
@@ -67,6 +69,15 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         Page<ReagentCatalog> p = new Page<>(page, Math.min(pageSize, 500));
         IPage<ReagentCatalog> iPage = catalogMapper.pageList(p, query);
         return PageVO.of(iPage, this::toVO);
+    }
+
+    @Override
+    public java.util.List<ReagentCatalogVO> listForExport() {
+        var rows = catalogMapper.selectList(new LambdaQueryWrapper<ReagentCatalog>()
+                .orderByDesc(ReagentCatalog::getUpdatedAt, ReagentCatalog::getId)
+                .last("LIMIT 10001"));
+        if (rows.size() > 10000) throw new BizException(40001, "目录超过单次导出上限（10000 条），未生成文件");
+        return rows.stream().map(this::toVO).toList();
     }
 
     @Override
@@ -261,12 +272,23 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
             throw new BizException(40007, "试剂不存在: id=" + id);
         }
         if (approvalLogService.hasPending(id)) throw new BizException(40900, "待审批试剂不能删除");
-        appendChange(entity, "DELETE", Map.of("isDeleted", Map.of("old", 0, "new", 1)));
-        // MyBatis-Plus @TableLogic 自动执行软删除
-        catalogMapper.deleteById(id);
-        // 硬删除五码映射（该表无 is_deleted）
-        fiveCodeMappingService.deleteByReagentId(id);
-        log.info("试剂已软删除: id={}, hisCode={}", id, entity.getHisCode());
+        if (draftMapper.selectById(id) != null) throw new BizException(40900, "请先处理目录编辑草稿，再申请删除");
+        requireDeletionAllowed(id);
+        try {
+            approvalLogService.createLog(id, "DELETE", objectMapper.writeValueAsString(entity),
+                    "申请删除目录", com.zlth.ivd.common.utils.SecurityUtils.getCurrentUserId(),
+                    com.zlth.ivd.common.utils.SecurityUtils.getCurrentUsername());
+        } catch (JsonProcessingException e) {
+            throw new BizException(50000, "删除审批快照保存失败");
+        }
+        catalogMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ReagentCatalog>()
+                .eq(ReagentCatalog::getId, id).set(ReagentCatalog::getApprovalStatus, ApprovalStatusEnum.PENDING)
+                .set(ReagentCatalog::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    private void requireDeletionAllowed(Long id) {
+        if (deletionGuard == null) throw new BizException(40900, "删除引用校验未配置，已拒绝删除");
+        deletionGuard.requireDeletable(id);
     }
 
     // ──────────────────────────────────────────────
@@ -337,6 +359,14 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         ReagentCatalog expected = draft == null ? locked : readSnapshot(draft.getSnapshot());
         if (!java.util.Objects.equals(submitted.getId(), locked.getId()) || !sameEditableFields(submitted, expected))
             throw new BizException(40900, "提交快照与当前待审批版本不一致，请驳回后重新提交");
+        if ("DELETE".equals(logEntry.getChangeType())) {
+            requireDeletionAllowed(locked.getId());
+            appendChange(locked, "DELETE", Map.of("isDeleted", Map.of("old", 0, "new", 1)));
+            approvalLogService.approve(approvalLogId, request.getReviewerId(), request.getReviewerName(), request.getComment());
+            catalogMapper.deleteById(locked.getId());
+            fiveCodeMappingService.deleteByReagentId(locked.getId());
+            return;
+        }
         if (draft != null) {
             ReagentCatalog candidate = readSnapshot(draft.getSnapshot());
             validateCatalog(candidate);
@@ -349,6 +379,9 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
                         candidate.getInsuranceCode(), candidate.getRegistrationCertNo());
             }
             draftMapper.deleteById(locked.getId());
+        }
+        if (!submitted.getMaterialType().requiresFiveCodeMapping()) {
+            fiveCodeMappingService.deleteByReagentId(locked.getId());
         }
 
         // 更新审批日志
@@ -389,10 +422,12 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         approvalLogService.reject(approvalLogId, request.getReviewerId(),
                 request.getReviewerName(), request.getComment());
 
-        // 更新试剂状态 → REJECTED
+        // 删除被驳回时保留原目录的生效状态。
         ReagentCatalog entity = catalogMapper.selectById(logEntry.getReagentId());
         if (entity != null) {
-            entity.setApprovalStatus(ApprovalStatusEnum.REJECTED);
+            ApprovalStatusEnum rejectedStatus = "DELETE".equals(logEntry.getChangeType())
+                    ? readSnapshot(logEntry.getFieldChanges()).getApprovalStatus() : ApprovalStatusEnum.REJECTED;
+            entity.setApprovalStatus(rejectedStatus);
             entity.setUpdatedAt(LocalDateTime.now());
             catalogMapper.updateById(entity);
         }
@@ -478,9 +513,9 @@ public class ReagentCatalogServiceImpl implements ReagentCatalogService {
         vo.setUpdatedAt(entity.getUpdatedAt());
 
         // 嵌套五码映射
-        FiveCodeMapping mapping = fiveCodeMappingService.getByReagentId(entity.getId());
-        if (mapping != null) {
-            vo.setFiveCodeMapping(toFiveCodeMappingVO(mapping));
+        if (entity.getMaterialType() != null && entity.getMaterialType().requiresFiveCodeMapping()) {
+            FiveCodeMapping mapping = fiveCodeMappingService.getByReagentId(entity.getId());
+            if (mapping != null) vo.setFiveCodeMapping(toFiveCodeMappingVO(mapping));
         }
 
         return vo;

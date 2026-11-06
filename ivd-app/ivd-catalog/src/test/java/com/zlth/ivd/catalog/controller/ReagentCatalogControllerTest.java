@@ -39,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ReagentCatalogControllerTest {
+    @org.springframework.boot.test.mock.mockito.MockBean com.zlth.ivd.common.service.CatalogDeletionGuard deletionGuard;
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,7 +57,7 @@ class ReagentCatalogControllerTest {
     void authenticateAsSystemAdmin() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
-                        "catalog-test-admin",
+                        1L,
                         null,
                         java.util.List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
     }
@@ -472,10 +473,11 @@ class ReagentCatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        // 验证已删除（查询返回404）
+        // 删除请求只发起审批，目录仍可查询。
         mockMvc.perform(get("/api/v1/catalog/{id}", reagent2Id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(40007));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.approvalStatus").value("PENDING"));
     }
 
     // ==================== 17. UDI 待补全列表 ====================

@@ -40,11 +40,12 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public void dailySettlement(LocalDate date) {
-        LocalDate settleDate = date != null ? date : LocalDate.now();
+        LocalDate today = LocalDate.now();
+        LocalDate settleDate = date != null ? date : today.minusDays(1);
         log.info("执行日结: date={}", settleDate);
 
-        if (settleDate.isAfter(LocalDate.now()))
-            throw new com.zlth.ivd.common.exception.BizException(40001, "不能生成未来日期的日结");
+        if (!settleDate.isBefore(today))
+            throw new com.zlth.ivd.common.exception.BizException(40001, "只能对已结束的日期执行日结，请在次日结算");
         snapshotMapper.lockWarehouses();
         LocalDate supportedFrom = snapshotMapper.getEarliestSupportedDate();
         if (supportedFrom != null && settleDate.isBefore(supportedFrom))
@@ -85,12 +86,30 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     public void monthlySettlement(String yearMonth) {
-        log.info("执行月结: yearMonth={}", yearMonth);
-        if (yearMonth == null || yearMonth.length() < 7) return;
-        LocalDate start = LocalDate.parse(yearMonth + "-01");
-        LocalDate end = start.plusMonths(1).minusDays(1);
+        java.time.YearMonth month;
+        try {
+            if (yearMonth == null || !yearMonth.matches("\\d{4}-\\d{2}"))
+                throw new IllegalArgumentException();
+            month = java.time.YearMonth.parse(yearMonth);
+        } catch (java.time.DateTimeException | IllegalArgumentException e) {
+            throw new com.zlth.ivd.common.exception.BizException(40001, "月份格式须为 YYYY-MM");
+        }
+        LocalDate start = month.atDay(1);
+        LocalDate end = month.atEndOfMonth();
+        if (!end.isBefore(LocalDate.now()))
+            throw new com.zlth.ivd.common.exception.BizException(40001, "只能对已结束的月份执行月结");
+        Long actor = com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
+        long coveredDays = snapshotMapper.countCoveredDays(start, end);
+        if (coveredDays != month.lengthOfMonth())
+            throw new com.zlth.ivd.common.exception.BizException(40001,
+                    "该月日结快照不完整（" + coveredDays + "/" + month.lengthOfMonth() + " 天），不能月结");
         Map<String, Object> agg = snapshotMapper.getBalanceAggregation(start, end);
-        log.info("月结完成: {} → {}, 汇总: {}", start, end, agg);
+        try {
+            if (snapshotMapper.insertMonthlyClose(yearMonth, agg, actor) != 1)
+                throw new com.zlth.ivd.common.exception.BizException(50000, "月结结果未保存");
+        } catch (org.springframework.dao.DuplicateKeyException duplicate) {
+            throw new com.zlth.ivd.common.exception.BizException(40900, "该月份已完成月结");
+        }
     }
 
     @Override

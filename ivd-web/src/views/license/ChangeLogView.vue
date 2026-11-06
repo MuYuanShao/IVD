@@ -35,6 +35,7 @@
               <el-option label="冻结" value="FREEZE" />
               <el-option label="解冻" value="UNFREEZE" />
               <el-option label="删除附件" value="DELETE_ATTACHMENT" />
+              <el-option label="新增附件" value="ADD_ATTACHMENT" />
               <el-option label="变更附件" value="REPLACE_ATTACHMENT" />
             </template>
             <template v-if="filterModule !== 'LICENSE'">
@@ -210,6 +211,7 @@ function changeTypeTag(type, module) {
     case 'FREEZE': return 'info'
     case 'UNFREEZE': return 'success'
     case 'DELETE_ATTACHMENT': return 'danger'
+    case 'ADD_ATTACHMENT': return 'success'
     case 'REPLACE_ATTACHMENT': return 'warning'
     default: return 'info'
   }
@@ -241,7 +243,7 @@ function formatNote(row) {
   if (!row.note) return ''
   try {
     const obj = JSON.parse(row.note)
-    if (obj.fileName) return `删除附件: ${obj.fileName}`
+    if (obj.fileName) return `${row.changeType === 'ADD_ATTACHMENT' ? '新增附件' : '删除附件'}: ${obj.fileName}`
     if (obj.oldFileName && obj.newFileName) return `替换: ${obj.oldFileName} → ${obj.newFileName}`
     return row.note
   } catch {

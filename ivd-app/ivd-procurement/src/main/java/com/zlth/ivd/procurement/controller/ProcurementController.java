@@ -3,6 +3,7 @@ package com.zlth.ivd.procurement.controller;
 import com.zlth.ivd.common.annotation.AuditLog;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.service.StockCommandService;
 import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.procurement.dto.PickAndShipRequest;
 import com.zlth.ivd.procurement.dto.ReceiveItemRequest;
@@ -33,6 +34,8 @@ import java.util.*;
 public class ProcurementController {
 
     private final ProcurementService procurementService;
+    private final com.zlth.ivd.common.service.RequisitionReceiptService receiptService;
+    private final StockCommandService commands;
 
     // ==================== 申领单 ====================
 
@@ -108,7 +111,8 @@ public class ProcurementController {
     @AuditLog(module = "采购管理", action = "科室签收")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
     public Result<PurchaseRequisitionVO> receiveRequisition(@PathVariable Long id) {
-        return Result.success(procurementService.receiveRequisition(id));
+        receiptService.receiveAndSettleRequisition(id);
+        return Result.success(procurementService.getRequisitionDetail(id));
     }
 
     // ==================== 缺货单 ====================
@@ -201,16 +205,21 @@ public class ProcurementController {
     @PostMapping("/receive")
     @AuditLog(module = "采购管理", action = "验收入库")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
-    public Result<String> receiveOrder(@RequestBody @Valid ReceiveItemRequest request) {
-        procurementService.receiveOrder(request);
-        return Result.success("验收成功");
+    public Result<String> receiveOrder(@RequestBody @Valid ReceiveItemRequest request,
+            @RequestHeader(value=StockCommandService.HEADER,required=false) String requestKey) {
+        return Result.success(commands.execute(StockCommandService.Operation.ORDER_RECEIVE,requestKey,request,StockCommandService.TEXT,()->{
+            procurementService.receiveOrder(request);
+            return "验收成功";
+        }));
     }
 
     @PostMapping("/receive/direct")
     @AuditLog(module = "采购管理", action = "人工验收直收（无采购订单）")
     @RequireRole({"SYSTEM_ADMIN", "STOREKEEPER"})
-    public Result<Map<String, Object>> receiveDirect(@RequestBody @Valid com.zlth.ivd.procurement.dto.DirectReceiveRequest request) {
-        return Result.success(procurementService.receiveDirect(request));
+    public Result<Map<String, Object>> receiveDirect(@RequestBody @Valid com.zlth.ivd.procurement.dto.DirectReceiveRequest request,
+            @RequestHeader(value=StockCommandService.HEADER,required=false) String requestKey) {
+        return Result.success(commands.execute(StockCommandService.Operation.DIRECT_RECEIVE,requestKey,request,StockCommandService.MAP,
+                ()->procurementService.receiveDirect(request)));
     }
 
     // ==================== 科室库请领记录 ====================

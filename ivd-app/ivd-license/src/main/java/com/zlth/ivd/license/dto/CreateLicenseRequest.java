@@ -32,7 +32,7 @@ public class CreateLicenseRequest {
     @NotNull(message = "有效期至不能为空")
     private LocalDate expireDate;
 
-    @NotNull(message = "操作人ID不能为空")
+    /** 兼容旧客户端；业务审计不使用此字段。 */
     private Long operatorId;
 
     private String operatorName;

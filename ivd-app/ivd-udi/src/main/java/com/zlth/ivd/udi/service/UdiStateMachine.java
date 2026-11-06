@@ -67,6 +67,7 @@ public class UdiStateMachine {
         Long operatorId = parseOperatorId(operator);
         UdiStatusLog statusLog = UdiStatusLog.builder()
                 .id(IdGenerator.nextId())
+                .batchId(batchId)
                 .batchNo(batchNo)
                 .fromStatus(from.getCode())
                 .toStatus(to.getCode())

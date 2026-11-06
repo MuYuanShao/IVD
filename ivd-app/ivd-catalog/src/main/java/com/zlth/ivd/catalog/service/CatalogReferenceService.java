@@ -8,5 +8,6 @@ import java.util.List;
 /** 跨模块只读目录契约。 */
 public interface CatalogReferenceService {
     ReagentCatalog findById(Long id);
+    ReagentCatalog lockForBusiness(Long id);
     List<ReagentCatalog> findByIds(Collection<Long> ids);
 }

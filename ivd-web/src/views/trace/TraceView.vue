@@ -8,7 +8,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h2><span class="title-icon" style="background:#f5f3ff;color:#8b5cf6;">🔍</span>UDI追溯主线<span class="sub-tag">X1 · 全生命周期</span></h2>
-      <el-button :icon="Download" @click="handleExportPdf">📄 导出PDF追溯报告</el-button>
+      <el-button :icon="Download" :loading="exportingPdf" :disabled="!exportQuery || traceLoading" @click="handleExportPdf">📄 导出PDF追溯报告</el-button>
     </div>
 
     <!-- 搜索区域 -->
@@ -38,7 +38,16 @@
     <template v-if="traceResult">
       <el-alert :title="traceResult.limitations || '按已保存业务记录展示'" type="info" :closable="false" />
       <el-card class="info-card" v-if="traceResult.batches"><template #header>跨库批次明细</template>
-        <el-table :data="traceResult.batches" row-key="batchId"><el-table-column prop="reagentName" label="试剂" min-width="140" /><el-table-column prop="batchNo" label="批号" min-width="170" /><el-table-column prop="warehouseName" label="库房" min-width="110" /><el-table-column prop="stock" label="库存" width="80" /><el-table-column prop="unit" label="单位" width="80" /><el-table-column prop="status" label="状态" width="120" /></el-table>
+        <el-table :data="traceResult.batches" row-key="batchId">
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <el-descriptions title="批次五码" :column="2" size="small" border>
+                <el-descriptions-item v-for="code in codeFields(row)" :key="code.label" :label="code.label">{{ code.value }}</el-descriptions-item>
+              </el-descriptions>
+            </template>
+          </el-table-column>
+          <el-table-column prop="reagentName" label="试剂" min-width="140" /><el-table-column prop="batchNo" label="批号" min-width="170" /><el-table-column prop="warehouseName" label="库房" min-width="110" /><el-table-column prop="stock" label="库存" width="80" /><el-table-column prop="unit" label="单位" width="80" /><el-table-column prop="status" label="状态" width="120" />
+        </el-table>
       </el-card>
       <!-- UDI 状态快照 -->
       <el-card shadow="never" class="info-card">
@@ -60,16 +69,15 @@
               {{ traceResult.expiryDate || '—' }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="注册证号">{{ traceResult.registrationCertNo || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="NMPA 注册证号">{{ traceResult.registrationCertNo || traceResult.nmpaCert || '—' }}</el-descriptions-item>
           <el-descriptions-item label="GTIN">{{ traceResult.gtin || '—' }}</el-descriptions-item>
           <el-descriptions-item label="医保编码">{{ traceResult.insuranceCode || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="NMPA注册证">{{ traceResult.nmpaCert || '—' }}</el-descriptions-item>
           <el-descriptions-item label="院内编码">{{ traceResult.hisCode || '—' }}</el-descriptions-item>
         </el-descriptions>
       </el-card>
 
-      <!-- 五码映射 -->
-      <el-card shadow="never" class="info-card">
+      <!-- 五码映射：跨品种或跨批次时以逐行信息为准 -->
+      <el-card v-if="traceResult.reagentId != null" shadow="never" class="info-card">
         <template #header><span class="card-title">🔗 五码映射</span></template>
         <el-row :gutter="16">
           <el-col :span="4" v-for="code in fiveCodes" :key="code.label">
@@ -82,7 +90,7 @@
       </el-card>
 
       <!-- 水平管线图 -->
-      <el-card shadow="never" class="info-card" v-if="traceResult">
+      <el-card shadow="never" class="info-card" v-if="traceResult && canReadLegacyPatients">
         <template #header><span class="card-title">🔀 全链路管线图</span></template>
         <div class="pipeline-horizontal">
           <div v-for="(node, idx) in pipelineNodes" :key="idx" class="pipeline-node-wrap">
@@ -101,7 +109,8 @@
           <span class="card-title">👤 患者关联记录</span>
           <el-button link type="primary" size="small" @click="loadPatients" :loading="patientsLoading">刷新</el-button>
         </template>
-        <el-table :data="patients" stripe size="small" v-loading="patientsLoading" empty-text="暂无患者关联记录">
+        <el-alert v-if="patientTraceError" :title="patientTraceError" type="warning" :closable="false" show-icon />
+        <el-table :data="patients" stripe size="small" v-loading="patientsLoading" :empty-text="patientTraceError ? '无法安全展示患者关联' : '暂无患者关联记录'">
           <el-table-column label="患者编号(脱敏)" width="130">
             <template #default="{row}">{{ row.patientIdHash || '—' }}</template>
           </el-table-column>
@@ -151,14 +160,19 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Download } from '@element-plus/icons-vue'
-import { traceUdi, getTracePatients } from '@/api/inventory'
+import { traceUdi, getTracePatients, downloadTracePdf } from '@/api/inventory'
+import { useClinicalAccess } from '@/composables/useClinicalAccess'
 
 const searchText = ref('')
 const lotFilter = ref(''), traceError = ref('')
 const traceLoading = ref(false)
 const traceResult = ref(null)
+const exportQuery = ref(null)
+const exportingPdf = ref(false)
 const patients = ref([])
 const patientsLoading = ref(false)
+const patientTraceError = ref('')
+const { enabled: canReadLegacyPatients } = useClinicalAccess()
 
 // ── 水平管线图节点 ──
 const pipelineNodes = computed(() => {
@@ -182,40 +196,49 @@ const pipelineNodes = computed(() => {
 
 // ── 加载患者关联 ──
 async function loadPatients() {
+  if (!canReadLegacyPatients.value) return
   const batchNo = traceResult.value?.batchNo
   if (!batchNo || batchNo.includes('多个批号')) return
   patientsLoading.value = true
+  patientTraceError.value = ''
   try {
     patients.value = (await getTracePatients(batchNo)) || []
-  } catch { patients.value = [] }
+  } catch (error) {
+    patients.value = []
+    patientTraceError.value = error.response?.data?.message || error.message || '患者关联读取失败'
+  }
   finally { patientsLoading.value = false }
 }
 
 // ── 五码映射 ──
-const fiveCodes = computed(() => {
-  if (!traceResult.value) return []
+function codeFields(source) {
   return [
-    { label: 'UDI-DI', value: traceResult.value.udiDi || '—' },
-    { label: 'GTIN', value: traceResult.value.gtin || '—' },
-    { label: '医保编码', value: traceResult.value.insuranceCode || '—' },
-    { label: 'NMPA注册证', value: traceResult.value.nmpaCert || '—' },
-    { label: '院内编码', value: traceResult.value.hisCode || '—' },
+    { label: 'UDI-DI', value: source.udiDi || '—' },
+    { label: 'GTIN', value: source.gtin || '—' },
+    { label: '医保编码', value: source.insuranceCode || '—' },
+    { label: 'NMPA注册证', value: source.registrationCertNo || source.nmpaCert || '—' },
+    { label: '院内编码', value: source.hisCode || '—' },
   ]
-})
+}
+const fiveCodes = computed(() => traceResult.value ? codeFields(traceResult.value) : [])
 
 // ── 追溯查询 ──
 async function doTrace() {
+  if (traceLoading.value) return
   const q = searchText.value.trim()
   if (!q) { ElMessage.warning('请输入 UDI-DI 或批号'); return }
 
   traceLoading.value = true
-  traceResult.value = null; traceError.value = ''; patients.value = []
+  const lot = lotFilter.value.trim() || undefined
+  exportQuery.value = null
+  traceResult.value = null; traceError.value = ''; patients.value = []; patientTraceError.value = ''
   try {
-    const d = await traceUdi(q,lotFilter.value.trim() || undefined)
+    const d = await traceUdi(q, lot)
     if (d) {
       traceResult.value = d
+      exportQuery.value = { q, lot }
       // Load patient associations
-      if (d.batchNo) loadPatients()
+      if (d.batchNo && canReadLegacyPatients.value) loadPatients()
     }
   } catch (e) {
     traceError.value = e.message || '追溯查询失败，请重试'
@@ -226,9 +249,24 @@ async function doTrace() {
 
 
 // ── 导出PDF ──
-function handleExportPdf() {
-  if (!traceResult.value) { ElMessage.warning('请先查询追溯记录'); return }
-  ElMessage.success('PDF追溯报告生成中，即将下载...')
+async function handleExportPdf() {
+  const query = exportQuery.value
+  if (!query || exportingPdf.value) return
+  exportingPdf.value = true
+  try {
+    const pdf = await downloadTracePdf(query.q, query.lot)
+    if (!(pdf instanceof Blob) || pdf.type !== 'application/pdf' || !pdf.size) throw new Error('未收到有效的 PDF')
+    const url = URL.createObjectURL(pdf)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'udi-trace.pdf'
+    document.body.append(link)
+    try { link.click() } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+  } catch {
+    ElMessage.error('PDF 导出失败，请核对查询范围后重试')
+  } finally {
+    exportingPdf.value = false
+  }
 }
 
 // ── 帮助函数 ──

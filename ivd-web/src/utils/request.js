@@ -16,6 +16,10 @@ const service = axios.create({
 service.interceptors.request.use(
   config => {
     const token = localStorage.getItem('ivd-token')
+    if (config.stockCommandToken && config.stockCommandToken !== token) {
+      return Promise.reject(new Error('登录身份已变化，未提交本次业务请求'))
+    }
+    delete config.stockCommandToken
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -55,7 +59,10 @@ service.interceptors.response.use(
     }
     console.error('[Request] 业务错误:', code, message)
     if (!response.config.silentError) ElMessage.error(message || '请求失败')
-    return Promise.reject(new Error(message))
+    const error = new Error(message)
+    error.businessCode = code
+    error.businessDetail = response.data.detail
+    return Promise.reject(error)
   },
   error => {
     if (error.code === 'ERR_CANCELED') return Promise.reject(error)

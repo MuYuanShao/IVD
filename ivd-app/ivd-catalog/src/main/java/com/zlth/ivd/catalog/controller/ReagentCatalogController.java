@@ -12,6 +12,8 @@ import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.catalog.vo.ReagentCatalogVO;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.enums.MaterialTypeEnum;
+import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.common.annotation.RequireRole;
 import jakarta.servlet.http.HttpServletResponse;
@@ -202,15 +204,15 @@ public class ReagentCatalogController {
 
     private static final List<String> CATALOG_EXPORT_HEADERS = List.of(
             "HIS编码", "通用名称", "UDI-DI", "注册证号", "厂家", "配送商", "物料类型", "规格", "包装规格",
-            "审批状态", "检测组别", "创建时间"
+            "审批状态", "检测组别", "创建时间", "标称测试数"
     );
 
     /** 导出试剂目录（xlsx / csv） */
     @GetMapping("/export")
     public void export(@RequestParam(defaultValue = "xlsx") String format, HttpServletResponse response) {
-        PageVO<ReagentCatalogVO> result = catalogService.pageList(new ReagentCatalogQuery(), 1, 10000);
+        List<ReagentCatalogVO> result = catalogService.listForExport();
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (ReagentCatalogVO vo : result.getRecords()) {
+        for (ReagentCatalogVO vo : result) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("HIS编码", vo.getHisCode() != null ? vo.getHisCode() : "");
             row.put("通用名称", vo.getGenericName() != null ? vo.getGenericName() : "");
@@ -224,6 +226,7 @@ public class ReagentCatalogController {
             row.put("审批状态", vo.getApprovalStatusLabel() != null ? vo.getApprovalStatusLabel() : "");
             row.put("检测组别", vo.getTestGroups() != null ? vo.getTestGroups() : "");
             row.put("创建时间", vo.getCreatedAt() != null ? vo.getCreatedAt().toString() : "");
+            row.put("标称测试数", vo.getTestsPerKit());
             rows.add(row);
         }
         if ("csv".equalsIgnoreCase(format)) {
@@ -251,12 +254,18 @@ public class ReagentCatalogController {
                 req.setSpecification(objToStr(row.get("规格")));
                 req.setUnit(objToStr(row.get("包装规格")));
                 req.setTestGroups(objToStr(row.get("检测组别")));
-                if (req.getGenericName() != null && !req.getGenericName().isBlank()) {
-                    catalogService.create(req);
-                    success++;
-                } else {
-                    skipped++;
+                req.setMaterialType(parseImportMaterialType(objToStr(row.get("物料类型"))));
+                String tests = objToStr(row.get("标称测试数"));
+                if (tests != null && !tests.isBlank()) {
+                    int count = new java.math.BigDecimal(tests).intValueExact();
+                    if (count <= 0) throw new BizException(40001, "标称测试数必须为正整数");
+                    req.setTestsPerKit(count);
                 }
+                if (java.util.stream.Stream.of(req.getHisCode(), req.getGenericName(), req.getManufacturer(), req.getDistributor())
+                        .anyMatch(value -> value == null || value.isBlank()))
+                    throw new BizException(40001, "院内编码、通用名称、厂家及配送商不能为空");
+                catalogService.create(req);
+                success++;
             } catch (Exception e) {
                 log.warn("导入试剂失败: {}", e.getMessage());
                 skipped++;
@@ -267,6 +276,12 @@ public class ReagentCatalogController {
         result.put("success", success);
         result.put("skipped", skipped);
         return Result.success(result);
+    }
+
+    private MaterialTypeEnum parseImportMaterialType(String value) {
+        return Arrays.stream(MaterialTypeEnum.values())
+                .filter(type -> type.getCode().equalsIgnoreCase(value) || type.getLabel().equals(value))
+                .findFirst().orElseThrow(() -> new BizException(40001, "物料类型缺失或无法识别"));
     }
 
     private String objToStr(Object o) {

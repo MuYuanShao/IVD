@@ -1,6 +1,5 @@
 package com.zlth.ivd.license.dto;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -22,7 +21,7 @@ public class UpdateLicenseRequest {
     private LocalDate expireDate;
     private String status;
 
-    @NotNull(message = "操作人ID不能为空")
+    /** 兼容旧客户端；业务审计不使用此字段。 */
     private Long operatorId;
 
     private String operatorName;

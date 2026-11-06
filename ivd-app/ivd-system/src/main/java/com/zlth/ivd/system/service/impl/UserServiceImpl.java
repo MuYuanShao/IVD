@@ -78,6 +78,7 @@ public class UserServiceImpl implements UserService {
         if (count != null && count > 0) throw new BizException(40001, "用户名已存在: " + username);
         // validate role
         validateRole(role);
+        SysDept department = requireUsableDepartment(deptId, role);
 
         SysUser u = new SysUser();
         u.setUsername(username);
@@ -92,8 +93,7 @@ public class UserServiceImpl implements UserService {
         u.setUpdatedAt(LocalDateTime.now());
         userMapper.insert(u);
 
-        String deptName = null;
-        if (deptId != null) { SysDept d = deptMapper.selectById(deptId); if (d != null) deptName = d.getDeptName(); }
+        String deptName = department == null ? null : department.getDeptName();
         return toVO(u, Collections.singletonMap(deptId, deptName));
     }
 
@@ -102,6 +102,8 @@ public class UserServiceImpl implements UserService {
         SysUser u = userMapper.selectById(id);
         if (u == null) throw new BizException(40400, "用户不存在: id=" + id);
         if (StringUtils.hasText(role)) validateRole(role);
+        SysDept department = requireUsableDepartment(deptId != null ? deptId : u.getDeptId(),
+                StringUtils.hasText(role) ? role : u.getRole());
 
         if (StringUtils.hasText(realName)) u.setRealName(realName);
         if (StringUtils.hasText(role)) u.setRole(role);
@@ -111,9 +113,20 @@ public class UserServiceImpl implements UserService {
         u.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(u);
 
-        String deptName = null;
-        if (u.getDeptId() != null) { SysDept d = deptMapper.selectById(u.getDeptId()); if (d != null) deptName = d.getDeptName(); }
+        String deptName = department == null ? null : department.getDeptName();
         return toVO(u, Collections.singletonMap(u.getDeptId(), deptName));
+    }
+
+    private SysDept requireUsableDepartment(Long id, String role) {
+        if (id == null) {
+            if (Set.of("LAB_TECH", "LAB_DOCTOR", "LAB_DIRECTOR").contains(role))
+                throw new BizException(40001, "临床角色必须关联启用的科室");
+            return null;
+        }
+        SysDept department = deptMapper.selectOne(new LambdaQueryWrapper<SysDept>()
+                .eq(SysDept::getId, id).eq(SysDept::getStatus, 1).last("FOR UPDATE"));
+        if (department == null) throw new BizException(40001, "科室不存在、已停用或不属于当前机构");
+        return department;
     }
 
     @Override

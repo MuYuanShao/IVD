@@ -113,7 +113,7 @@ const supplierOptions = ref([])
 async function loadSuppliers() {
   try {
     const list = await getSuppliers()
-    if (list && list.length) supplierOptions.value = list.map(s => ({ value: s.id, label: s.name }))
+    supplierOptions.value = (list || []).filter(s => s.isActive === true).map(s => ({ value: s.id, label: s.name }))
   } catch (e) { console.error('Failed to load suppliers:', e) }
 }
 

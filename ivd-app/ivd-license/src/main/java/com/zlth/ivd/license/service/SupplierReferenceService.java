@@ -9,4 +9,6 @@ public interface SupplierReferenceService {
     Supplier findById(Long id);
     List<Supplier> findByIds(Collection<Long> ids);
     List<Supplier> findAll();
+    /** Fail closed for inactive suppliers or missing, expired or frozen credentials. */
+    void requireProcurementEligible(Long supplierId);
 }

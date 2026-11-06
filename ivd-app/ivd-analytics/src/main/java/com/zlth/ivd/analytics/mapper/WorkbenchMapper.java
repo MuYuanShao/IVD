@@ -9,8 +9,17 @@ import java.util.List;
 /** Reporting-owned, cross-domain read model. Does not call or mutate external module mappers. */
 @Mapper
 public interface WorkbenchMapper {
-    String LEDGER_SCOPE = " (#{deptId} IS NULL OR EXISTS (SELECT 1 FROM warehouse w WHERE w.id = CASE WHEN r.record_type='TRANSFER' THEN r.from_warehouse_id ELSE r.warehouse_id END AND w.dept_id=#{deptId})) ";
-    String BATCH_SCOPE = " (#{deptId} IS NULL OR EXISTS (SELECT 1 FROM warehouse w WHERE w.id=b.warehouse_id AND w.dept_id=#{deptId})) ";
+    String WAREHOUSE_OWNER_FROM = """
+            SELECT 1 FROM warehouse scope_w
+            LEFT JOIN warehouse scope_p ON scope_p.id=scope_w.parent_id AND scope_p.institution_id=scope_w.institution_id
+            LEFT JOIN warehouse scope_g ON scope_g.id=scope_p.parent_id AND scope_g.institution_id=scope_w.institution_id
+            WHERE COALESCE(scope_w.dept_id,scope_p.dept_id,scope_g.dept_id)=#{deptId}
+            """;
+    String LEDGER_SCOPE = " (#{deptId} IS NULL OR EXISTS (" + WAREHOUSE_OWNER_FROM
+            + " AND scope_w.institution_id=r.institution_id"
+            + " AND scope_w.id=CASE WHEN r.record_type='TRANSFER' THEN r.from_warehouse_id ELSE r.warehouse_id END)) ";
+    String BATCH_SCOPE = " (#{deptId} IS NULL OR EXISTS (" + WAREHOUSE_OWNER_FROM
+            + " AND scope_w.institution_id=b.institution_id AND scope_w.id=b.warehouse_id)) ";
     String TODO_FILTER = " r.status IN ('PENDING_REVIEW','REVIEWED','PICKING','PARTIAL_FULFILLED','SHIPPED','SHORTAGE_PENDING') AND (#{deptId} IS NULL OR r.from_dept_id=#{deptId}) ";
     String PRODUCT_FROM = " FROM reagent_batch b LEFT JOIN reagent_catalog c ON c.id=b.reagent_id LEFT JOIN warehouse w ON w.id=b.warehouse_id WHERE b.stock>0 AND " + BATCH_SCOPE
             + " AND (#{keyword}='' OR LOCATE(#{keyword},c.generic_name)>0 OR LOCATE(#{keyword},c.manufacturer)>0 OR LOCATE(#{keyword},c.his_code)>0 OR LOCATE(#{keyword},b.batch_no)>0) ";

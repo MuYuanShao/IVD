@@ -13,9 +13,9 @@ import java.util.List;
  */
 @Data
 public class DirectReceiveRequest {
-    /** 供应商ID（默认 1） */
+    /** 当前机构的启用供应商。 */
     private Integer supplierId;
-    /** 收货仓库ID（默认 1 = 中心库） */
+    /** 不指定时由服务端解析当前机构的中心库。 */
     private Long warehouseId;
     private String settlementMode;
     /** 验收明细 */
@@ -33,13 +33,11 @@ public class DirectReceiveRequest {
         @jakarta.validation.constraints.DecimalMin(value="0",inclusive=false)
         private BigDecimal qtyReceived;
         /** 批号 */
-        @jakarta.validation.constraints.NotBlank
         @jakarta.validation.constraints.Size(max=64)
         private String batchNo;
         /** 生产日期 */
         private LocalDate productionDate;
         /** 有效期至 */
-        @jakarta.validation.constraints.NotNull
         private LocalDate expiryDate;
         /** 单价 */
         private BigDecimal unitPrice;

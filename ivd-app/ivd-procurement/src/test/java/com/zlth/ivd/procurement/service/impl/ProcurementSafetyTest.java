@@ -17,6 +17,56 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.any;
 
 class ProcurementSafetyTest {
+    @Test void replenishmentRequiresApprovedCatalogAndActiveSupplier() {
+        var orders = mock(com.zlth.ivd.procurement.mapper.PurchaseOrderMapper.class);
+        var suggestions = mock(com.zlth.ivd.procurement.mapper.SmartReplenishSuggestionMapper.class);
+        var catalogs = mock(com.zlth.ivd.catalog.service.CatalogReferenceService.class);
+        var suppliers = mock(com.zlth.ivd.license.service.SupplierReferenceService.class);
+        var suggestion = new com.zlth.ivd.procurement.entity.SmartReplenishSuggestion();
+        suggestion.setReagentId(3L);
+        suggestion.setStatus("PENDING");
+        when(suggestions.selectOne(any())).thenReturn(suggestion);
+        var service = new ProcurementServiceImpl(null, null, null, null, null, orders, null, null, catalogs, null, suggestions, null, null, suppliers);
+        var row = java.util.Map.<String, Object>of("id", "1", "reagentId", "3", "suggestedQty", "2", "supplierId", "4");
+        assertThrows(BizException.class, () -> service.createOrdersFromReplenish(List.of(row)));
+        var catalog = new com.zlth.ivd.catalog.entity.ReagentCatalog();
+        catalog.setApprovalStatus(com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED);
+        catalog.setMaterialType(com.zlth.ivd.common.enums.MaterialTypeEnum.REAGENT);
+        catalog.setPricePerUnit(BigDecimal.ONE);
+        when(catalogs.lockForBusiness(3L)).thenReturn(catalog);
+        var supplier = new com.zlth.ivd.license.entity.Supplier();
+        supplier.setIsActive(false);
+        when(suppliers.findById(4L)).thenReturn(supplier);
+        assertThrows(BizException.class, () -> service.createOrdersFromReplenish(List.of(row)));
+        verify(suppliers).findById(4L);
+        verify(orders, never()).insert(any(com.zlth.ivd.procurement.entity.PurchaseOrder.class));
+        verify(orders, never()).updateById(any(com.zlth.ivd.procurement.entity.PurchaseOrder.class));
+    }
+    @Test void replenishmentRejectsProcessedOrMismatchedSuggestion() {
+        var orders = mock(com.zlth.ivd.procurement.mapper.PurchaseOrderMapper.class);
+        var suggestions = mock(com.zlth.ivd.procurement.mapper.SmartReplenishSuggestionMapper.class);
+        var suggestion = new com.zlth.ivd.procurement.entity.SmartReplenishSuggestion();
+        suggestion.setReagentId(9L);
+        suggestion.setStatus("GENERATED");
+        when(suggestions.selectOne(any())).thenReturn(suggestion);
+        var service = new ProcurementServiceImpl(null, null, null, null, null, orders, null, null, null, null, suggestions, null, null, null);
+        var row = java.util.Map.<String, Object>of("id", "1", "reagentId", "3", "suggestedQty", "2");
+        assertThrows(BizException.class, () -> service.createOrdersFromReplenish(List.of(row)));
+        suggestion.setStatus("PENDING");
+        assertThrows(BizException.class, () -> service.createOrdersFromReplenish(List.of(row)));
+        assertThrows(BizException.class, () -> service.createOrdersFromReplenish(List.of(row, row)));
+        verify(orders, never()).insert(any(com.zlth.ivd.procurement.entity.PurchaseOrder.class));
+        verify(orders, never()).updateById(any(com.zlth.ivd.procurement.entity.PurchaseOrder.class));
+    }
+    @Test void replenishmentRejectsNonPositiveQuantityBeforeWritingOrders() {
+        var orders = mock(com.zlth.ivd.procurement.mapper.PurchaseOrderMapper.class);
+        var service = new ProcurementServiceImpl(null, null, null, null, null, orders, null, null, null, null, null, null, null, null);
+        for (String qty : List.of("0", "-1")) {
+            assertThrows(BizException.class, () -> service.createOrdersFromReplenish(
+                    List.of(java.util.Map.of("id", "1", "reagentId", "3", "suggestedQty", qty))));
+        }
+        verifyNoInteractions(orders);
+    }
     @Test void wrongReagentBatchCannotBeDeducted() {
         var requisitions = mock(PurchaseRequisitionMapper.class);
         var items = mock(PurchaseRequisitionItemMapper.class);
@@ -51,13 +101,18 @@ class ProcurementSafetyTest {
         when(movements.findUnreceivedTransferRecords(1L)).thenReturn(List.of(transfer));
         var source = new com.zlth.ivd.inventory.entity.ReagentBatch(); source.setId(4L); source.setReagentId(3L); source.setBatchNo("LOT");
         source.setWarehouseId(8L);
+        source.setUdiStatus(com.zlth.ivd.common.enums.UdiStatusEnum.IN_STOCK);
+        source.setExpiryDate(java.time.LocalDate.now().plusDays(30));
         var target = new com.zlth.ivd.inventory.entity.ReagentBatch(); target.setId(5L); target.setStock(BigDecimal.ZERO);
         when(inventory.findBatch(3L,"LOT",8L)).thenReturn(source);
         when(inventory.findUniqueLegacyBatch(3L,"LOT",8L)).thenReturn(source);
+        when(inventory.lockBatch(4L)).thenReturn(source);
         when(inventory.findBatch(3L,"LOT",9L)).thenReturn(target);
         when(inventory.updateBatch(target)).thenReturn(true);
         when(inventory.receiveIntoWarehouse(source,9L,new BigDecimal("3"))).thenAnswer(call->{target.setStock(new BigDecimal("3"));return target;});
-        var service = spy(new ProcurementServiceImpl(null, requisitions, items, null, null, null, null, inventory, null, movements, null, null, codes, null));
+        var catalogs = mock(com.zlth.ivd.catalog.service.CatalogReferenceService.class);
+        when(catalogs.findById(3L)).thenReturn(new com.zlth.ivd.catalog.entity.ReagentCatalog());
+        var service = spy(new ProcurementServiceImpl(null, requisitions, items, null, null, null, null, inventory, catalogs, movements, null, null, codes, null));
         doReturn(new com.zlth.ivd.procurement.vo.PurchaseRequisitionVO()).when(service).getRequisitionDetail(1L);
         service.receiveRequisition(1L);
         org.junit.jupiter.api.Assertions.assertEquals(RequisitionStatusEnum.PARTIAL_FULFILLED, req.getStatus());

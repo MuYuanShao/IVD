@@ -44,7 +44,8 @@ public class ConsumptionInventoryServiceImpl implements ConsumptionInventoryServ
             warehouses.requireDepartmentWarehouse(batch.getWarehouseId(),scope.departmentId());
         });
         if(quantity==null || quantity.signum()<=0) throw new BizException(40001,"消耗数量必须大于零");
-        if(batch.getExpiryDate()==null || batch.getExpiryDate().isBefore(LocalDate.now())) throw new BizException(40001,"批次过期或效期未维护");
+        if(!com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(batch.getMaterialType(),batch.getExpiryDate(),LocalDate.now()))
+            throw new BizException(40001,"批次过期或效期未维护");
         if(batch.getOpenExpiryDate()!=null && batch.getOpenExpiryDate().isBefore(LocalDate.now())) throw new BizException(40001,"批次已超过开瓶稳定期");
         if(batch.getUdiStatus()!=UdiStatusEnum.IN_STOCK && batch.getUdiStatus()!=UdiStatusEnum.IN_USE) throw new BizException(40001,"批次状态不允许消耗");
         if(batch.getStock().compareTo(quantity)<0) throw new BizException(40001,"库存不足");

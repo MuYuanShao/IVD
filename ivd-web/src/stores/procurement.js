@@ -154,12 +154,13 @@ export const useProcurementStore = defineStore('procurement', () => {
 
   /** 确认入库 — 逐条调用后端验收接口 */
   async function doReceiveInbound() {
-    if (!inboundItems.value.length) return
+    if (!inboundItems.value.length || receiveLoading.value) return { successCount: 0, failCount: 0 }
     receiveLoading.value = true
     let successCount = 0
     let failCount = 0
-    for (const item of inboundItems.value) {
-      if (!item.orderId || !item.itemId) continue
+    const confirmed = new Set()
+    for (const item of [...inboundItems.value]) {
+      if (!item.orderId || !item.itemId) { failCount++; break }
       try {
         await receiveOrder({
           orderId: item.orderId,
@@ -172,16 +173,20 @@ export const useProcurementStore = defineStore('procurement', () => {
           warehouseId: item.warehouseId || 1
         })
         successCount++
+        confirmed.add(item)
       } catch (e) {
         console.error('验收请求失败:', e)
         failCount++
+        break // 不能把下一条实物扫码当作本条未确认请求的重试。
       }
     }
     receiveLoading.value = false
     if (successCount > 0) {
       ElMessage.success(`验收完成：成功 ${successCount} 条` + (failCount > 0 ? `，失败 ${failCount} 条` : ''))
     }
-    clearInbound()
+    inboundItems.value = inboundItems.value.filter(item => !confirmed.has(item))
+    if (inboundItems.value.length) ElMessage.warning('未确认及未提交明细已保留，请核对后重试')
+    else lastScanResult.value = null
     return { successCount, failCount }
   }
 

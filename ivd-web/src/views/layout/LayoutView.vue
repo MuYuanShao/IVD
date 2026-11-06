@@ -158,7 +158,7 @@
           <span class="server-dot"></span>
           <span>系统运行正常 · MySQL/Redis 在线</span>
         </div>
-        <div class="server-version">v1.1-MVP · {{ authStore.realName || '管理员' }} · {{ authStore.roleLabel || '检验科主任' }}</div>
+        <div class="server-version">V1.1 · {{ authStore.realName || '管理员' }} · {{ authStore.roleLabel || '检验科主任' }}</div>
       </div>
     </el-aside>
 

@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { stockCommand } from './stockCommand'
 
 /**
  * M04 采购管理 API
@@ -32,10 +33,10 @@ export function getOrderStats() { return request({ url: '/procurement/orders/sta
 
 // ── 验收 ──
 export function receiveOrder(data) {
-  return request({ url: '/procurement/receive', method: 'post', data })
+  return stockCommand('ORDER_RECEIVE', data?.itemId, { url: '/procurement/receive', method: 'post', data })
 }
 export function receiveDirect(data) {
-  return request({ url: '/procurement/receive/direct', method: 'post', data })
+  return stockCommand('DIRECT_RECEIVE', 'direct-form', { url: '/procurement/receive/direct', method: 'post', data })
 }
 
 // ── 拣货发货 ──

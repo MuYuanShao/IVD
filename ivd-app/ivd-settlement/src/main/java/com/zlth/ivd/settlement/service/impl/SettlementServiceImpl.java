@@ -162,7 +162,7 @@ public class SettlementServiceImpl implements SettlementService {
             throw new BizException(40900, "该消耗记录已结算");
         }
 
-        insertFromEvidence(source,"CONSUMPTION",source.getId(),"CONSUMPTION_RECORD","CNS-"+source.getId(),department());
+        insertFromEvidence(source,"CONSUMPTION",source.getId(),"CONSUMPTION_RECORD","CNS-"+source.getId(),consumptionDepartment(source));
     }
 
     @Override
@@ -238,7 +238,7 @@ public class SettlementServiceImpl implements SettlementService {
         if(mode!=expected)return;
         if(settlementExists(mode.name(),source.getId(),source.getId()))return;
         insertFromEvidence(source,mode.name(),source.getId(),"INBOUND".equals(event.recordType())?"INBOUND_RECORD":"CONSUMPTION_RECORD",
-                event.recordType()+"-"+source.getId(),department());
+                event.recordType()+"-"+source.getId(), "CONSUME".equals(event.recordType()) ? consumptionDepartment(source) : null);
     }
 
     private void requireMode(ConsumptionRecord source,com.zlth.ivd.common.enums.SettlementModeEnum expected) {
@@ -260,7 +260,19 @@ public class SettlementServiceImpl implements SettlementService {
         record.setStatus("ACTIVE");record.setFromDeptId(departmentId);record.setSettledBy(SecurityUtils.getCurrentOperatorIdOrNull());
         record.setSettledAt(LocalDateTime.now());insertSettlement(record,sourceNo);
     }
-    private Long department(){return com.zlth.ivd.common.security.InstitutionContext.current().map(scope->scope.departmentId()).orElse(null);}
+    private Long consumptionDepartment(ConsumptionRecord source) {
+        if (source.getWarehouseId() == null) throw new BizException(40001, "消耗流水缺少库房归属证据");
+        var departments = jdbcTemplate.query("""
+                SELECT COALESCE(w.dept_id,p.dept_id,g.dept_id) department_id
+                FROM warehouse w
+                LEFT JOIN warehouse p ON p.id=w.parent_id AND p.institution_id=w.institution_id
+                LEFT JOIN warehouse g ON g.id=p.parent_id AND g.institution_id=w.institution_id
+                WHERE w.id=? AND w.level IN (2,3)
+                """, (rs, row) -> rs.getObject("department_id", Long.class), source.getWarehouseId());
+        if (departments.isEmpty() || departments.get(0) == null)
+            throw new BizException(40001, "无法核对消耗库房所属科室，已拒绝结算");
+        return departments.get(0);
+    }
     private void appendEvent(SettlementRecord record,String from,String to,String reason) {
         var event=new com.zlth.ivd.settlement.entity.SettlementEvent();event.setSettlementId(record.getId());
         event.setFromStatus(from);event.setToStatus(to);event.setReason(reason);
@@ -274,7 +286,9 @@ public class SettlementServiceImpl implements SettlementService {
             SELECT
                 sr.settlement_no,
                 sr.id AS settlement_id,
+                sr.amount AS settlement_amount,
                 cr.id AS consumption_record_id,
+                cr.reagent_id AS source_reagent_id,
                 cr.batch_no,
                 COALESCE(cr.unit,rc.unit) AS unit,
                 COALESCE(sr.status,'UNSETTLED') AS settlement_status,
@@ -313,7 +327,8 @@ public class SettlementServiceImpl implements SettlementService {
 
     @Override
     public PageVO<ConsumptionSettlementVO> getConsumptionDetails(int page, int pageSize,
-            Long reagentId, Long deviceId, Long warehouseId) {
+            Long reagentId, Long deviceId, Long warehouseId, java.time.LocalDate date, String keyword) {
+        if (page < 1 || pageSize < 1 || pageSize > 500) throw new BizException(40001, "分页参数无效");
         StringBuilder sql = new StringBuilder(CONSUMPTION_DETAIL_SQL);
         List<Object> params = new ArrayList<>();
 
@@ -329,15 +344,33 @@ public class SettlementServiceImpl implements SettlementService {
             sql.append(" AND cr.warehouse_id = ?");
             params.add(warehouseId);
         }
+        if (date != null) {
+            sql.append(" AND cr.occurred_at >= ? AND cr.occurred_at < ?");
+            params.add(date.atStartOfDay());
+            params.add(date.plusDays(1).atStartOfDay());
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            String search = keyword.strip();
+            if (search.length() > 100) throw new BizException(40001, "试剂关键词不能超过100字符");
+            sql.append(" AND (LOCATE(?, rc.generic_name) > 0 OR LOCATE(?, rc.his_code) > 0)");
+            params.add(search);
+            params.add(search);
+        }
 
-        // Count total
-        String countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
-        Long total = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
+        String summarySql = """
+                SELECT COUNT(*) record_count, COUNT(DISTINCT source_reagent_id) reagent_count,
+                       COUNT(CASE WHEN settlement_status='ACTIVE' THEN 1 END) active_count,
+                       CASE WHEN COUNT(CASE WHEN settlement_status='ACTIVE' AND settlement_amount IS NULL THEN 1 END)>0
+                            THEN NULL ELSE COALESCE(SUM(CASE WHEN settlement_status='ACTIVE' THEN settlement_amount END),0)
+                       END active_amount
+                FROM (
+                """ + sql + ") filtered_details";
+        var totals = jdbcTemplate.queryForMap(summarySql, params.toArray());
 
         // Paginated query
-        sql.append(" ORDER BY cr.occurred_at DESC LIMIT ? OFFSET ?");
+        sql.append(" ORDER BY cr.occurred_at DESC, cr.id DESC LIMIT ? OFFSET ?");
         params.add(pageSize);
-        params.add((page - 1) * pageSize);
+        params.add((long) (page - 1) * pageSize);
 
         List<ConsumptionSettlementVO> records = new ArrayList<>();
         jdbcTemplate.query(sql.toString(), rs -> {
@@ -377,6 +410,11 @@ public class SettlementServiceImpl implements SettlementService {
             records.add(vo);
         }, params.toArray());
 
-        return new PageVO<>(total != null ? total : 0L, page, pageSize, records);
+        var summary = new com.zlth.ivd.settlement.vo.ConsumptionDetailsPageVO.Summary(
+                ((Number) totals.get("active_count")).longValue(),
+                (BigDecimal) totals.get("active_amount"),
+                ((Number) totals.get("reagent_count")).longValue());
+        return new com.zlth.ivd.settlement.vo.ConsumptionDetailsPageVO(
+                ((Number) totals.get("record_count")).longValue(), page, pageSize, records, summary);
     }
 }

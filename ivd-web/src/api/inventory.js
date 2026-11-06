@@ -38,6 +38,10 @@ export function traceUdi(udiDi, lotNo) {
   return request({ url: '/inventory/trace', method: 'get', params: { udiDi, lotNo } })
 }
 
+export function downloadTracePdf(udiDi, lotNo) {
+  return request({ url: '/inventory/trace/pdf', method: 'get', params: { udiDi, lotNo }, responseType: 'blob' })
+}
+
 /** 试剂 UDI 数据聚合：试剂信息 + 全部批次的 UDI-DI / UDI-PI / 唯一码 */
 export function getReagentUdiData(reagentId) {
   return request({ url: `/inventory/udi/reagent/${reagentId}`, method: 'get' })
@@ -50,7 +54,7 @@ export function getUniqueCodeTrace(uniqueCode) {
 
 /** 患者关联追溯 */
 export function getTracePatients(batchNo) {
-  return request({ url: `/inventory/trace/patients/${batchNo}`, method: 'get' })
+  return request({ url: `/inventory/trace/patients/${encodeURIComponent(batchNo)}`, method: 'get', silentError: true })
 }
 
 /** 科室库库存列表 */

@@ -23,6 +23,9 @@ public interface ReagentCatalogService {
     /** 分页查询试剂目录列表 */
     PageVO<ReagentCatalogVO> pageList(ReagentCatalogQuery query, int page, int pageSize);
 
+    /** 导出当前机构目录，超出导出上限时拒绝生成不完整文件。 */
+    java.util.List<ReagentCatalogVO> listForExport();
+
     /** 按ID查询单个试剂详情（含五码映射） */
     ReagentCatalogVO getById(Long id);
 

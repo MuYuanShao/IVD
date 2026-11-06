@@ -24,6 +24,8 @@ public class UdiStatusLog {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    private Long batchId;
+
     /** 批次号 */
     private String batchNo;
 

@@ -5,11 +5,15 @@ import com.zlth.ivd.settlement.entity.SettlementRecord;
 import com.zlth.ivd.settlement.vo.ConsumptionSettlementVO;
 import java.util.Map;
 
-public interface SettlementService {
+public interface SettlementService extends com.zlth.ivd.common.service.RequisitionReceiptService {
     void onStockBusinessRecord(com.zlth.ivd.common.event.StockBusinessRecordedEvent event);
     PageVO<SettlementRecord> listRecords(int page, int pageSize, String settlementType, String status);
     /** 消耗结算明细：消耗数据全量字段 JOIN */
-    PageVO<ConsumptionSettlementVO> getConsumptionDetails(int page, int pageSize, Long reagentId, Long deviceId, Long warehouseId);
+    default PageVO<ConsumptionSettlementVO> getConsumptionDetails(int page, int pageSize, Long reagentId, Long deviceId, Long warehouseId) {
+        return getConsumptionDetails(page, pageSize, reagentId, deviceId, warehouseId, null, null);
+    }
+    PageVO<ConsumptionSettlementVO> getConsumptionDetails(int page, int pageSize, Long reagentId, Long deviceId,
+            Long warehouseId, java.time.LocalDate date, String keyword);
     /** 科室签收并自动结算：状态变更 + 生成结算记录（同一事务） */
     void receiveAndSettleRequisition(Long requisitionId);
     /** 一键批量签收：签收所有待签收申领单，返回成功/失败统计 */

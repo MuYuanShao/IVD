@@ -59,6 +59,25 @@ class InstitutionRequestIntegrationTest {
             mvc.perform(get("/api/v1/institution-probe").header("Authorization","Bearer "+token)).andExpect(status().isUnauthorized());
         }
     }
+    @Test void refreshRejectsPreviousInstitutionTokenAfterAccountMoves() {
+        var auth = context.getBean(com.zlth.ivd.server.service.impl.AuthServiceImpl.class);
+        var request = new com.zlth.ivd.server.dto.RefreshRequest();
+        request.setRefreshToken(tokens.generateRefreshToken(101L, 1L));
+        assertEquals(1L, auth.refresh(request).getInstitutionId());
+
+        context.getBean(JdbcTemplate.class).update("UPDATE sys_user SET institution_id=2,dept_id=22 WHERE id=101");
+        var denied = assertThrows(com.zlth.ivd.common.exception.BizException.class, () -> auth.refresh(request));
+        assertEquals(40100, denied.getErrorCode());
+        assertTrue(denied.getMessage().contains("机构上下文已变更"));
+
+        request.setRefreshToken(tokens.generateRefreshToken(101L, 2L));
+        var refreshed = auth.refresh(request);
+        assertEquals(2L, refreshed.getInstitutionId());
+        assertEquals(22L, refreshed.getDepartmentId());
+        assertEquals(2L, tokens.getInstitutionId(refreshed.getAccessToken()));
+        assertTrue(tokens.validateInstitutionRefreshToken(refreshed.getRefreshToken(), 2L));
+        assertFalse(tokens.validateInstitutionRefreshToken(refreshed.getRefreshToken(), 1L));
+    }
     @Test void changedRoleAndInactiveInstitutionInvalidateContext()throws Exception{
         mvc.perform(get("/api/v1/institution-probe").header("Authorization",bearer(101L,"SYSTEM_ADMIN",1L))).andExpect(status().isUnauthorized());
         context.getBean(JdbcTemplate.class).update("UPDATE institution SET status=0 WHERE id=1");
@@ -99,6 +118,10 @@ class InstitutionRequestIntegrationTest {
         }
         @Bean SqlSessionTemplate template(SqlSessionFactory factory){return new SqlSessionTemplate(factory);}
         @Bean AuthenticationDirectoryService directory(SqlSessionTemplate template){return new AuthenticationDirectoryServiceImpl(template.getMapper(AuthenticationDirectoryMapper.class));}
+        @Bean com.zlth.ivd.server.service.impl.AuthServiceImpl authService(JwtTokenProvider tokens, AuthenticationDirectoryService directory) {
+            return new com.zlth.ivd.server.service.impl.AuthServiceImpl(tokens,
+                    new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder(), directory);
+        }
         @Bean OperationAuditLogMapper auditMapper(SqlSessionTemplate template){return template.getMapper(OperationAuditLogMapper.class);}
         @Bean OperationAuditLogWriter audits(ObjectProvider<OperationAuditLogMapper> provider){return new OperationAuditLogWriter(provider);}
         @Bean Probe probe(){return new Probe();}

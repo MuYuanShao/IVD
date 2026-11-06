@@ -164,10 +164,12 @@
             <el-tag :type="statusTagType(row.status)" size="small">{{ row.statusLabel }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" :icon="View" @click="handleViewDetail(row.id)">详情</el-button>
             <el-button link type="primary" size="small" :icon="Edit" @click="handleEdit(row.id)">编辑</el-button>
+            <el-button v-if="canApproveRenewal" link type="warning" size="small"
+              @click="renewalId = row.id; showRenewal = true">续证审批</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -239,7 +241,7 @@
             :color="log.changeType === 'CREATE' ? '#10b981' : '#3b82f6'"
           >
             <p>{{ log.changeTypeLabel }} — {{ log.operatorName }}</p>
-            <p v-if="log.note" style="color:#94a3b8;font-size:12px">{{ log.note }}</p>
+            <p v-if="log.note" style="color:#94a3b8;font-size:12px">{{ changeNote(log) }}</p>
           </el-timeline-item>
         </el-timeline>
         <el-empty v-else description="暂无变更记录" :image-size="40" />
@@ -342,6 +344,8 @@
         </div>
       </div>
     </el-dialog>
+    <license-renewal-modal v-model="showRenewal" :license-id="renewalId"
+      @saved="fetchData(); licenseStore.fetchStats()" />
   </div>
 </template>
 
@@ -355,11 +359,19 @@ import {
 import * as echarts from 'echarts'
 import { useLicenseStore } from '@/stores/license'
 import { useAuthStore } from '@/stores/auth'
+import LicenseRenewalModal from './components/LicenseRenewalModal.vue'
 import { getSuppliers } from '@/api/license'
 import request from '@/utils/request'
 
 const licenseStore = useLicenseStore()
-const authStore = useAuthStore()
+const auth = useAuthStore()
+const canApproveRenewal = computed(() => ['SYSTEM_ADMIN', 'LAB_DIRECTOR'].includes(auth.role))
+const showRenewal = ref(false), renewalId = ref(null)
+function changeNote(log) {
+  if (log.changeType !== 'ADD_ATTACHMENT') return log.note
+  try { return JSON.parse(log.note).fileName || log.note }
+  catch { return log.note }
+}
 
 const searchText = ref('')
 const filterType = ref('')
@@ -453,10 +465,12 @@ onMounted(() => {
   fetchData(); licenseStore.fetchStats(); licenseStore.fetchExpiryAlerts(); loadSuppliers()
   nextTick(() => initCharts())
 })
-onBeforeUnmount(() => { pieChart?.dispose(); barChart?.dispose(); revokePreviewUrl() })
+onBeforeUnmount(() => { clearTimeout(searchTimer); pieChart?.dispose(); barChart?.dispose(); revokePreviewUrl() })
 
 async function fetchData() {
   const params = { page: page.value, pageSize: pageSize.value }
+  const keyword = searchText.value.trim()
+  if (keyword) params.keyword = keyword
   if (filterType.value) params.licenseType = filterType.value
   if (filterStatus.value) params.status = filterStatus.value
   await licenseStore.fetchList(params)
@@ -559,12 +573,10 @@ async function handleUpload() {
   try {
     // 1. 创建/更新证照元数据
     let licenseId = editingLicenseId.value
-    const operatorId = authStore.user?.userId || 1
-    const operatorName = authStore.realName || '管理员'
     if (licenseId) {
-      await licenseStore.update(licenseId, { ...uploadForm, operatorId, operatorName })
+      await licenseStore.update(licenseId, { ...uploadForm })
     } else {
-      const created = await licenseStore.create({ ...uploadForm, operatorId, operatorName })
+      const created = await licenseStore.create({ ...uploadForm })
       licenseId = created?.id
     }
 
@@ -613,8 +625,6 @@ async function handleImportFile(e) {
   if (!file) return
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('operatorId', String(authStore.user?.userId || 1))
-  formData.append('operatorName', authStore.realName || '管理员')
   try {
     const res = await request({
       url: '/license/import', method: 'post', data: formData

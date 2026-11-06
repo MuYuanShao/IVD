@@ -35,7 +35,9 @@
         row-key="loadId"
         empty-text="暂无正在上机的批次"
       >
-        <el-table-column prop="deviceName" label="仪器" min-width="150" />
+        <el-table-column label="仪器" min-width="150">
+          <template #default="{ row }">{{ row.deviceName || '未指定仪器' }}</template>
+        </el-table-column>
         <el-table-column prop="loadedBatch" label="批号" min-width="170" />
         <el-table-column prop="reagentName" label="试剂" min-width="150" />
         <el-table-column prop="loadedAt" label="上机时间" min-width="170" />
@@ -122,7 +124,7 @@
             style="width: 100%"
             @change="form.deviceId = null"
             ><el-option
-              v-for="b in batches"
+              v-for="b in selectableBatches"
               :key="b.batchId"
               :value="String(b.batchId)"
               :label="
@@ -137,7 +139,7 @@
                 (b.unit || '') + ' / ' + (b.settlementMode || '历史待核对') + ' / 库存ID ' + b.batchId
               " /></el-select
         ></el-form-item>
-        <el-form-item label="仪器" :required="requiresDevice"
+        <el-form-item v-if="!directUse" label="仪器" :required="requiresDevice"
           ><el-select
             v-model="form.deviceId"
             clearable
@@ -154,7 +156,7 @@
           type="info"
           :closable="false"
           :title="
-            selectedBatch.deviceBindMode === 'FORCE'
+            directUse ? '该物料直接领用，不绑定仪器。' : selectedBatch.deviceBindMode === 'FORCE'
               ? '该试剂必须绑定同库房仪器。'
               : '该试剂无需强制绑定仪器。'
           "
@@ -236,9 +238,16 @@ const metrics = [
 const selectedBatch = computed(() =>
   batches.value.find((b) => String(b.batchId) === form.batchId),
 )
+const isDirectUse = batch => ['CONSUMABLE', 'OTHER'].includes(batch?.materialType)
+const directUse = computed(() => isDirectUse(selectedBatch.value))
+const selectableBatches = computed(() => action.value === 'load'
+  ? batches.value.filter(batch => !isDirectUse(batch))
+  : batches.value)
 const requiresDevice = computed(
   () =>
-    action.value === 'load' || selectedBatch.value?.deviceBindMode === 'FORCE',
+    !directUse.value && (action.value === 'load'
+      ? selectedBatch.value?.deviceBindMode !== 'FLEXIBLE'
+      : selectedBatch.value?.deviceBindMode === 'FORCE'),
 )
 const matchingDevices = computed(() =>
   devices.value.filter(
@@ -307,6 +316,7 @@ async function openAction(mode, row) {
   }
 }
 async function submit() {
+  if (saving.value) return
   if (!selectedBatch.value) {
     ElMessage.warning('请选择明确的库存批次')
     return
@@ -322,11 +332,11 @@ async function submit() {
   saving.value = true
   try {
     if (action.value === 'load')
-      await loadInstrument(form.batchId, form.deviceId)
+      await loadInstrument(form.batchId, form.deviceId || undefined)
     else
       await recordConsume(
         form.batchId,
-        form.deviceId || undefined,
+        directUse.value ? undefined : form.deviceId || undefined,
         form.qty,
         form.purpose,
         form.remark,

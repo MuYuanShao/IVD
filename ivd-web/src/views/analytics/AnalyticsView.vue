@@ -85,8 +85,9 @@
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" width="130" show-overflow-tooltip />
         <el-table-column label="采购成本" width="100">
-          <template #default="{ row }">¥{{ formatNum(row.purchaseCost || row.reagentCost || 0) }}</template>
+          <template #default="{ row }">{{ displayCost(row.purchaseCost ?? row.reagentCost) }}</template>
         </el-table-column>
+        <el-table-column prop="missingPriceCount" label="缺价记录" width="100" />
         <el-table-column label="过期 W_exp" width="100">
           <template #default="{ row }">
             <span :class="{ 'text-highlight': (row.wExp || 0) > 0 }">¥{{ formatNum(row.wExp || 0) }}</span>
@@ -103,15 +104,16 @@
         <el-table-column prop="effectiveCount" label="有效次数" width="90" align="center" />
         <el-table-column label="C_actual" width="100">
           <template #default="{ row }">
-            <span :class="{ 'text-highlight': row.deviation > 1.5 }">¥{{ formatNum(row.cActual || 0) }}/test</span>
+            <span :class="{ 'text-highlight': row.deviation > 1.5 }">{{ displayCost(row.cActual) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="C_nominal" width="100">
-          <template #default="{ row }">¥{{ formatNum(row.cNominal || 0) }}/test</template>
+          <template #default="{ row }">{{ displayCost(row.cNominal) }}</template>
         </el-table-column>
         <el-table-column label="偏离度" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="getDeviationType(row.deviation)" size="small">{{ ((row.deviation || 1) * 100).toFixed(0) }}%</el-tag>
+            <el-tag v-if="row.deviation != null" :type="getDeviationType(row.deviation)" size="small">{{ (row.deviation * 100).toFixed(0) }}%</el-tag>
+            <span v-else>未知</span>
           </template>
         </el-table-column>
         <el-table-column label="建议" min-width="120">
@@ -128,23 +130,25 @@
         <el-table-column prop="testItem" label="项目" width="100" />
         <el-table-column prop="brand" label="品牌" width="100" />
         <el-table-column label="C_actual" width="90">
-          <template #default="{ row }">¥{{ formatNum(row.avgPrice || 0) }}</template>
+          <template #default="{ row }">{{ displayCost(row.avgPrice) }}</template>
         </el-table-column>
         <el-table-column label="C_nominal" width="90">
-          <template #default="{ row }">¥{{ formatNum(0) }}</template>
+          <template #default="{ row }">{{ displayCost(row.cNominal) }}</template>
         </el-table-column>
         <el-table-column label="月消耗金额" width="110">
-          <template #default="{ row }">¥{{ formatNum(row.totalCost || 0) }}</template>
+          <template #default="{ row }">{{ displayCost(row.totalCost) }}</template>
         </el-table-column>
+        <el-table-column prop="missingPriceCount" label="缺价记录" width="100" />
         <el-table-column label="市占率" min-width="140">
           <template #default="{ row }">
-            <span>{{ ((row.share || 0) * 100).toFixed(0) }}%</span>
-            <el-progress :percentage="(row.share || 0) * 100" :stroke-width="6" :show-text="false" style="margin-top:4px" :color="row.share > 0.5 ? '#3b82f6' : '#f59e0b'" />
+            <span>{{ row.share == null ? '未知' : (row.share * 100).toFixed(0) + '%' }}</span>
+            <el-progress v-if="row.share != null" :percentage="row.share * 100" :stroke-width="6" :show-text="false" style="margin-top:4px" :color="row.share > 0.5 ? '#3b82f6' : '#f59e0b'" />
           </template>
         </el-table-column>
         <el-table-column label="结论" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.share > 0.5 ? 'success' : 'danger'" size="small">{{ row.share > 0.5 ? '维持' : '成本偏高' }}</el-tag>
+            <el-tag v-if="row.share != null" :type="row.share > 0.5 ? 'success' : 'danger'" size="small">{{ row.share > 0.5 ? '维持' : '成本偏高' }}</el-tag>
+            <span v-else>数据不足</span>
           </template>
         </el-table-column>
       </el-table>
@@ -164,10 +168,11 @@
           </template>
         </el-table-column>
         <el-table-column label="浪费金额" width="110">
-          <template #default="{ row }" class="text-highlight">¥{{ formatNum(row.amount || 0) }}</template>
+          <template #default="{ row }" class="text-highlight">{{ displayCost(row.amount) }}</template>
         </el-table-column>
-        <el-table-column label="占浪费总额" width="100" align="center">
-          <template #default="{ row }">{{ ((row.wasteRatio || 0) * 100).toFixed(0) }}%</template>
+        <el-table-column prop="missingPriceCount" label="缺价记录" width="100" />
+        <el-table-column label="列表金额占比" width="110" align="center">
+          <template #default="{ row }">{{ row.wasteRatio == null ? '未知' : (row.wasteRatio * 100).toFixed(0) + '%' }}</template>
         </el-table-column>
         <el-table-column prop="rootCause" label="根因分析" min-width="160" show-overflow-tooltip />
         <el-table-column label="系统建议" min-width="180">
@@ -188,6 +193,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { getCostPerTest, getBrandComparison, getWasteTop10 } from '@/api/analytics'
+import { knownCost, displayCost, costShares } from '@/utils/analyticsCosts.mjs'
 
 const activeTab = ref('report1')
 const period = ref(new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0'))
@@ -235,7 +241,7 @@ async function fetchCostData() {
     const d = await getCostPerTest(...dateRange())
     costData.value = (d?.items || []).map(item => ({
       ...item,
-      deviation: item.deviation ?? (item.cNominal ? item.cActual / item.cNominal : null),
+      deviation: item.deviation ?? (knownCost(item.cActual) !== null && knownCost(item.cNominal) > 0 ? item.cActual / item.cNominal : null),
       suggestion: item.suggestion || getAutoSuggestion(item)
     }))
   } catch { costData.value = []; ElMessage.error('成本报表加载失败') }
@@ -247,8 +253,8 @@ async function fetchBrandData() {
   try {
     const d = await getBrandComparison(...dateRange())
     const items = d?.brands || []
-    const total = items.reduce((sum, item) => sum + Number(item.totalCost || 0), 0)
-    brandData.value = items.map(item => ({ ...item, share: total ? Number(item.totalCost || 0) / total : 0 }))
+    const shares = costShares(items, 'totalCost')
+    brandData.value = items.map((item, i) => ({ ...item, share: shares[i] }))
   } catch { brandData.value = []; ElMessage.error('品牌报表加载失败') }
   finally { brandLoading.value = false }
 }
@@ -258,10 +264,10 @@ async function fetchWasteData() {
   try {
     const d = await getWasteTop10(...dateRange())
     const items = d?.wastes || []
-    const total = items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    wasteData.value = items.map(item => ({
+    const shares = costShares(items, 'amount')
+    wasteData.value = items.map((item, i) => ({
       ...item,
-      wasteRatio: total ? Number(item.amount || 0) / total : 0,
+      wasteRatio: shares[i],
       rootCause: item.rootCause || autoRootCause(item),
       suggestion: item.suggestion || getWasteSuggestion(item)
     }))
@@ -286,8 +292,8 @@ function renderCostChart() {
     xAxis: { type: 'category', data: items.map(d => d.testItem) },
     yAxis: { type: 'value', name: '¥/test' },
     series: [
-      { type: 'bar', name: '实际成本 C_actual', data: items.map(d => d.cActual || d.reagentCost || 0), itemStyle: { color: '#ef4444' }, barWidth: '35%' },
-      { type: 'bar', name: '标称成本 C_nominal', data: items.map(d => d.cNominal || 0), itemStyle: { color: '#10b981' }, barWidth: '35%' }
+      { type: 'bar', name: '平均单价', data: items.map(d => knownCost(d.reagentCost)), itemStyle: { color: '#ef4444' }, barWidth: '35%' },
+      { type: 'bar', name: '标称成本 C_nominal', data: items.map(d => knownCost(d.cNominal)), itemStyle: { color: '#10b981' }, barWidth: '35%' }
     ]
   })
 }
@@ -296,13 +302,18 @@ function renderWasteChart() {
   if (!wastePieRef.value) return
   wasteChart?.dispose()
   wasteChart = echarts.init(wastePieRef.value)
+  if (wasteData.value.some(item => knownCost(item.amount) === null)) {
+    wasteChart.setOption({ title: { text: '存在未知金额，暂不展示占比', left: 'center', top: 'middle' } })
+    return
+  }
   wasteChart.setOption({
     tooltip: { trigger: 'item' },
     legend: { bottom: 0 },
     series: [{
       type: 'pie', radius: ['50%', '75%'], center: ['50%', '45%'],
       label: { show: true, formatter: '{b}\n{d}%' },
-      data: wasteData.value.map(item => ({ value: Number(item.amount || 0), name: item.wasteTypeLabel || item.wasteType }))
+      stillShowZeroSum: false,
+      data: wasteData.value.map(item => ({ value: knownCost(item.amount), name: item.wasteTypeLabel || item.wasteType }))
     }]
   })
 }
@@ -316,6 +327,7 @@ function getWasteTagType(type) {
 }
 
 function getAutoSuggestion(row) {
+  if (row.deviation == null) return '数据不足'
   const d = row.deviation || 1
   if (d > 1.7) return '换小包装'
   if (d > 1.5) return '全面复盘'

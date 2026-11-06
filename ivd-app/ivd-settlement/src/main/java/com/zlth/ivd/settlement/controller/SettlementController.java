@@ -86,8 +86,10 @@ public class SettlementController {
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) Long reagentId,
             @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) Long warehouseId) {
-        return Result.success(settlementService.getConsumptionDetails(page, pageSize, reagentId, deviceId, warehouseId));
+            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestParam(required = false) String keyword) {
+        return Result.success(settlementService.getConsumptionDetails(page, pageSize, reagentId, deviceId, warehouseId, date, keyword));
     }
 
     // ── 导入导出 ──

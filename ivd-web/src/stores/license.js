@@ -18,15 +18,18 @@ export const useLicenseStore = defineStore('license', () => {
 
   const stats = reactive({ total: 0, active: 0, expiring: 0, expiredFrozen: 0 })
   const expiryAlerts = ref([])
+  let listRequest = 0
 
   async function fetchList(params = {}) {
+    const requestId = ++listRequest
     loading.value = true
     try {
       const data = await getLicenseList(params)
+      if (requestId !== listRequest) return
       list.value = data.records || []
       total.value = data.total || 0
     } finally {
-      loading.value = false
+      if (requestId === listRequest) loading.value = false
     }
   }
 

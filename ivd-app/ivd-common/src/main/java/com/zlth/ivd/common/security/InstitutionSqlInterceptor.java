@@ -12,12 +12,12 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
     private static final Pattern CTE = Pattern.compile("(?:\\bWITH\\s+|,\\s*)([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:\\([^)]*\\)\\s*)?AS\\s*\\(", Pattern.CASE_INSENSITIVE);
     private static final Set<String> TABLES = Set.of(
             "institution","sys_user","sys_dept","warehouse","device","device_batch_load","reagent_batch","reagent_catalog","inventory_remaining_batch",
-            "consumption_record","purchase_requisition","purchase_requisition_item","purchase_order","purchase_order_item",
+            "consumption_record","purchase_requisition","purchase_requisition_item","purchase_order","purchase_order_item","purchase_order_number_sequence","receipt_virtual_batch_sequence",
             "shortage_order","shortage_order_item","settlement_record","supplier","supplier_license","manufacturer","distributor",
             "reagent_supplier_rel","audit_rule","audit_decision_log","operation_audit_log","udi_unique_code","udi_unique_code_seq",
             "udi_status_log","udi_backlog","patient_association","inventory_opening_balance","requisition_transfer_receipt",
-            "daily_inventory_snapshot","dept_reagent","five_code_mapping","license_change_log","catalog_approval_log","catalog_draft","catalog_change_log",
-            "catalog_field_option","research_project","smart_replenish_suggestion","qc_result","poct_device","ai_consultation_log","settlement_event");
+            "daily_inventory_snapshot","monthly_inventory_close","dept_reagent","five_code_mapping","license_change_log","catalog_approval_log","catalog_draft","catalog_change_log",
+            "catalog_field_option","research_project","smart_replenish_suggestion","qc_result","poct_device","ai_consultation_log","settlement_event","stock_command_receipt");
 
     public InstitutionSqlInterceptor() { super(new InstitutionTenantHandler()); }
     @Override public net.sf.jsqlparser.expression.Expression buildTableExpression(net.sf.jsqlparser.schema.Table table,
@@ -35,7 +35,7 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
         String prefix=table.getAlias()==null?table.getName():table.getAlias().getName();
         String condition=null;
         if(column!=null) condition=prefix+"."+column+"="+requireDepartment(scope);
-        if(Set.of("reagent_batch","device","consumption_record").contains(name)) {
+        if(Set.of("reagent_batch","device","consumption_record","device_batch_load","udi_unique_code").contains(name)) {
             long department=requireDepartment(scope);
             String warehouses="SELECT w.id FROM warehouse w LEFT JOIN warehouse p ON p.id=w.parent_id AND p.institution_id="+scope.institutionId()
                     +" LEFT JOIN warehouse g ON g.id=p.parent_id AND g.institution_id="+scope.institutionId()
@@ -45,6 +45,13 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
                     +" WHERE w.institution_id="+scope.institutionId()+" AND COALESCE(w.dept_id,p.dept_id,g.dept_id)="+department;
             if(name.equals("device")) condition=prefix+".location_id IN ("+warehouses+")";
             else if(name.equals("reagent_batch")) condition=prefix+".warehouse_id IN ("+warehouses+")";
+            else if(name.equals("device_batch_load") || name.equals("udi_unique_code")) {
+                // 关联表必须直接约束自身行，过滤LEFT JOIN的设备/批次不能阻止原行泄露。
+                String visibleWarehouses=name.equals("device_batch_load")?ownWarehouses:warehouses;
+                condition=prefix+".batch_id IN (SELECT boundary_batch.id FROM reagent_batch boundary_batch "
+                        +"WHERE boundary_batch.institution_id="+scope.institutionId()
+                        +" AND boundary_batch.warehouse_id IN ("+visibleWarehouses+"))";
+            }
             else condition="("+prefix+".warehouse_id IN ("+ownWarehouses+") OR ("+prefix+".record_type='TRANSFER' AND "+prefix+".from_warehouse_id IN ("+ownWarehouses+")))";
         }
         if(condition==null) return institution;

@@ -1,5 +1,9 @@
 import request from '@/utils/request'
 
+export function approveLicenseRenewal(id, data) {
+  return request({ url: `/license/${id}/renewal/approve`, method: 'post', data })
+}
+
 /**
  * M03 证照管理 API
  */

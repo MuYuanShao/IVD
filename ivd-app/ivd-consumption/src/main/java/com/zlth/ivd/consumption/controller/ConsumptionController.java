@@ -2,6 +2,7 @@ package com.zlth.ivd.consumption.controller;
 
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.dto.Result;
+import com.zlth.ivd.common.service.StockCommandService;
 import com.zlth.ivd.common.util.ExportImportUtil;
 import com.zlth.ivd.consumption.service.ConsumptionService;
 import com.zlth.ivd.consumption.vo.ConsumptionRecordVO;
@@ -25,6 +26,7 @@ public class ConsumptionController {
 
     private final ConsumptionService consumptionService;
     private final com.zlth.ivd.inventory.service.InstrumentUsageService instrumentUsageService;
+    private final StockCommandService commands;
 
     @GetMapping("/devices")
     public Result<List<Map<String,Object>>> devices() { return Result.success(instrumentUsageService.devices()); }
@@ -33,7 +35,7 @@ public class ConsumptionController {
     @GetMapping("/loads")
     public Result<List<Map<String,Object>>> loads() { return Result.success(instrumentUsageService.activeLoads()); }
     @PostMapping("/load") @RequireRole({"SYSTEM_ADMIN","LAB_TECH","LAB_DIRECTOR"})
-    public Result<Void> load(@RequestParam Long batchId,@RequestParam Long deviceId) { instrumentUsageService.bind(batchId,deviceId);return Result.success(); }
+    public Result<Void> load(@RequestParam Long batchId,@RequestParam(required=false) Long deviceId) { instrumentUsageService.bind(batchId,deviceId);return Result.success(); }
     @PostMapping("/unload") @RequireRole({"SYSTEM_ADMIN","LAB_TECH","LAB_DIRECTOR"})
     public Result<Void> unload(@RequestParam Long loadId) { instrumentUsageService.unload(loadId);return Result.success(); }
 
@@ -49,9 +51,13 @@ public class ConsumptionController {
     @RequireRole({"SYSTEM_ADMIN", "LAB_TECH", "LAB_DIRECTOR"})
     public Result<String> consume(@RequestParam Long batchId, @RequestParam(required=false) Long deviceId,
                                   @RequestParam @Positive BigDecimal qty, @RequestParam(required = false) String purpose,
-                                  @RequestParam(required = false) String remark) {
-        consumptionService.recordConsumption(batchId, deviceId, qty, purpose, remark);
-        return Result.success("消耗记录成功");
+                                  @RequestParam(required = false) String remark,
+                                  @RequestHeader(value=StockCommandService.HEADER,required=false) String requestKey) {
+        return Result.success(commands.execute(StockCommandService.Operation.CONSUME,requestKey,
+                new CommandInput(batchId,null,deviceId,qty,purpose,remark),StockCommandService.TEXT,()->{
+                    consumptionService.recordConsumption(batchId,deviceId,qty,purpose,remark);
+                    return "消耗记录成功";
+                }));
     }
 
     @PostMapping("/inbound")
@@ -67,10 +73,16 @@ public class ConsumptionController {
     public Result<String> batchConsume(@RequestParam String batchNo, @RequestParam(required=false) Long deviceId,
                                        @RequestParam @Positive BigDecimal qty,
                                        @RequestParam(required = false) String purpose,
-                                       @RequestParam(required = false) String remark) {
-        consumptionService.batchConsume(batchNo, deviceId, qty, purpose, remark);
-        return Result.success("批量核销成功");
+                                       @RequestParam(required = false) String remark,
+                                       @RequestHeader(value=StockCommandService.HEADER,required=false) String requestKey) {
+        return Result.success(commands.execute(StockCommandService.Operation.BATCH_CONSUME,requestKey,
+                new CommandInput(null,batchNo,deviceId,qty,purpose,remark),StockCommandService.TEXT,()->{
+                    consumptionService.batchConsume(batchNo,deviceId,qty,purpose,remark);
+                    return "批量核销成功";
+                }));
     }
+
+    private record CommandInput(Long batchId,String batchNo,Long deviceId,BigDecimal qty,String purpose,String remark){}
 
     @GetMapping("/stats")
     public Result<Map<String, Object>> stats(@RequestParam(required = false) Long deviceId) {

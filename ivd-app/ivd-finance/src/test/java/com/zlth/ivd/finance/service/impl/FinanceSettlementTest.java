@@ -14,6 +14,21 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.any;
 
 class FinanceSettlementTest {
+    @Test void currentAndFutureBusinessDaysCannotCreateSnapshots() {
+        var mapper = mock(DailyInventorySnapshotMapper.class);
+        var service = new FinanceServiceImpl(mapper);
+        LocalDate today = LocalDate.now();
+        assertEquals(40001, assertThrows(BizException.class, () -> service.dailySettlement(today)).getErrorCode());
+        assertEquals(40001, assertThrows(BizException.class, () -> service.dailySettlement(today.plusDays(1))).getErrorCode());
+        verifyNoInteractions(mapper);
+    }
+
+    @Test void omittedDateSettlesThePreviousDay() {
+        var mapper = mock(DailyInventorySnapshotMapper.class);
+        when(mapper.selectCount(any())).thenReturn(0L);
+        new FinanceServiceImpl(mapper).dailySettlement(null);
+        verify(mapper).getDailyBalances(LocalDate.now().minusDays(1));
+    }
     @Test void beforeImportDateCannotCreateHistoricalSnapshots() {
         var mapper = mock(DailyInventorySnapshotMapper.class);
         when(mapper.getEarliestSupportedDate()).thenReturn(LocalDate.of(2026,8,7));
@@ -24,7 +39,8 @@ class FinanceSettlementTest {
     @Test void unpricedEvidenceCannotBeSilentlyValuedAtZero() {
         var mapper = mock(DailyInventorySnapshotMapper.class);
         when(mapper.countUnpricedEvidence()).thenReturn(1L);
-        assertThrows(BizException.class,()->new FinanceServiceImpl(mapper).dailySettlement(LocalDate.now()));
+        assertThrows(BizException.class,()->new FinanceServiceImpl(mapper).dailySettlement(LocalDate.now().minusDays(1)));
+        verify(mapper).countUnpricedEvidence();
         verify(mapper,never()).getDailyBalances(any());
         verify(mapper,never()).insert(any(DailyInventorySnapshot.class));
     }
@@ -46,7 +62,8 @@ class FinanceSettlementTest {
     @Test void duplicateSettlementIsRejectedWithoutAppendingSnapshots() {
         var mapper = mock(DailyInventorySnapshotMapper.class);
         when(mapper.selectCount(any())).thenReturn(1L);
-        assertThrows(BizException.class,()->new FinanceServiceImpl(mapper).dailySettlement(LocalDate.now()));
+        assertEquals(40900, assertThrows(BizException.class,
+                ()->new FinanceServiceImpl(mapper).dailySettlement(LocalDate.now().minusDays(1))).getErrorCode());
         verify(mapper,never()).insert(any(DailyInventorySnapshot.class));
     }
 }

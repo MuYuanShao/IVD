@@ -90,6 +90,7 @@ public class InventoryController {
 
     /** 患者关联追溯 */
     @GetMapping("/trace/patients/{batchNo}")
+    @RequireRole({"LAB_TECH", "LAB_DOCTOR", "LAB_DIRECTOR"})
     public Result<List<PatientAssociation>> tracePatients(@PathVariable String batchNo) {
         return Result.success(inventoryService.getTracePatients(batchNo));
     }

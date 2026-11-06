@@ -96,8 +96,18 @@ public class LicenseServiceImpl implements LicenseService {
         if (StringUtils.hasText(query.getStatus())) {
             qw.eq(SupplierLicense::getStatus, LicenseStatusEnum.valueOf(query.getStatus()));
         }
-        // 关键词搜索：通过 join 在 SQL 中处理，这里简化
-        qw.orderByDesc(SupplierLicense::getCreatedAt);
+        if (StringUtils.hasText(query.getKeyword())) {
+            String pattern = "%" + query.getKeyword().strip()
+                    .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+            qw.and(search -> search.apply("cert_no LIKE {0} ESCAPE '!'", pattern)
+                    .or().apply("""
+                            EXISTS (SELECT 1 FROM supplier s
+                            WHERE s.id = supplier_license.supplier_id
+                              AND s.institution_id = supplier_license.institution_id
+                              AND s.name LIKE {0} ESCAPE '!')
+                            """, pattern));
+        }
+        qw.orderByDesc(SupplierLicense::getCreatedAt, SupplierLicense::getId);
 
         Page<SupplierLicense> page = licenseMapper.selectPage(
                 new Page<>(query.getPage(), query.getPageSize()), qw);
@@ -156,6 +166,8 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public LicenseVO create(CreateLicenseRequest request) {
+        Long operatorId = com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
+        validateLicenseDates(request.getIssueDate(), request.getExpireDate());
         SupplierLicense license = new SupplierLicense();
         license.setSupplierId(request.getSupplierId());
         license.setLicenseType(LicenseTypeEnum.valueOf(request.getLicenseType()));
@@ -169,19 +181,82 @@ public class LicenseServiceImpl implements LicenseService {
 
         // 记录变更日志
         insertChangeLog(license.getId(), "CREATE", null, request.getExpireDate(),
-                request.getOperatorId(), request.getOperatorName(), "创建证照");
+                operatorId, SecurityUtils.getCurrentUsername(), "创建证照");
 
         return toVO(license);
     }
 
     @Override
+    public LicenseVO approveRenewal(Long id, com.zlth.ivd.license.dto.ApproveLicenseRenewalRequest request) {
+        if (!Set.of("SYSTEM_ADMIN", "LAB_DIRECTOR").contains(SecurityUtils.getCurrentRole()))
+            throw new BizException(40300, "仅主任或系统管理员可审批续证");
+        Long actor = com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
+        SupplierLicense license = licenseMapper.selectOne(new LambdaQueryWrapper<SupplierLicense>()
+                .eq(SupplierLicense::getId, id).last("FOR UPDATE"));
+        if (license == null) throw new BizException(40400, "证照不存在");
+        validateLicenseDates(request.getIssueDate(), request.getExpireDate());
+        if (request.getIssueDate().isAfter(LocalDate.now()) || !request.getExpireDate().isAfter(LocalDate.now())
+                || !StringUtils.hasText(request.getCertNo()) || !StringUtils.hasText(request.getReason()))
+            throw new BizException(40001, "续证证号、有效日期及审批原因不完整或无效");
+        if (parseAttachments(license.getAttachments()).stream()
+                .noneMatch(attachment -> Objects.equals(attachment.getObjectKey(), request.getAttachmentKey())))
+            throw new BizException(40001, "必须先上传并选择本证照的续证证明附件");
+        try {
+            minioClient.statObject(io.minio.StatObjectArgs.builder().bucket(minioProps.getBucketCert())
+                    .object("license/" + id + "/" + request.getAttachmentKey()).build());
+        } catch (Exception unavailable) {
+            throw new BizException(40001, "续证附件不可访问，请重新上传并核验");
+        }
+        if ((license.getStatus() == LicenseStatusEnum.ACTIVE || license.getStatus() == LicenseStatusEnum.EXPIRING)
+                && Objects.equals(license.getCertNo(), request.getCertNo().strip())
+                && Objects.equals(license.getIssueDate(), request.getIssueDate())
+                && Objects.equals(license.getExpireDate(), request.getExpireDate())) return toVO(license);
+        LocalDate oldExpiry = license.getExpireDate();
+        String note;
+        try {
+            note = OBJECT_MAPPER.writeValueAsString(Map.of("reason", request.getReason(),
+                    "attachmentKey", request.getAttachmentKey(), "oldCertNo", Objects.toString(license.getCertNo(), ""),
+                    "newCertNo", request.getCertNo(), "oldStatus", Objects.toString(license.getStatus(), ""),
+                    "oldIssueDate", Objects.toString(license.getIssueDate(), ""), "newIssueDate", request.getIssueDate().toString()));
+        } catch (Exception error) { throw new BizException(50000, "续证审批证据保存失败"); }
+        license.setCertNo(request.getCertNo().strip());
+        license.setIssueDate(request.getIssueDate());
+        license.setExpireDate(request.getExpireDate());
+        license.setStatus(calcStatus(request.getExpireDate()));
+        if (licenseMapper.updateById(license) != 1) throw new BizException(40900, "证照已变化，请重试");
+        insertChangeLog(id, "RENEW", oldExpiry, request.getExpireDate(), actor, SecurityUtils.getCurrentUsername(), note);
+        return toVO(license);
+    }
+
+    @Override
     public LicenseVO update(Long id, UpdateLicenseRequest request) {
-        SupplierLicense license = licenseMapper.selectById(id);
+        Long operatorId = com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
+        SupplierLicense license = licenseMapper.selectOne(new LambdaQueryWrapper<SupplierLicense>()
+                .eq(SupplierLicense::getId, id).last("FOR UPDATE"));
         if (license == null) {
             throw new BizException(40400, "证照不存在");
         }
 
         LocalDate oldExpireDate = license.getExpireDate();
+        validateLicenseDates(request.getIssueDate() != null ? request.getIssueDate() : license.getIssueDate(),
+                request.getExpireDate() != null ? request.getExpireDate() : oldExpireDate);
+        if (request.getSupplierId() != null && !request.getSupplierId().equals(license.getSupplierId())) {
+            if (license.getStatus() == LicenseStatusEnum.FROZEN || license.getStatus() == LicenseStatusEnum.EXPIRED
+                    || license.getExpireDate() == null || !license.getExpireDate().isAfter(LocalDate.now()))
+                throw new BizException(40900, "失效或冻结证照不能通过更换供应商解除采购限制，请先完成续证审批");
+            if (supplierMapper.selectById(request.getSupplierId()) == null)
+                throw new BizException(40400, "供应商不存在或无权访问");
+            license.setSupplierId(request.getSupplierId());
+        }
+        boolean frozen = license.getStatus() == LicenseStatusEnum.FROZEN
+                || license.getStatus() == LicenseStatusEnum.EXPIRED
+                || license.getExpireDate() == null || !license.getExpireDate().isAfter(LocalDate.now());
+        if (frozen && license.getStatus() != LicenseStatusEnum.FROZEN) license.setStatus(LicenseStatusEnum.EXPIRED);
+        LicenseStatusEnum requestedStatus = StringUtils.hasText(request.getStatus())
+                ? LicenseStatusEnum.valueOf(request.getStatus()) : null;
+        if (frozen && requestedStatus != null && requestedStatus != LicenseStatusEnum.FROZEN
+                && requestedStatus != LicenseStatusEnum.EXPIRED)
+            throw new BizException(40900, "普通编辑不能解除证照冻结");
 
         if (StringUtils.hasText(request.getLicenseType())) {
             license.setLicenseType(LicenseTypeEnum.valueOf(request.getLicenseType()));
@@ -197,18 +272,18 @@ public class LicenseServiceImpl implements LicenseService {
         }
         if (request.getExpireDate() != null) {
             license.setExpireDate(request.getExpireDate());
-            license.setStatus(calcStatus(request.getExpireDate()));
+            if (!frozen) license.setStatus(calcStatus(request.getExpireDate()));
         }
-        if (StringUtils.hasText(request.getStatus())) {
-            license.setStatus(LicenseStatusEnum.valueOf(request.getStatus()));
+        if (requestedStatus != null) {
+            license.setStatus(requestedStatus);
         }
 
         licenseMapper.updateById(license);
 
         // 记录变更日志
-        insertChangeLog(license.getId(), "UPDATE", oldExpireDate,
+        insertChangeLog(license.getId(), !frozen && requestedStatus == LicenseStatusEnum.FROZEN ? "FREEZE" : "UPDATE", oldExpireDate,
                 request.getExpireDate() != null ? request.getExpireDate() : oldExpireDate,
-                request.getOperatorId(), request.getOperatorName(),
+                operatorId, SecurityUtils.getCurrentUsername(),
                 request.getChangeNote());
 
         return toVO(license);
@@ -242,6 +317,7 @@ public class LicenseServiceImpl implements LicenseService {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", s.getId());
                     m.put("name", s.getName());
+                    m.put("isActive", Boolean.TRUE.equals(s.getIsActive()));
                     return m;
                 }).collect(java.util.stream.Collectors.toList());
     }
@@ -255,7 +331,8 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public String uploadAttachment(Long licenseId, MultipartFile file, Long operatorId) {
-        SupplierLicense license = licenseMapper.selectById(licenseId);
+        SupplierLicense license = licenseMapper.selectOne(new LambdaQueryWrapper<SupplierLicense>()
+                .eq(SupplierLicense::getId, licenseId).last("FOR UPDATE"));
         if (license == null) {
             throw new BizException(40400, "证照不存在");
         }
@@ -263,11 +340,14 @@ public class LicenseServiceImpl implements LicenseService {
         // 生成唯一对象名，并清理路径穿越字符
         String originalName = file.getOriginalFilename();
         String safeName = sanitizeFilename(originalName != null ? originalName : "file");
-        String objectKey = System.currentTimeMillis() + "_" + safeName;
+        String objectKey = java.util.UUID.randomUUID() + "_" + safeName;
 
         // MinIO 对象路径: license/{licenseId}/{objectKey}
         String objectName = "license/" + licenseId + "/" + objectKey;
         String contentType = guessContentType(originalName);
+        List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+            throw new IllegalStateException("证照附件上传需要事务");
 
         try (InputStream inputStream = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()
@@ -287,6 +367,20 @@ public class LicenseServiceImpl implements LicenseService {
             throw new BizException(50000, "附件上传失败: 存储服务异常");
         }
 
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_ROLLED_BACK) return;
+                        try {
+                            minioClient.removeObject(RemoveObjectArgs.builder()
+                                    .bucket(minioProps.getBucketCert()).object(objectName).build());
+                        } catch (Exception e) {
+                            log.warn("证照上传回滚后清理对象失败: licenseId={}, objectKey={}", licenseId, objectKey, e);
+                        }
+                    }
+                });
+
         // 构建附件条目（元数据仍存 DB JSON）
         String username = SecurityUtils.getCurrentUsername();
         LicenseDetailVO.AttachmentItem item = LicenseDetailVO.AttachmentItem.builder()
@@ -299,16 +393,19 @@ public class LicenseServiceImpl implements LicenseService {
                 .build();
 
         // 更新 supplier_license.attachments JSON 字段
-        List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
         attachments.add(item);
 
+        String note;
         try {
             license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+            note = OBJECT_MAPPER.writeValueAsString(Map.of("fileName", item.getName(), "objectKey", objectKey));
         } catch (Exception e) {
             log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
             throw new BizException(50000, "附件信息保存失败");
         }
-        licenseMapper.updateById(license);
+        if (licenseMapper.updateById(license) != 1)
+            throw new BizException(40900, "证照已变化，请刷新后重试");
+        insertChangeLog(licenseId, "ADD_ATTACHMENT", null, null, operatorId, username, note);
 
         log.info("证照附件上传成功(MinIO): licenseId={}, bucket={}, objectName={}, fileName={}",
                 licenseId, minioProps.getBucketCert(), objectName, originalName);
@@ -339,13 +436,20 @@ public class LicenseServiceImpl implements LicenseService {
     @Override
     public void processExpiryCheck() {
         log.info("[XXL-Job] 证照效期检查开始");
-        List<SupplierLicense> expiring = licenseMapper.findExpiringWithinDays(90);
+        List<SupplierLicense> expiring = licenseMapper.selectList(new LambdaQueryWrapper<SupplierLicense>()
+                .in(SupplierLicense::getStatus, LicenseStatusEnum.ACTIVE, LicenseStatusEnum.EXPIRING)
+                .le(SupplierLicense::getExpireDate, LocalDate.now().plusDays(90)));
         for (SupplierLicense lic : expiring) {
             LicenseStatusEnum newStatus = calcStatus(lic.getExpireDate());
             if (newStatus != lic.getStatus()) {
-                lic.setStatus(newStatus);
-                licenseMapper.updateById(lic);
-                log.info("[XXL-Job] 证照 {} 状态更新: {} -> {}", lic.getId(), lic.getStatus(), newStatus);
+                int updated = licenseMapper.update(null,
+                        new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<SupplierLicense>()
+                                .eq(SupplierLicense::getId, lic.getId())
+                                .eq(SupplierLicense::getStatus, lic.getStatus())
+                                .eq(SupplierLicense::getExpireDate, lic.getExpireDate())
+                                .set(SupplierLicense::getStatus, newStatus)
+                                .set(SupplierLicense::getUpdatedAt, LocalDateTime.now()));
+                if (updated == 1) log.info("[XXL-Job] 证照 {} 状态更新: {} -> {}", lic.getId(), lic.getStatus(), newStatus);
             }
         }
         log.info("[XXL-Job] 证照效期检查完成，处理 {} 条", expiring.size());
@@ -353,7 +457,8 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public void deleteAttachment(Long licenseId, String objectKey, Long operatorId) {
-        SupplierLicense license = licenseMapper.selectById(licenseId);
+        SupplierLicense license = licenseMapper.selectOne(new LambdaQueryWrapper<SupplierLicense>()
+                .eq(SupplierLicense::getId, licenseId).last("FOR UPDATE"));
         if (license == null) {
             throw new BizException(40400, "证照不存在");
         }
@@ -367,33 +472,22 @@ public class LicenseServiceImpl implements LicenseService {
             throw new BizException(40400, "附件不存在");
         }
 
-        // 1. 删除 MinIO 对象
-        String objectName = "license/" + licenseId + "/" + objectKey;
-        try {
-            minioClient.removeObject(RemoveObjectArgs.builder()
-                    .bucket(minioProps.getBucketCert())
-                    .object(objectName)
-                    .build());
-        } catch (ErrorResponseException e) {
-            log.warn("MinIO删除附件失败(对象可能已不存在): licenseId={}, objectKey={}", licenseId, objectKey, e);
-        } catch (Exception e) {
-            log.error("MinIO删除附件异常: licenseId={}, objectKey={}", licenseId, objectKey, e);
-            throw new BizException(50000, "附件删除失败: 存储服务异常");
-        }
+        cleanupAttachmentOnCompletion(licenseId, objectKey, true);
 
         // 2. 从 JSON 中移除
         attachments.remove(target);
+        String note;
         try {
             license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+            note = OBJECT_MAPPER.writeValueAsString(Map.of("fileName", Objects.toString(target.getName(), ""), "objectKey", objectKey));
         } catch (Exception e) {
             log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
             throw new BizException(50000, "附件信息保存失败");
         }
-        licenseMapper.updateById(license);
+        if (licenseMapper.updateById(license) != 1) throw new BizException(40900, "证照已变化，请刷新后重试");
 
         // 3. 记录变更日志
         String operatorName = SecurityUtils.getCurrentUsername();
-        String note = String.format("{\"fileName\":\"%s\",\"objectKey\":\"%s\"}", target.getName(), target.getObjectKey());
         insertChangeLog(licenseId, "DELETE_ATTACHMENT", null, null, operatorId, operatorName, note);
 
         log.info("证照附件已删除: licenseId={}, objectKey={}, fileName={}", licenseId, objectKey, target.getName());
@@ -401,7 +495,8 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public String replaceAttachment(Long licenseId, String oldObjectKey, MultipartFile file, Long operatorId) {
-        SupplierLicense license = licenseMapper.selectById(licenseId);
+        SupplierLicense license = licenseMapper.selectOne(new LambdaQueryWrapper<SupplierLicense>()
+                .eq(SupplierLicense::getId, licenseId).last("FOR UPDATE"));
         if (license == null) {
             throw new BizException(40400, "证照不存在");
         }
@@ -420,9 +515,11 @@ public class LicenseServiceImpl implements LicenseService {
         // 1. 上传新文件到 MinIO
         String originalName = file.getOriginalFilename();
         String safeName = sanitizeFilename(originalName != null ? originalName : "file");
-        String newObjectKey = System.currentTimeMillis() + "_" + safeName;
+        String newObjectKey = java.util.UUID.randomUUID() + "_" + safeName;
         String newObjectName = "license/" + licenseId + "/" + newObjectKey;
         String contentType = guessContentType(originalName);
+        cleanupAttachmentOnCompletion(licenseId, oldObjectKey, true);
+        cleanupAttachmentOnCompletion(licenseId, newObjectKey, false);
 
         try (InputStream inputStream = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()
@@ -451,38 +548,39 @@ public class LicenseServiceImpl implements LicenseService {
         oldItem.setUploadedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         oldItem.setUploadedBy(username != null ? username : "管理员");
 
-        // 3. 删除 MinIO 旧对象
-        String oldObjectName = "license/" + licenseId + "/" + oldObjectKey;
-        try {
-            minioClient.removeObject(RemoveObjectArgs.builder()
-                    .bucket(minioProps.getBucketCert())
-                    .object(oldObjectName)
-                    .build());
-        } catch (ErrorResponseException e) {
-            log.warn("MinIO删除旧附件失败(对象可能已不存在): licenseId={}, oldObjectKey={}", licenseId, oldObjectKey, e);
-        } catch (Exception e) {
-            log.error("MinIO删除旧附件异常: licenseId={}, oldObjectKey={}", licenseId, oldObjectKey, e);
-            // 新文件已上传成功，旧文件删除失败不阻断流程
-        }
-
-        // 4. 写回 DB
+        String note;
         try {
             license.setAttachments(OBJECT_MAPPER.writeValueAsString(attachments));
+            note = OBJECT_MAPPER.writeValueAsString(Map.of("oldFileName", Objects.toString(oldFileName, ""),
+                    "newFileName", oldItem.getName(), "oldKey", oldObjectKey, "newKey", newObjectKey));
         } catch (Exception e) {
             log.error("附件JSON序列化失败: licenseId={}", licenseId, e);
             throw new BizException(50000, "附件信息保存失败");
         }
-        licenseMapper.updateById(license);
+        if (licenseMapper.updateById(license) != 1) throw new BizException(40900, "证照已变化，请刷新后重试");
 
         // 5. 记录变更日志
         String operatorName = SecurityUtils.getCurrentUsername();
-        String note = String.format("{\"oldFileName\":\"%s\",\"newFileName\":\"%s\",\"oldKey\":\"%s\",\"newKey\":\"%s\"}",
-                oldFileName, oldItem.getName(), oldObjectKey, newObjectKey);
         insertChangeLog(licenseId, "REPLACE_ATTACHMENT", null, null, operatorId, operatorName, note);
 
         log.info("证照附件已替换: licenseId={}, oldKey={} -> newKey={}, newFile={}",
                 licenseId, oldObjectKey, newObjectKey, originalName);
         return newObjectKey;
+    }
+
+    private void cleanupAttachmentOnCompletion(Long licenseId, String key, boolean afterCommit) {
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override public void afterCompletion(int status) {
+                        if (status != (afterCommit ? STATUS_COMMITTED : STATUS_ROLLED_BACK)) return;
+                        try {
+                            minioClient.removeObject(RemoveObjectArgs.builder().bucket(minioProps.getBucketCert())
+                                    .object("license/" + licenseId + "/" + key).build());
+                        } catch (Exception e) {
+                            log.warn("证照附件事务后清理失败: licenseId={}, objectKey={}, status={}", licenseId, key, status, e);
+                        }
+                    }
+                });
     }
 
     @Override
@@ -594,6 +692,11 @@ public class LicenseServiceImpl implements LicenseService {
                 .build();
     }
 
+    private void validateLicenseDates(LocalDate issueDate, LocalDate expireDate) {
+        if (issueDate == null || expireDate == null || issueDate.isAfter(expireDate))
+            throw new BizException(40001, "发证日期和有效期必填，且发证日期不得晚于有效期");
+    }
+
     private LicenseStatusEnum calcStatus(LocalDate expireDate) {
         long days = ChronoUnit.DAYS.between(LocalDate.now(), expireDate);
         if (days <= 0) return LicenseStatusEnum.EXPIRED;
@@ -635,27 +738,24 @@ public class LicenseServiceImpl implements LicenseService {
             throw new BizException(40400, "附件文件不存在");
         }
 
-        // MinIO 对象路径
-        String objectName = "license/" + licenseId + "/" + safeKey;
-
-        // 从附件记录中获取原始文件名
+        // 先校验证照归属与当前附件成员关系，再访问存储，禁止通过旧key绕过授权。
         SupplierLicense license = licenseMapper.selectById(licenseId);
-        String originalName = objectKey;
-        if (license != null && StringUtils.hasText(license.getAttachments())) {
-            List<LicenseDetailVO.AttachmentItem> attachments = parseAttachments(license.getAttachments());
-            for (LicenseDetailVO.AttachmentItem att : attachments) {
-                if (objectKey.equals(att.getObjectKey())) {
-                    originalName = att.getName();
-                    break;
-                }
-            }
-        }
+        if (license == null) throw new BizException(40400, "附件不存在或无权访问");
+        LicenseDetailVO.AttachmentItem attachment = parseAttachments(license.getAttachments()).stream()
+                .filter(att -> objectKey.equals(att.getObjectKey())).findFirst()
+                .orElseThrow(() -> new BizException(40400, "附件不存在或无权访问"));
+        String objectName = "license/" + licenseId + "/" + safeKey;
+        String originalName = StringUtils.hasText(attachment.getName()) ? attachment.getName() : objectKey;
 
         String contentType = guessContentType(originalName);
-        response.setContentType(contentType);
+        boolean inline = Set.of("application/pdf", "image/png", "image/jpeg", "image/gif", "image/bmp", "image/webp")
+                .contains(contentType);
+        response.setContentType(inline ? contentType : "application/octet-stream");
         response.setHeader("Content-Disposition",
-                "inline; filename=\"" + URLEncoder.encode(originalName, StandardCharsets.UTF_8) + "\"");
-        response.setHeader("Cache-Control", "max-age=86400");
+                (inline ? "inline" : "attachment") + "; filename=\"" + URLEncoder.encode(originalName, StandardCharsets.UTF_8) + "\"");
+        response.setHeader("Cache-Control", "private, no-store");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
 
         try (GetObjectResponse getResponse = minioClient.getObject(GetObjectArgs.builder()
                 .bucket(minioProps.getBucketCert())
@@ -746,6 +846,7 @@ public class LicenseServiceImpl implements LicenseService {
             case "FREEZE" -> "冻结";
             case "UNFREEZE" -> "解冻";
             case "DELETE_ATTACHMENT" -> "删除附件";
+            case "ADD_ATTACHMENT" -> "新增附件";
             case "REPLACE_ATTACHMENT" -> "变更附件";
             default -> type;
         };

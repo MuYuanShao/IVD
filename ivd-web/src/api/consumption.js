@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { stockCommand } from './stockCommand'
 
 export const getConsumptionDevices = () => request({url:'/consumption/devices',method:'get'})
 export const getActiveLoads = () => request({url:'/consumption/loads',method:'get'})
@@ -13,7 +14,7 @@ export function getConsumptionList(params) {
 }
 
 export function recordConsume(batchId, deviceId, qty, purpose, remark) {
-  return request({ url: '/consumption/consume', method: 'post', params: { batchId, deviceId, qty, purpose, remark } })
+  return stockCommand('CONSUME', batchId, { url: '/consumption/consume', method: 'post', params: { batchId, deviceId, qty, purpose, remark } })
 }
 
 export function recordInbound(batchId, qty, warehouseId) {
@@ -21,7 +22,7 @@ export function recordInbound(batchId, qty, warehouseId) {
 }
 
 export function batchConsume(batchNo, deviceId, qty, purpose, remark) {
-  return request({ url: '/consumption/batch-consume', method: 'post', params: { batchNo, deviceId, qty, purpose, remark } })
+  return stockCommand('BATCH_CONSUME', batchNo, { url: '/consumption/batch-consume', method: 'post', params: { batchNo, deviceId, qty, purpose, remark } })
 }
 
 export function getConsumptionStats(deviceId) {

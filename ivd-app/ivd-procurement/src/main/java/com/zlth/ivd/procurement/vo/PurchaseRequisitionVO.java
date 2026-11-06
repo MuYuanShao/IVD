@@ -34,10 +34,10 @@ public class PurchaseRequisitionVO {
     private String researchProjectName;
 
     /** 汇总字段 */
-    private Integer totalQty;
+    private BigDecimal totalQty;
     private BigDecimal totalAmount;
-    private Integer shippedQty;
-    private Integer shortageQty;
+    private BigDecimal shippedQty;
+    private BigDecimal shortageQty;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

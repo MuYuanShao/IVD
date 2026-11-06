@@ -19,6 +19,8 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 public class ProcurementInventoryServiceImpl implements ProcurementInventoryService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.zlth.ivd.catalog.service.CatalogReferenceService catalogReferences;
     private final ReagentBatchMapper batchMapper;
     private final WarehouseMapper warehouseMapper;
     private final UdiStateMachine udiStateMachine;
@@ -70,17 +72,21 @@ public class ProcurementInventoryServiceImpl implements ProcurementInventoryServ
         var query=new LambdaQueryWrapper<ReagentBatch>().eq(ReagentBatch::getReagentId,source.getReagentId())
                 .eq(ReagentBatch::getBatchNo,source.getBatchNo()).eq(ReagentBatch::getWarehouseId,targetId);
         var candidates=batchMapper.selectList(query.last("FOR UPDATE"));
+        boolean pendingUdi = source.getUdiStatus() == UdiStatusEnum.PENDING_UDI;
         candidates.sort(java.util.Comparator.comparing(ReagentBatch::getInventoryGeneration,
                 java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
         for(var candidate:candidates) {
             if(candidate.getUdiStatus()==UdiStatusEnum.RECALLED || candidate.getUdiStatus()==UdiStatusEnum.EXPIRED
                     || candidate.getUdiStatus()==UdiStatusEnum.DESTROYED)
                 throw new com.zlth.ivd.common.exception.BizException(40001,"该批号存在召回、过期或销毁记录，不能自动补货");
-            if(candidate.getUdiStatus()!=UdiStatusEnum.IN_STOCK && candidate.getUdiStatus()!=UdiStatusEnum.IN_USE) continue;
+            if (pendingUdi ? candidate.getUdiStatus() != UdiStatusEnum.PENDING_UDI
+                    : candidate.getUdiStatus() != UdiStatusEnum.IN_STOCK && candidate.getUdiStatus() != UdiStatusEnum.IN_USE) continue;
             boolean samePrice=candidate.getUnitPrice()==null?source.getUnitPrice()==null:
                     source.getUnitPrice()!=null && candidate.getUnitPrice().compareTo(source.getUnitPrice())==0;
             if(!java.util.Objects.equals(candidate.getOriginPurchaseOrderItemId(),source.getOriginPurchaseOrderItemId())
                     || !java.util.Objects.equals(candidate.getSettlementMode(),source.getSettlementMode()) || !samePrice) continue;
+            if (!java.util.Objects.equals(candidate.getOpenDate(), source.getOpenDate())
+                    || !java.util.Objects.equals(candidate.getOpenExpiryDate(), source.getOpenExpiryDate())) continue;
             if(!java.util.Objects.equals(candidate.getExpiryDate(),source.getExpiryDate())
                     || !java.util.Objects.equals(candidate.getUnit(),source.getUnit()))
                 throw new com.zlth.ivd.common.exception.BizException(40900,"同批号来源的效期或单位不一致，请核对");
@@ -89,10 +95,11 @@ public class ProcurementInventoryServiceImpl implements ProcurementInventoryServ
             return candidate;
         }
         var created=new ReagentBatch();
-        org.springframework.beans.BeanUtils.copyProperties(source,created,"id","version","createdAt","updatedAt","openDate","openExpiryDate");
+        org.springframework.beans.BeanUtils.copyProperties(source,created,"id","version","createdAt","updatedAt");
         created.setInventoryGeneration(candidates.stream().map(ReagentBatch::getInventoryGeneration)
                 .filter(java.util.Objects::nonNull).max(Integer::compareTo).orElse(-1)+1);
-        created.setWarehouseId(targetId);created.setStock(quantity);created.setUdiStatus(UdiStatusEnum.IN_STOCK);
+        created.setWarehouseId(targetId);created.setStock(quantity);
+        created.setUdiStatus(pendingUdi ? UdiStatusEnum.PENDING_UDI : UdiStatusEnum.IN_STOCK);
         createBatch(created);
         return created;
     }
@@ -123,6 +130,8 @@ public class ProcurementInventoryServiceImpl implements ProcurementInventoryServ
         return true;
     }
     public void createBatch(ReagentBatch batch) {
+        if (catalogReferences.lockForBusiness(batch.getReagentId()) == null)
+            throw new com.zlth.ivd.common.exception.BizException(40900, "目录已删除，不能新建库存");
         UdiStatusEnum initialStatus = batch.getUdiStatus();
         if(batch.getMaterialType()!=null && !batch.getMaterialType().entersUdiStateMachine()) {
             batchMapper.insert(batch);return;

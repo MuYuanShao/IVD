@@ -102,11 +102,11 @@
           </el-select>
         </template>
       </el-table-column>
-      <el-table-column label="拣货数量" width="110" fixed="right">
+      <el-table-column label="本次拣货（0 跳过）" width="155" fixed="right">
         <template #default="{row}">
           <el-input-number
             v-model="row._pickQty"
-            :min="1"
+            :min="0"
             :max="getRemaining(row)"
             size="small"
             style="width:100%"
@@ -129,6 +129,7 @@ import { ElMessage } from 'element-plus'
 import { Loading, Search, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { getFefoRecommendations, traceUdi } from '@/api/inventory'
 import { getWarehouseOptions } from '@/api/system'
+import { buildShipmentItems, remainingShipmentQuantity as getRemaining } from '@/utils/pickShipment.mjs'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -197,12 +198,8 @@ function initPickItems() {
     ...item,
     _batchId: null,
     _batches: [],
-    _pickQty: getRemaining(item) > 0 ? getRemaining(item) : 0
+    _pickQty: 0
   }))
-}
-
-function getRemaining(row) {
-  return Math.max(0, (row.qtyRequested || 0) - (row.qtyFulfilled || 0))
 }
 
 async function loadBatches(row) {
@@ -315,30 +312,11 @@ function handleSubmit() {
     return
   }
 
-  const pickList = []
-  for (const item of pickItems.value) {
-    if (getRemaining(item) <= 0) continue
-    if (!item._batchId) {
-      ElMessage.warning(`请为试剂「${item.reagentName}」选择批次`)
-      return
-    }
-    if (!item._pickQty || item._pickQty <= 0) {
-      ElMessage.warning(`请为试剂「${item.reagentName}」填写拣货数量`)
-      return
-    }
-    if (item._pickQty > getRemaining(item)) {
-      ElMessage.warning(`试剂「${item.reagentName}」拣货数量不能超过待发货数量`)
-      return
-    }
-    pickList.push({
-      reqItemId: item.id || item.reqItemId,
-      sourceBatchId: item._batchId,
-      pickQty: item._pickQty
-    })
-  }
-
-  if (!pickList.length) {
-    ElMessage.warning('没有需要拣货的试剂')
+  let pickList
+  try {
+    pickList = buildShipmentItems(pickItems.value)
+  } catch (error) {
+    ElMessage.warning(error.message)
     return
   }
 

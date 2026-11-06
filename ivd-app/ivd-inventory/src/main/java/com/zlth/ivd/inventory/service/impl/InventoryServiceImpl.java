@@ -7,6 +7,7 @@ import com.zlth.ivd.catalog.entity.ReagentCatalog;
 import com.zlth.ivd.catalog.mapper.ReagentCatalogMapper;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.enums.UdiStatusEnum;
+import com.zlth.ivd.common.enums.MaterialTypeEnum;
 import com.zlth.ivd.common.exception.BizException;
 import com.zlth.ivd.common.utils.SecurityUtils;
 import com.zlth.ivd.inventory.entity.*;
@@ -16,7 +17,6 @@ import com.zlth.ivd.inventory.service.InventoryService;
 import com.zlth.ivd.udi.mapper.UdiUniqueCodeMapper;
 import com.zlth.ivd.udi.entity.UdiUniqueCode;
 import com.zlth.ivd.udi.service.UniqueCodeService;
-import com.zlth.ivd.udi.service.UdiStateMachine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -44,10 +44,12 @@ public class InventoryServiceImpl implements InventoryService {
     private final ReagentCatalogMapper catalogMapper;
     private final UdiUniqueCodeMapper uniqueCodeMapper;
     private final UniqueCodeService uniqueCodeService;
-    private final UdiStateMachine udiStateMachine;
     private final com.zlth.ivd.inventory.service.ProcurementInventoryService stockOperations;
     private final org.springframework.context.ApplicationEventPublisher events;
     private final JdbcTemplate jdbcTemplate;
+    private final com.zlth.ivd.catalog.service.CatalogReferenceService catalogReferences;
+    @org.springframework.beans.factory.annotation.Value("${ivd.clinical.enabled:false}")
+    private boolean clinicalEnabled;
 
     @Override
     public PageVO<ReagentBatchVO> listBatches(int page, int pageSize, String keyword, String status, Long warehouseId,
@@ -146,13 +148,19 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public List<Map<String, Object>> getFefoRecommendations(Long reagentId, Long warehouseId) {
+        LocalDate today = LocalDate.now();
         // FEFO: 按效期升序排列（最早到期优先出库）；reagentId 为空时返回该仓库下所有试剂的FEFO推荐
         LambdaQueryWrapper<ReagentBatch> qw = new LambdaQueryWrapper<>();
         qw.eq(reagentId != null, ReagentBatch::getReagentId, reagentId)
           .eq(warehouseId != null, ReagentBatch::getWarehouseId, warehouseId)
           .eq(ReagentBatch::getUdiStatus, UdiStatusEnum.IN_STOCK)
           .gt(ReagentBatch::getStock, BigDecimal.ZERO)
-          .orderByAsc(ReagentBatch::getExpiryDate);
+          .and(expiry -> expiry.ge(ReagentBatch::getExpiryDate, today).or(noExpiry ->
+                  noExpiry.isNull(ReagentBatch::getExpiryDate).in(ReagentBatch::getMaterialType,
+                          MaterialTypeEnum.CONSUMABLE, MaterialTypeEnum.OTHER)))
+          .and(open -> open.isNull(ReagentBatch::getOpenExpiryDate)
+                  .or().ge(ReagentBatch::getOpenExpiryDate, today))
+          .last("ORDER BY expiry_date IS NULL, expiry_date, id");
         List<ReagentBatch> batches = batchMapper.selectList(qw);
 
         // 批量加载试剂目录
@@ -344,8 +352,8 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public void transferBatch(Long batchId, Long targetWarehouseId, BigDecimal qty, String urgency, String reason) {
-        if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BizException(40001, "调拨数量必须大于 0");
+        if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > 2) {
+            throw new BizException(40001, "调拨数量必须大于0且最多两位小数");
         }
         Warehouse targetWarehouse = warehouseMapper.selectById(targetWarehouseId);
         if (targetWarehouse == null || !Objects.equals(targetWarehouse.getStatus(), 1)) {
@@ -354,6 +362,11 @@ public class InventoryServiceImpl implements InventoryService {
 
         // 1. 扣减源仓库库存（乐观锁重试）
         ReagentBatch sourceBatch = deductSourceBatchStock(batchId, qty);
+        var catalog = catalogReferences.findById(sourceBatch.getReagentId());
+        if (catalog == null) throw new BizException(40400, "试剂目录不存在，无法核对调拨管控策略");
+        boolean managed = Integer.valueOf(1).equals(catalog.getEnableUniqueCode());
+        if (managed && qty.stripTrailingZeros().scale() > 0)
+            throw new BizException(40001, "唯一码管控物料必须按完整单位调拨");
         if (Objects.equals(sourceBatch.getWarehouseId(), targetWarehouseId)) {
             throw new BizException(40001, "源仓库与目标仓库不能相同");
         }
@@ -371,7 +384,9 @@ public class InventoryServiceImpl implements InventoryService {
         // 4. 唯一码全流程流转：将调拨的唯一码关联到目标批次
         int codeCount = qty.intValue();
         if (codeCount > 0) {
-            uniqueCodeService.transferUniqueCodes(batchId, targetBatchId, codeCount);
+            int transferred = uniqueCodeService.transferUniqueCodes(batchId, targetBatchId, codeCount);
+            if (managed && transferred != codeCount)
+                throw new BizException(40900, "唯一码数量与调拨数量不一致，操作已回滚");
         }
 
         log.info("批次调拨: sourceBatchId={}, targetWarehouseId={}, qty={}, urgency={}, reason={}, auditId={}", batchId, targetWarehouseId, qty, urgency, reason, recordId);
@@ -383,23 +398,27 @@ public class InventoryServiceImpl implements InventoryService {
     private ReagentBatch deductSourceBatchStock(Long batchId, BigDecimal qty) {
         int maxRetries = 3;
         for (int i = 0; i < maxRetries; i++) {
-            ReagentBatch sourceBatch = batchMapper.selectById(batchId);
+            ReagentBatch sourceBatch = batchMapper.lockById(batchId);
             if (sourceBatch == null) throw new BizException(40400, "批次不存在");
             if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK) {
                 throw new BizException(40001, "仅在库批次允许调拨");
             }
+            var catalog = catalogReferences.findById(sourceBatch.getReagentId());
+            if (catalog == null) throw new BizException(40400, "试剂目录不存在，无法核对调拨管控策略");
+            if (Integer.valueOf(1).equals(catalog.getEnableUniqueCode()) && qty.stripTrailingZeros().scale() > 0)
+                throw new BizException(40001, "唯一码管控物料必须按完整单位调拨");
+            if (!com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(), sourceBatch.getExpiryDate(), LocalDate.now()))
+                throw new BizException(40001, "批次已过期或效期未维护，不能调拨");
+            if (sourceBatch.getOpenExpiryDate() != null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now()))
+                throw new BizException(40001, "批次已超过开瓶稳定期，不能调拨");
+            stockOperations.requireWarehouse(sourceBatch.getWarehouseId());
             if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
 
             sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
             boolean depleted = sourceBatch.getStock().compareTo(BigDecimal.ZERO) <= 0;
-
-            int updated = batchMapper.updateById(sourceBatch);
-            if (updated > 0) {
-                if (depleted) {
-                    udiStateMachine.transition(sourceBatch.getId(), sourceBatch.getBatchNo(),
-                            UdiStatusEnum.IN_STOCK, UdiStatusEnum.TRANSFERRED, currentOperator());
-                    sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
-                }
+            if (depleted) sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
+            // 复用库存模块统一状态写入，非医疗物料不得进入UDI状态机。
+            if (stockOperations.updateBatch(sourceBatch)) {
                 return sourceBatch;
             }
             if (i == maxRetries - 1) {
@@ -415,11 +434,6 @@ public class InventoryServiceImpl implements InventoryService {
      */
     private Long upsertTargetBatch(ReagentBatch sourceBatch, Long targetWarehouseId, BigDecimal qty) {
         return stockOperations.receiveIntoWarehouse(sourceBatch,targetWarehouseId,qty).getId();
-    }
-
-    private String currentOperator() {
-        Long userId = SecurityUtils.getCurrentUserIdOrNull();
-        return userId != null ? userId.toString() : SecurityUtils.getCurrentUsername();
     }
 
     @Override
@@ -588,6 +602,9 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public Map<String, Object> getUniqueCodeTrace(String uniqueCode) {
+        var scope = com.zlth.ivd.common.security.InstitutionContext.require();
+        if (Set.of("LAB_TECH", "LAB_DOCTOR", "LAB_DIRECTOR").contains(scope.role()) && scope.departmentId() == null)
+            throw new BizException(40300, "临床追溯需要明确科室归属");
         UdiUniqueCode code = uniqueCodeMapper.selectOne(
                 new LambdaQueryWrapper<UdiUniqueCode>()
                         .eq(UdiUniqueCode::getUniqueCode, uniqueCode));
@@ -627,6 +644,18 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     public List<PatientAssociation> getTracePatients(String batchNo) {
+        var scope = com.zlth.ivd.common.security.InstitutionContext.require();
+        boolean clinicalRole = Set.of("LAB_TECH", "LAB_DOCTOR", "LAB_DIRECTOR").contains(scope.role());
+        if (!clinicalEnabled || scope.actorId() == null
+                || (!SecurityUtils.isFullAccessAdmin() && (!clinicalRole || scope.departmentId() == null)))
+            throw new BizException(40300, "需要已启用临床功能及授权临床账号");
+        if (batchNo == null || batchNo.isBlank() || batchNo.length() > 64)
+            throw new BizException(40001, "批号参数无效");
+        var visibleBatches = batchMapper.selectList(new LambdaQueryWrapper<ReagentBatch>()
+                .select(ReagentBatch::getId, ReagentBatch::getReagentId).eq(ReagentBatch::getBatchNo, batchNo));
+        if (visibleBatches.isEmpty()) throw new BizException(40400, "批次不存在或无权访问");
+        if (visibleBatches.stream().map(ReagentBatch::getReagentId).distinct().count() != 1)
+            throw new BizException(40900, "该批号涉及多个试剂，历史患者关联缺少明确试剂身份，不能安全展示");
         LambdaQueryWrapper<PatientAssociation> qw = new LambdaQueryWrapper<>();
         qw.eq(PatientAssociation::getBatchNo, batchNo).orderByDesc(PatientAssociation::getTestTime);
         return patientAssociationMapper.selectList(qw);

@@ -5,6 +5,7 @@ import com.zlth.ivd.analytics.service.WorkbenchService;
 import com.zlth.ivd.analytics.vo.WorkbenchVO;
 import com.zlth.ivd.common.dto.PageVO;
 import com.zlth.ivd.common.exception.BizException;
+import com.zlth.ivd.common.security.InstitutionContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -24,6 +25,13 @@ public class WorkbenchServiceImpl implements WorkbenchService {
 
     private Long scope(Long userId) {
         if (userId == null) throw new BizException(40100,"请重新登录");
+        var verified = InstitutionContext.current().orElse(null);
+        if (verified != null) {
+            if (!Objects.equals(verified.actorId(), userId))
+                throw new BizException(40300, "请求用户与已验证身份不一致");
+            // Request filter verified the account in its home institution before selecting the data scope.
+            if ("SYSTEM_ADMIN".equals(verified.role())) return null;
+        }
         var user=mapper.userScope(userId);
         if (user == null) throw new BizException(40300,"账号不存在或已停用");
         if (user.getRole()!=null && Set.of("SYSTEM_ADMIN","ADMIN","STOREKEEPER","FINANCE").contains(user.getRole())) return null;

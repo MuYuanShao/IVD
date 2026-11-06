@@ -159,7 +159,7 @@
             <el-button
               v-if="row.approvalStatus === 'DRAFT' || row.approvalStatus === 'REJECTED'"
               link type="warning" size="small" :icon="DocumentChecked" @click="handleSubmitApproval(row)">提交审批</el-button>
-            <el-popconfirm title="确认删除该试剂？" @confirm="handleDelete(row.id)">
+            <el-popconfirm title="提交该试剂的删除审批？批准前不会删除" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button link type="danger" size="small" :icon="Delete">删除</el-button>
               </template>
@@ -506,7 +506,7 @@ function handleViewDetail(row) {
 async function handleDelete(id) {
   try {
     await catalogStore.remove(id)
-    ElMessage.success('删除成功')
+    ElMessage.success('删除申请已提交，审批通过后生效')
     fetchData()
     catalogStore.fetchStats()
   } catch {

@@ -73,6 +73,8 @@ public class ProcurementServiceImpl implements ProcurementService {
     private final ProcurementOrgService orgService;
     private final UniqueCodeService uniqueCodeService;
     private final SupplierReferenceService supplierService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.zlth.ivd.common.audit.OperationAuditLogWriter domainAudits;
 
     public ProcurementServiceImpl(ResearchProjectService researchProjectService, PurchaseRequisitionMapper reqMapper,
                                   PurchaseRequisitionItemMapper reqItemMapper,
@@ -151,10 +153,10 @@ public class ProcurementServiceImpl implements ProcurementService {
             vo.setCreatedAt(req.getCreatedAt()); vo.setUpdatedAt(req.getUpdatedAt());
 
             List<PurchaseRequisitionItem> items = itemsMap.getOrDefault(req.getId(), Collections.emptyList());
-            int totalQty = items.stream().mapToInt(i -> i.getQtyRequested() != null ? i.getQtyRequested().intValue() : 0).sum();
+BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal totalAmount = items.stream().map(i -> i.getAmount() != null ? i.getAmount() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
-            int shippedQty = items.stream().mapToInt(i -> i.getQtyFulfilled() != null ? i.getQtyFulfilled().intValue() : 0).sum();
-            int shortageQty = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+            BigDecimal shippedQty = items.stream().map(i -> i.getQtyFulfilled()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal shortageQty = items.stream().map(i -> i.getQtyShortage()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
             vo.setTotalQty(totalQty); vo.setTotalAmount(totalAmount);
             vo.setShippedQty(shippedQty); vo.setShortageQty(shortageQty);
             records.add(vo);
@@ -246,6 +248,10 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public List<PurchaseRequisitionItem> getRequisitionItems(Long reqId) {
+        // 明细本身没有科室字段，必须先经过父单的机构/科室可见性校验。
+        PurchaseRequisition requisition = reqMapper.selectById(reqId);
+        if (requisition == null) throw new BizException(40400, "申领单不存在或无权访问");
+        authorizeDepartment(requisition.getFromDeptId());
         List<PurchaseRequisitionItem> items = reqItemMapper.selectList(
                 new LambdaQueryWrapper<PurchaseRequisitionItem>()
                         .eq(PurchaseRequisitionItem::getReqId, reqId)
@@ -330,10 +336,10 @@ public class ProcurementServiceImpl implements ProcurementService {
         vo.setReviewComment(req.getReviewComment()); vo.setRemark(req.getRemark());
         vo.setCreatedAt(req.getCreatedAt()); vo.setUpdatedAt(req.getUpdatedAt());
 
-        int totalQty = items.stream().mapToInt(i -> i.getQtyRequested() != null ? i.getQtyRequested().intValue() : 0).sum();
+        BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalAmount = items.stream().map(i -> i.getAmount() != null ? i.getAmount() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
-        int shippedQty = items.stream().mapToInt(i -> i.getQtyFulfilled() != null ? i.getQtyFulfilled().intValue() : 0).sum();
-        int shortageQty = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+        BigDecimal shippedQty = items.stream().map(i -> i.getQtyFulfilled()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal shortageQty = items.stream().map(i -> i.getQtyShortage()).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         vo.setTotalQty(totalQty); vo.setTotalAmount(totalAmount);
         vo.setShippedQty(shippedQty); vo.setShortageQty(shortageQty);
         vo.setItems(items);
@@ -343,8 +349,7 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseRequisitionVO reviewRequisition(Long id, String action, String comment) {
-        PurchaseRequisition req = reqMapper.selectById(id);
-        if (req == null) throw new BizException(40400, "申领单不存在");
+        PurchaseRequisition req = lockRequisitionState(id);
         if (req.getStatus() != RequisitionStatusEnum.PENDING_REVIEW) {
             throw new BizException(40000, "当前状态不允许审核，仅待审核状态的申领单可审核");
         }
@@ -372,9 +377,8 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseRequisitionVO submitRequisition(Long id) {
-        authorizeRequisition(id);
-        PurchaseRequisition req = reqMapper.selectById(id);
-        if (req == null) throw new BizException(40400, "申领单不存在");
+        PurchaseRequisition req = lockRequisitionState(id);
+        authorizeDepartment(req.getFromDeptId());
         if (req.getStatus() != RequisitionStatusEnum.DRAFT) {
             throw new BizException(40000, "仅草稿状态的申领单可提交审批");
         }
@@ -386,8 +390,7 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseRequisitionVO cancelRequisition(Long id, String reason) {
-        PurchaseRequisition req = reqMapper.selectById(id);
-        if (req == null) throw new BizException(40400, "申领单不存在");
+        PurchaseRequisition req = lockRequisitionState(id);
         if (req.getStatus() != RequisitionStatusEnum.DRAFT) {
             throw new BizException(40000, "仅草稿状态的申领单可作废");
         }
@@ -396,6 +399,14 @@ public class ProcurementServiceImpl implements ProcurementService {
         reqMapper.updateById(req);
         log.info("申领单已作废: reqNo={}, reason={}", req.getReqNo(), reason);
         return getRequisitionDetail(id);
+    }
+
+    private PurchaseRequisition lockRequisitionState(Long id) {
+        // 状态必须来自加锁读，不能使用事务中可能已经建立的普通读快照。
+        PurchaseRequisition req = reqMapper.selectOne(new LambdaQueryWrapper<PurchaseRequisition>()
+                .eq(PurchaseRequisition::getId, id).last("FOR UPDATE"));
+        if (req == null) throw new BizException(40400, "申领单不存在");
+        return req;
     }
 
     // ── 拣货发货（核心闭环）──
@@ -519,14 +530,24 @@ public class ProcurementServiceImpl implements ProcurementService {
                             ? tr.getWarehouseId() : defaultTargetWarehouseId;
                     // 从源仓库查找对应的批次（即使库存已清零，批次记录仍存在）
                     inventoryService.requireDepartmentWarehouse(trTargetWarehouseId,req.getFromDeptId());
-                    ReagentBatch sourceBatch = tr.getBatchId()!=null ? inventoryService.getBatch(tr.getBatchId()) :
+                    ReagentBatch sourceBatch = tr.getBatchId()!=null ? inventoryService.lockBatch(tr.getBatchId()) :
                             inventoryService.findUniqueLegacyBatch(tr.getReagentId(), tr.getBatchNo(), tr.getFromWarehouseId());
+                    if (sourceBatch != null && tr.getBatchId() == null) sourceBatch = inventoryService.lockBatch(sourceBatch.getId());
                     if (sourceBatch == null) {
                         throw new BizException(40001, "签收入库源批次不存在，请核对发货流水");
                     }
                     if(!Objects.equals(sourceBatch.getReagentId(),tr.getReagentId())
                             || !Objects.equals(sourceBatch.getWarehouseId(),tr.getFromWarehouseId()))
                         throw new BizException(40900,"签收来源批次与发货证据不一致");
+                    inventoryService.requireWarehouse(sourceBatch.getWarehouseId());
+                    if (sourceBatch.getUdiStatus() == null || !Set.of(UdiStatusEnum.IN_STOCK, UdiStatusEnum.IN_USE, UdiStatusEnum.TRANSFERRED).contains(sourceBatch.getUdiStatus())
+                            || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(),sourceBatch.getExpiryDate(),LocalDate.now()))
+                        throw new BizException(40001, "发货来源已受限或过期，请先核对在途物料");
+                    var receiptCatalog = catalogService.findById(sourceBatch.getReagentId());
+                    if (receiptCatalog == null) throw new BizException(40400, "试剂目录不存在");
+                    boolean managed = Integer.valueOf(1).equals(receiptCatalog.getEnableUniqueCode());
+                    if (managed && tr.getQuantity().stripTrailingZeros().scale() > 0)
+                        throw new BizException(40001, "唯一码管控物料签收数量必须为整数");
                     Long targetBatchId = upsertTargetBatch(sourceBatch, trTargetWarehouseId, tr.getQuantity());
                     consumptionService.confirmTransferReceipt(tr.getId(), targetBatchId);
                     log.info("签收入库: batchNo={}, qty={}, targetWarehouseId={}, targetBatchId={}",
@@ -536,8 +557,10 @@ public class ProcurementServiceImpl implements ProcurementService {
                     if (targetBatchId != null && tr.getQuantity() != null
                             && tr.getQuantity().compareTo(BigDecimal.ZERO) > 0) {
                         int codeCount = tr.getQuantity().intValue();
-                        uniqueCodeService.transferUniqueCodes(
+                        int transferred = uniqueCodeService.transferUniqueCodes(
                                 sourceBatch.getId(), targetBatchId, codeCount);
+                        if (managed && transferred != codeCount)
+                            throw new BizException(40900, "唯一码数量与签收数量不一致，操作已回滚");
                         log.info("唯一码已转移: sourceBatchId={}, targetBatchId={}, count={}",
                                 sourceBatch.getId(), targetBatchId, codeCount);
                     }
@@ -569,11 +592,17 @@ public class ProcurementServiceImpl implements ProcurementService {
             if (sourceBatch == null) throw new BizException(40400, "批次不存在");
             if (!Objects.equals(reagentId, sourceBatch.getReagentId()))
                 throw new BizException(40001, "源批次试剂与申领明细不一致");
+            var pickingCatalog = catalogService.findById(reagentId);
+            if (pickingCatalog == null) throw new BizException(40400, "试剂目录不存在");
+            if (Integer.valueOf(1).equals(pickingCatalog.getEnableUniqueCode()) && qty.stripTrailingZeros().scale() > 0)
+                throw new BizException(40001, "唯一码管控物料必须按完整单位拣货");
             if(!Integer.valueOf(1).equals(inventoryService.requireWarehouse(sourceBatch.getWarehouseId()).getLevel()))
                 throw new BizException(40001,"申领拣货必须来自本机构中心库");
             if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK
-                    || sourceBatch.getExpiryDate() == null || sourceBatch.getExpiryDate().isBefore(LocalDate.now()))
+                    || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(),sourceBatch.getExpiryDate(),LocalDate.now()))
                 throw new BizException(40001, "源批次不可用或已过期");
+            if (sourceBatch.getOpenExpiryDate() != null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now()))
+                throw new BizException(40001, "源批次已超过开瓶稳定期，不能拣货");
             if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
 
             sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
@@ -811,7 +840,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         if (reqItems == null || reqItems.isEmpty()) throw new BizException(40000, "申领单元明细，无法生成缺货单");
 
         // 确定目标仓库（中心库），用于查询真实库存
-        Long targetWarehouseId = req.getToWarehouseId() != null ? req.getToWarehouseId() : 1L;
+        Long targetWarehouseId = inventoryService.findActiveCentralWarehouse().getId();
 
         List<PurchaseRequisitionItem> shortItems = new ArrayList<>();
         for (PurchaseRequisitionItem item : reqItems) {
@@ -983,16 +1012,40 @@ public class ProcurementServiceImpl implements ProcurementService {
 
     @Override
     public PurchaseOrder createOrderFromShortage(Long shortageId, Integer supplierId, String expectedDeliveryDate, String settlementMode, String remark) {
-        String no = "PO-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-" +
-                String.format("%04d", System.currentTimeMillis() % 10000);
+        if (shortageId == null || supplierId == null || supplierId <= 0)
+            throw new BizException(40001, "缺货单与供应商必填");
+        // 先锁定合法来源，再校验未转单状态；重复请求不能产生另一张采购义务。
+        ShortageOrder so = shortageMapper.selectOne(new LambdaQueryWrapper<ShortageOrder>()
+                .eq(ShortageOrder::getId, shortageId).last("FOR UPDATE"));
+        if (so == null) throw new BizException(40400, "缺货单不存在或无权访问");
+        if (so.getStatus() != ShortageStatusEnum.PENDING_PROCUREMENT || so.getPoId() != null)
+            throw new BizException(40900, "该缺货单已处理，不能重复生成采购单");
+        requireActiveSupplier(supplierId);
+        List<ShortageOrderItem> shItems = shortageItemMapper.selectList(new LambdaQueryWrapper<ShortageOrderItem>()
+                .eq(ShortageOrderItem::getShortageOrderId, shortageId).last("FOR UPDATE"));
+        if (shItems == null || shItems.isEmpty()) throw new BizException(40001, "缺货单没有可采购的明细");
+        Map<Long, ReagentCatalog> sourceCatalogs = new HashMap<>();
+        for (var sourceItem : shItems) {
+            requirePositive(sourceItem.getQtyShortage(), "缺货数量");
+            if (sourceItem.getEstUnitPrice() == null || sourceItem.getEstUnitPrice().signum() < 0)
+                throw new BizException(40001, "缺货来源价格不明，请先核对，不能按零金额建单");
+            var catalog = catalogService.lockForBusiness(sourceItem.getReagentId());
+            if (catalog == null || catalog.getApprovalStatus() != com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
+                    || catalog.getMaterialType() == null) throw new BizException(40001, "采购目录不存在、未批准或类型未维护");
+            sourceCatalogs.put(catalog.getId(), catalog);
+        }
+        LocalDate orderDate = LocalDate.now();
+        String no = reservePurchaseNumbers(orderDate, 1).next();
         PurchaseOrder po = new PurchaseOrder();
         po.setPoNo(no);
         po.setSupplierId(supplierId);
         po.setSourceType("SHORTAGE");
         po.setSettlementMode(com.zlth.ivd.common.enums.SettlementModeEnum.normalizeNewOrder(settlementMode));
         po.setSourceId(shortageId);
+        po.setShortageOrderId(shortageId);
+        po.setReqId(so.getReqId());
         po.setStatus(PurchaseOrderStatusEnum.DRAFT);
-        po.setOrderDate(LocalDate.now());
+        po.setOrderDate(orderDate);
         if (expectedDeliveryDate != null && !expectedDeliveryDate.isEmpty()) {
             po.setExpectedDeliveryDate(LocalDate.parse(expectedDeliveryDate));
         }
@@ -1001,9 +1054,6 @@ public class ProcurementServiceImpl implements ProcurementService {
         orderMapper.insert(po);
 
         // BUGFIX 2: 从缺货明细复制到采购订单明细
-        List<ShortageOrderItem> shItems = shortageItemMapper.selectList(
-                new LambdaQueryWrapper<ShortageOrderItem>()
-                        .eq(ShortageOrderItem::getShortageOrderId, shortageId));
         if (shItems != null && !shItems.isEmpty()) {
             int lineNo = 1;
             BigDecimal totalAmount = BigDecimal.ZERO;
@@ -1013,9 +1063,9 @@ public class ProcurementServiceImpl implements ProcurementService {
                 poi.setLineNo(lineNo++);
                 poi.setReagentId(si.getReagentId());
                 poi.setSupplierId(supplierId);
-                poi.setMaterialType("REAGENT");
-                poi.setQtyOrdered(si.getQtyShortage() != null ? si.getQtyShortage() : BigDecimal.ONE);
-                BigDecimal unitPrice = si.getEstUnitPrice() != null ? si.getEstUnitPrice() : BigDecimal.ZERO;
+                poi.setMaterialType(sourceCatalogs.get(si.getReagentId()).getMaterialType().name());
+                poi.setQtyOrdered(si.getQtyShortage());
+                BigDecimal unitPrice = si.getEstUnitPrice();
                 poi.setUnitPrice(unitPrice);
                 poi.setAmount(si.getQtyShortage() != null ? si.getQtyShortage().multiply(unitPrice) : BigDecimal.ZERO);
                 poi.setQtyReceived(BigDecimal.ZERO);
@@ -1030,12 +1080,10 @@ public class ProcurementServiceImpl implements ProcurementService {
         }
 
         // 更新缺货单关联
-        ShortageOrder so = shortageMapper.selectById(shortageId);
-        if (so != null) {
-            so.setPoId(po.getId());
-            so.setStatus(ShortageStatusEnum.PURCHASING);
-            shortageMapper.updateById(so);
-        }
+        so.setPoId(po.getId());
+        so.setStatus(ShortageStatusEnum.PURCHASING);
+        shortageMapper.updateById(so);
+        appendShortageTransition("SHORTAGE_CONVERTED",so.getId(),po.getId(),"PENDING_PROCUREMENT","PURCHASING");
         log.info("采购订单创建: poNo={}, shortageId={}", no, shortageId);
         return po;
     }
@@ -1059,7 +1107,8 @@ public class ProcurementServiceImpl implements ProcurementService {
             List<ReagentCatalog> catalogs = catalogService.findByIds(allReagentIds);
             for (ReagentCatalog c : catalogs) allCatalogMap.put(c.getId(), c);
         }
-        for(var item:allItems){var catalog=allCatalogMap.get(item.getReagentId());
+        for(var item:allItems){var catalog=catalogService.lockForBusiness(item.getReagentId());
+            if(catalog!=null)allCatalogMap.put(item.getReagentId(),catalog);
             if(catalog==null || catalog.getApprovalStatus()!=com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
                     || catalog.getPricePerUnit()==null || catalog.getPricePerUnit().signum()<0)
                 throw new BizException(40001,"采购试剂目录须已批准并维护非负单价");
@@ -1068,66 +1117,34 @@ public class ProcurementServiceImpl implements ProcurementService {
 
         // 1. 从试剂目录的 distributor 字段解析缺失的 supplierId
         //    ReagentCatalog.distributor 存的是配送商名称，需要反查 Supplier 表得到 ID
-        Map<String, Integer> supplierNameToId = new HashMap<>();
-        List<Supplier> allSuppliers = supplierService.findAll();
-        for(var item:allItems)if(item.getSupplierId()!=null && allSuppliers.stream().noneMatch(supplier->supplier.getId().intValue()==item.getSupplierId()))
-            throw new BizException(40300,"供应商不属于当前机构或不可访问");
-        for (Supplier s : allSuppliers) {
-            if (s.getName() != null) supplierNameToId.put(s.getName().trim(), s.getId().intValue());
-            if (s.getShortName() != null) supplierNameToId.put(s.getShortName().trim(), s.getId().intValue());
-        }
-
         for (CreateManualOrderRequest.ManualOrderItem item : allItems) {
-            if (item.getSupplierId() == null && item.getReagentId() != null) {
-                ReagentCatalog cat = allCatalogMap.get(item.getReagentId());
-                if (cat != null && cat.getDistributor() != null && !cat.getDistributor().isBlank()) {
-                    String dist = cat.getDistributor().trim();
-                    // 1) 精确匹配
-                    Integer resolvedId = supplierNameToId.get(dist);
-                    // 2) 模糊匹配：供应商名包含配送商名 或 配送商名包含供应商名
-                    if (resolvedId == null) {
-                        for (Map.Entry<String, Integer> entry : supplierNameToId.entrySet()) {
-                            if (entry.getKey().contains(dist) || dist.contains(entry.getKey())) {
-                                resolvedId = entry.getValue();
-                                break;
-                            }
-                        }
-                    }
-                    if (resolvedId != null) {
-                        item.setSupplierId(resolvedId);
-                        log.info("试剂 {} 配送商\"{}\" → 供应商ID={}", item.getReagentId(), dist, resolvedId);
-                    } else {
-                        log.warn("试剂 {} 配送商\"{}\" 未匹配到任何供应商，supplierId 保持为 null", item.getReagentId(), dist);
-                    }
-                }
-            }
+            Supplier supplier = resolvePurchaseSupplier(item.getSupplierId(), allCatalogMap.get(item.getReagentId()).getDistributor());
+            item.setSupplierId(Math.toIntExact(supplier.getId()));
         }
 
-        // 2. 按供应商分组（null 归入 key=0，统一成一个"未指定供应商"的 PO）
+        // 2. 按已验证的供应商分组
         Map<Integer, List<CreateManualOrderRequest.ManualOrderItem>> grouped = new LinkedHashMap<>();
         for (CreateManualOrderRequest.ManualOrderItem item : allItems) {
-            Integer supplierKey = item.getSupplierId() != null ? item.getSupplierId() : 0;
-            grouped.computeIfAbsent(supplierKey, k -> new ArrayList<>()).add(item);
+            grouped.computeIfAbsent(item.getSupplierId(), k -> new ArrayList<>()).add(item);
         }
 
         List<PurchaseOrder> results = new ArrayList<>();
-        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        int baseSeq = (int) (System.currentTimeMillis() % 10000);
+        LocalDate orderDate = LocalDate.now();
+        var numbers = reservePurchaseNumbers(orderDate, grouped.size());
 
         for (Map.Entry<Integer, List<CreateManualOrderRequest.ManualOrderItem>> entry : grouped.entrySet()) {
-            Integer supplierId = entry.getKey() == 0 ? null : entry.getKey();
+            Integer supplierId = entry.getKey();
             List<CreateManualOrderRequest.ManualOrderItem> groupItems = entry.getValue();
 
             // 1. 先插入 PO 头（获取雪花 ID）
-            int seq = (baseSeq + results.size()) % 10000;
-            String no = "PO-" + datePart + "-" + String.format("%04d", seq);
+            String no = numbers.next();
             PurchaseOrder po = new PurchaseOrder();
             po.setPoNo(no);
             po.setSourceType("MANUAL");
             po.setSupplierId(supplierId);
             po.setSettlementMode(com.zlth.ivd.common.enums.SettlementModeEnum.normalizeNewOrder(request.getSettlementMode()));
             po.setStatus(PurchaseOrderStatusEnum.DRAFT);
-            po.setOrderDate(LocalDate.now());
+            po.setOrderDate(orderDate);
             po.setTotalAmount(BigDecimal.ZERO);
             po.setReceivedQuantity(BigDecimal.ZERO);
             po.setCreatedAt(LocalDateTime.now());
@@ -1187,9 +1204,11 @@ public class ProcurementServiceImpl implements ProcurementService {
         if(order==null)throw new BizException(40400,"采购订单不存在");
         if(order.getStatus()==PurchaseOrderStatusEnum.CANCELLED || order.getStatus()==PurchaseOrderStatusEnum.COMPLETED)
             throw new BizException(40001,"已取消或已完成的订单不能继续验收");
-        ReagentCatalog receivedCatalog=catalogService.findById(item.getReagentId());
-        if(receivedCatalog==null) throw new BizException(40400,"试剂目录不存在");
-        validateReceipt(request.getBatchNo(),request.getExpiryDate(),request.getProductionDate(),receivedCatalog.getMaterialType());
+        requireActiveSupplier(order.getSupplierId());
+        ReagentCatalog receivedCatalog = requireApprovedReceiptCatalog(item.getReagentId());
+        String receiptUdiDi = resolveReceiptUdiDi(receivedCatalog, request.getUdiDi());
+        boolean pendingUdi = receiptUdiDi == null && receivedCatalog.getMaterialType().entersUdiStateMachine();
+        request.setBatchNo(validateReceipt(request.getBatchNo(),request.getExpiryDate(),request.getProductionDate(),receivedCatalog.getMaterialType()));
         if(item.getUnitPrice()==null || item.getUnitPrice().signum()<0)throw new BizException(40001,"验收来源单价未维护或为负，请先核对采购明细");
         if(Integer.valueOf(1).equals(receivedCatalog.getEnableUniqueCode()) && request.getQtyReceived().stripTrailingZeros().scale()>0)
             throw new BizException(40001,"唯一码管控物料须按完整单位验收");
@@ -1228,11 +1247,15 @@ public class ProcurementServiceImpl implements ProcurementService {
         if (request.getBatchNo() != null && !request.getBatchNo().isBlank()) {
             var source=new ReagentBatch();source.setBatchNo(request.getBatchNo().trim());source.setReagentId(item.getReagentId());
             source.setMaterialType(receivedCatalog.getMaterialType());source.setUnit(receivedCatalog.getUnit());
-            source.setUdiDi(request.getUdiDi()!=null?request.getUdiDi():receivedCatalog.getUdiDi());
+            source.setUdiDi(receiptUdiDi);
+            if (pendingUdi) source.setUdiStatus(UdiStatusEnum.PENDING_UDI);
             source.setManufactureDate(request.getProductionDate());source.setExpiryDate(request.getExpiryDate());
             source.setUnitPrice(item.getUnitPrice());source.setOriginPurchaseOrderItemId(item.getId());
             source.setSettlementMode(order.getSettlementMode());
-            Long savedBatchId=inventoryService.receiveIntoWarehouse(source,warehouseId,qty).getId();
+            var savedBatch = inventoryService.receiveIntoWarehouse(source, warehouseId, qty);
+            if (!Objects.equals(normalizeReceiptUdiDi(savedBatch.getUdiDi()), receiptUdiDi))
+                throw new BizException(40900, "在库批次 UDI-DI 与本次验收不一致，请先核对历史记录");
+            Long savedBatchId = savedBatch.getId();
 
             // BUGFIX 6: 写入 INBOUND consumption_record 审计追踪
             ConsumptionRecord cr = new ConsumptionRecord();
@@ -1255,11 +1278,10 @@ public class ProcurementServiceImpl implements ProcurementService {
             consumptionService.appendRecord(cr);
 
             // 按入库数量生成唯一码（仅当试剂目录开启唯一码管控时）
-            ReagentCatalog catalog = catalogService.findById(item.getReagentId().longValue());
-            if (catalog != null && catalog.getEnableUniqueCode() != null && catalog.getEnableUniqueCode() == 1) {
+            if (!pendingUdi && Integer.valueOf(1).equals(receivedCatalog.getEnableUniqueCode())) {
                 int codeCount = qty.intValue();
                 uniqueCodeService.generateAndSave(codeCount, savedBatchId,
-                        item.getReagentId().longValue(), request.getBatchNo(), request.getUdiDi());
+                        item.getReagentId().longValue(), request.getBatchNo(), receiptUdiDi);
             }
         }
 
@@ -1300,6 +1322,25 @@ public class ProcurementServiceImpl implements ProcurementService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         po.setReceivedQuantity(totalReceived);
         orderMapper.updateById(po);
+        if (allReceived && po.getShortageOrderId() != null) {
+            ShortageOrder source = shortageMapper.selectOne(new LambdaQueryWrapper<ShortageOrder>()
+                    .eq(ShortageOrder::getId, po.getShortageOrderId()).last("FOR UPDATE"));
+            if (source == null || !Objects.equals(source.getPoId(), po.getId())
+                    || source.getStatus() != ShortageStatusEnum.PURCHASING)
+                throw new BizException(40900, "采购与缺货来源关联不一致，请先核对");
+            source.setStatus(ShortageStatusEnum.COMPLETED);
+            shortageMapper.updateById(source);
+            appendShortageTransition("SHORTAGE_COMPLETED",source.getId(),po.getId(),"PURCHASING","COMPLETED");
+        }
+    }
+
+    /** 新状态与不可变领域审计同一事务，写审计失败不能返回业务成功。 */
+    private void appendShortageTransition(String action,Long shortageId,Long purchaseOrderId,String from,String to) {
+        domainAudits.appendDomain(com.zlth.ivd.common.audit.OperationAuditEntry.builder()
+                .operatorId(SecurityUtils.getCurrentOperatorIdOrNull()).operatorName(SecurityUtils.getCurrentUsername())
+                .module("procurement").action(action).handler("ProcurementServiceImpl")
+                .reason("shortageId="+shortageId+",purchaseOrderId="+purchaseOrderId+",from="+from+",to="+to)
+                .success(true).durationMs(0L).occurredAt(LocalDateTime.now()).build());
     }
 
     // ── 人工验收直收（无采购订单直接验收入库）──
@@ -1311,12 +1352,13 @@ public class ProcurementServiceImpl implements ProcurementService {
         for (var item : request.getItems()) {
             if (item == null || item.getReagentId() == null) throw new BizException(40001, "请选择验收试剂");
             requirePositive(item.getQtyReceived(), "验收数量");
-            var catalog=catalogService.findById(item.getReagentId());
-            if(catalog==null)throw new BizException(40400,"验收试剂不存在");
-            validateReceipt(item.getBatchNo(),item.getExpiryDate(),item.getProductionDate(),catalog.getMaterialType());
+            var catalog = requireApprovedReceiptCatalog(item.getReagentId());
+            resolveReceiptUdiDi(catalog, item.getUdiDi());
+            item.setBatchNo(validateReceipt(item.getBatchNo(),item.getExpiryDate(),item.getProductionDate(),catalog.getMaterialType()));
             if(item.getUnitPrice()!=null && item.getUnitPrice().signum()<0)throw new BizException(40001,"单价不得为负");
         }
         Integer supplierId = request.getSupplierId();
+        requireActiveSupplier(supplierId);
         Long warehouseId = request.getWarehouseId()!=null?request.getWarehouseId():inventoryService.findActiveCentralWarehouse().getId();
         if(!Integer.valueOf(1).equals(inventoryService.requireWarehouse(warehouseId).getLevel()))throw new BizException(40001,"验收必须进入中心库");
 
@@ -1333,9 +1375,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         po.setCreatedAt(LocalDateTime.now());
         po.setUpdatedAt(LocalDateTime.now());
 
-        String datePart = LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String seq = String.format("%04d", (System.currentTimeMillis() % 10000));
-        po.setPoNo("PO-" + datePart + "-" + seq);
+        po.setPoNo(reservePurchaseNumbers(po.getOrderDate(), 1).next());
         orderMapper.insert(po);
 
         // 2. 创建订单明细 + 直接入库
@@ -1500,7 +1540,7 @@ public class ProcurementServiceImpl implements ProcurementService {
         Map<Long, BigDecimal> stockMap = new HashMap<>();
         List<ReagentBatch> batches = inventoryService.listAllBatches();
         for (ReagentBatch b : batches) {
-            if (b.getReagentId() != null && b.getStock() != null) {
+            if (b.getUdiStatus() != UdiStatusEnum.PENDING_UDI && b.getReagentId() != null && b.getStock() != null) {
                 stockMap.merge(b.getReagentId(), b.getStock(), BigDecimal::add);
             }
         }
@@ -1600,47 +1640,57 @@ public class ProcurementServiceImpl implements ProcurementService {
     @Override
     public List<PurchaseOrder> createOrdersFromReplenish(List<Map<String, Object>> items) {
         List<PurchaseOrder> orders = new ArrayList<>();
-        Set<Long> suggestionIds = new HashSet<>();
-
+        record Conversion(long reagentId, BigDecimal quantity, Integer supplierId) {}
+        Map<Long, Conversion> conversions = new TreeMap<>();
+        if (items == null || items.isEmpty() || items.size() > 10000)
+            throw new BizException(40001, "请选择 1 至 10000 条补货建议");
         for (Map<String, Object> item : items) {
-            // 读取前端提交的 ID + 可能被用户修改过的数量
-            Long suggestionId = null;
-            Object idObj = item.get("id");
-            if (idObj != null) {
-                suggestionId = Long.valueOf(idObj.toString());
-                suggestionIds.add(suggestionId);
+            if (item == null) throw new BizException(40001, "补货明细不能为空");
+            try {
+                long suggestionId = Long.parseLong(Objects.toString(item.get("id"), ""));
+                long reagentId = Long.parseLong(Objects.toString(item.get("reagentId"), ""));
+                BigDecimal quantity = new BigDecimal(Objects.toString(item.get("suggestedQty"), ""));
+                Integer supplierId = item.get("supplierId") == null ? null
+                        : Integer.valueOf(item.get("supplierId").toString());
+                if (suggestionId <= 0 || reagentId <= 0 || (supplierId != null && supplierId <= 0)
+                        || quantity.signum() <= 0 || quantity.stripTrailingZeros().scale() > 2
+                        || quantity.compareTo(new BigDecimal("100000000")) >= 0)
+                    throw new BizException(40001, "补货数量或引用编号不合法");
+                if (conversions.putIfAbsent(suggestionId, new Conversion(reagentId, quantity, supplierId)) != null)
+                    throw new BizException(40001, "同一补货建议不能重复选择");
+            } catch (NumberFormatException ex) {
+                throw new BizException(40001, "补货明细格式错误");
             }
+        }
 
-            Long reagentId = null;
-            Object rid = item.get("reagentId");
-            if (rid != null) reagentId = Long.valueOf(rid.toString());
-
-            // 数量优先使用前端传入（支持修改），否则从建议表读取
-            BigDecimal orderQty = null;
-            Object qty = item.get("suggestedQty");
-            if (qty != null) orderQty = new BigDecimal(qty.toString());
-
-            if (reagentId == null || orderQty == null) {
-                log.warn("智能补货生成PO跳过: 缺少 reagentId 或 suggestedQty, item={}", item);
-                continue;
-            }
-
-            String no = "PO-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-" +
-                    String.format("%04d", System.currentTimeMillis() % 10000);
+        // 按固定顺序锁定机构内建议；状态变更与采购单写入同事务提交。
+        LocalDate orderDate = LocalDate.now();
+        var numbers = reservePurchaseNumbers(orderDate, conversions.size());
+        for (var entry : conversions.entrySet()) {
+            Long suggestionId = entry.getKey();
+            Conversion conversion = entry.getValue();
+            SmartReplenishSuggestion suggestion = suggestionMapper.selectOne(new LambdaQueryWrapper<SmartReplenishSuggestion>()
+                    .eq(SmartReplenishSuggestion::getId, suggestionId).last("FOR UPDATE"));
+            if (suggestion == null) throw new BizException(40400, "补货建议不存在或已失效");
+            if (!"PENDING".equals(suggestion.getStatus()))
+                throw new BizException(40900, "补货建议已处理，请刷新后重试");
+            if (!Objects.equals(suggestion.getReagentId(), conversion.reagentId()))
+                throw new BizException(40001, "试剂与补货建议不匹配");
+            Long reagentId = suggestion.getReagentId();
+            BigDecimal orderQty = conversion.quantity();
+            ReagentCatalog cat = catalogService.lockForBusiness(reagentId);
+            if (cat == null || cat.getApprovalStatus() != com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
+                    || cat.getMaterialType() == null || cat.getPricePerUnit() == null || cat.getPricePerUnit().signum() < 0)
+                throw new BizException(40001, "采购目录须已批准并维护类型和非负单价");
+            Supplier supplier = resolvePurchaseSupplier(conversion.supplierId(), cat.getDistributor());
+            String no = numbers.next();
             PurchaseOrder po = new PurchaseOrder();
             po.setPoNo(no);
             po.setSourceType("SMART_REPLENISH");
             po.setSettlementMode("调拨结算");
             po.setStatus(PurchaseOrderStatusEnum.DRAFT);
-            po.setOrderDate(LocalDate.now());
-
-            // 供应商：优先前端传入，否则默认取最小可用供应商
-            Object sid = item.get("supplierId");
-            if (sid != null) {
-                po.setSupplierId(Integer.valueOf(sid.toString()));
-            } else {
-                po.setSupplierId(4); // 默认供应商
-            }
+            po.setOrderDate(orderDate);
+            po.setSupplierId(Math.toIntExact(supplier.getId()));
 
             po.setCreatedAt(LocalDateTime.now());
             po.setUpdatedAt(LocalDateTime.now());
@@ -1653,12 +1703,10 @@ public class ProcurementServiceImpl implements ProcurementService {
             poi.setLineNo(1);
             poi.setReagentId(reagentId);
             poi.setSupplierId(po.getSupplierId());
-            poi.setMaterialType("REAGENT");
+            poi.setMaterialType(cat.getMaterialType().name());
             poi.setQtyOrdered(orderQty);
 
-            ReagentCatalog cat = catalogService.findById(reagentId);
-            BigDecimal unitPrice = (cat != null && cat.getPricePerUnit() != null)
-                    ? cat.getPricePerUnit() : BigDecimal.ZERO;
+            BigDecimal unitPrice = cat.getPricePerUnit();
             poi.setUnitPrice(unitPrice);
             poi.setAmount(unitPrice.multiply(orderQty));
             poi.setQtyReceived(BigDecimal.ZERO);
@@ -1672,28 +1720,92 @@ public class ProcurementServiceImpl implements ProcurementService {
             orderMapper.updateById(po);
 
             orders.add(po);
-        }
-
-        // 更新建议表状态为 GENERATED
-        if (!suggestionIds.isEmpty()) {
             SmartReplenishSuggestion update = new SmartReplenishSuggestion();
             update.setStatus("GENERATED");
             update.setUpdatedAt(LocalDateTime.now());
-            suggestionMapper.update(update, new LambdaQueryWrapper<SmartReplenishSuggestion>()
-                    .in(SmartReplenishSuggestion::getId, suggestionIds));
+            if (suggestionMapper.update(update, new LambdaQueryWrapper<SmartReplenishSuggestion>()
+                    .eq(SmartReplenishSuggestion::getId, suggestionId)
+                    .eq(SmartReplenishSuggestion::getStatus, "PENDING")) != 1)
+                throw new BizException(40900, "补货建议状态已变化，请刷新后重试");
         }
 
-        log.info("智能补货生成采购单: count={}, suggestionIds={}", orders.size(), suggestionIds);
+        log.info("智能补货生成采购单: count={}, suggestionIds={}", orders.size(), conversions.keySet());
         return orders;
+    }
+
+    private Iterator<String> reservePurchaseNumbers(LocalDate orderDate, int count) {
+        if (count < 1 || count > 9999) throw new BizException(40001, "本次采购单数量超出发号范围");
+        String day = orderDate.format(DateTimeFormatter.BASIC_ISO_DATE);
+        orderMapper.advanceNumberSequence(day, count);
+        int last = orderMapper.currentNumberSequence(day);
+        if (last > 9999) throw new BizException(40900, "当前机构今日采购单号已用尽");
+        return java.util.stream.IntStream.rangeClosed(last - count + 1, last)
+                .mapToObj(number -> String.format(Locale.ROOT, "PO-%s-%04d", day, number)).iterator();
+    }
+
+    private Supplier requireActiveSupplier(Integer supplierId) {
+        if (supplierId == null || supplierId <= 0) throw new BizException(40001, "请选择启用的供应商");
+        Supplier supplier = supplierService.findById(supplierId.longValue());
+        if (supplier == null) throw new BizException(40300, "供应商不存在或不可访问");
+        if (!Boolean.TRUE.equals(supplier.getIsActive())) throw new BizException(40001, "供应商已停用");
+        supplierService.requireProcurementEligible(supplierId.longValue());
+        return supplier;
+    }
+
+    private Supplier resolvePurchaseSupplier(Integer supplierId, String distributor) {
+        if (supplierId != null) return requireActiveSupplier(supplierId);
+        if (distributor != null && !distributor.isBlank()) {
+            String name = distributor.trim();
+            List<Supplier> matches = supplierService.findAll().stream()
+                    .filter(s -> Boolean.TRUE.equals(s.getIsActive()))
+                    .filter(s -> name.equals(Objects.toString(s.getName(), "").trim())
+                            || name.equals(Objects.toString(s.getShortName(), "").trim()))
+                    .toList();
+            if (matches.size() == 1) return requireActiveSupplier(Math.toIntExact(matches.get(0).getId()));
+        }
+        throw new BizException(40001, "未匹配到唯一启用的机构供应商，请核对目录配送商");
     }
 
     // ── 私有辅助方法 ──
 
-    private void validateReceipt(String batchNo,LocalDate expiry,LocalDate production,MaterialTypeEnum type) {
-        if(batchNo==null || batchNo.isBlank() || batchNo.length()>64)throw new BizException(40001,"验收批号必填且不得超过64字");
-        if(expiry==null || expiry.isBefore(LocalDate.now()))throw new BizException(40001,"请填写未过期的有效期");
-        if(production!=null && (production.isAfter(LocalDate.now()) || production.isAfter(expiry)))
+    private String resolveReceiptUdiDi(ReagentCatalog catalog, String supplied) {
+        String expected = normalizeReceiptUdiDi(catalog.getUdiDi());
+        String actual = normalizeReceiptUdiDi(supplied);
+        if (actual != null && !actual.equals(expected))
+            throw new BizException(40001, expected == null
+                    ? "试剂目录未维护可核对的 UDI-DI，请先完善目录"
+                    : "来货 UDI-DI 与采购试剂目录不匹配");
+        return expected;
+    }
+
+    private String normalizeReceiptUdiDi(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private ReagentCatalog requireApprovedReceiptCatalog(Long reagentId) {
+        ReagentCatalog catalog = catalogService.lockForBusiness(reagentId);
+        if (catalog == null) throw new BizException(40400, "验收试剂目录不存在");
+        if (catalog.getApprovalStatus() != com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
+                || catalog.getMaterialType() == null)
+            throw new BizException(40001, "验收试剂目录须已批准并维护物料类型");
+        return catalog;
+    }
+
+    private String validateReceipt(String batchNo,LocalDate expiry,LocalDate production,MaterialTypeEnum type) {
+        if (type == null) throw new BizException(40001, "物料类型未维护");
+        boolean tracked = type.entersUdiStateMachine();
+        if(batchNo != null && batchNo.length()>64)throw new BizException(40001,"验收批号不得超过64字");
+        if (tracked && (batchNo == null || batchNo.isBlank())) throw new BizException(40001, "该物料验收必须填写批号");
+        if ((tracked && expiry == null) || (expiry != null && expiry.isBefore(LocalDate.now())))
+            throw new BizException(40001,"请填写未过期的有效期");
+        if(production!=null && (production.isAfter(LocalDate.now()) || (expiry != null && production.isAfter(expiry))))
             throw new BizException(40001,"生产日期不得晚于今天或有效期");
+        if (batchNo != null && !batchNo.isBlank()) return batchNo.strip();
+        String day = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        orderMapper.advanceVirtualBatch(day);
+        int number = orderMapper.currentVirtualBatch(day);
+        if (number > 999) throw new BizException(40900, "当前机构今日虚拟批号已用尽");
+        return String.format(Locale.ROOT, "BATCH-CONS-%s-%03d", day, number);
     }
     private void authorizeDepartment(Long departmentId) {
         com.zlth.ivd.common.security.InstitutionContext.current()
