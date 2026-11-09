@@ -14,5 +14,6 @@ public interface ProcurementConsumptionService {
     List<ConsumptionRecord> findUnreceivedTransferRecords(Long requisitionId);
     void confirmTransferReceipt(Long transferId, Long targetBatchId);
     List<ConsumptionRecord> findConsumptionRecords();
+    boolean hasVerifiedInboundSource(ConsumptionRecord source);
     void appendRecord(ConsumptionRecord record);
 }

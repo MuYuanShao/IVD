@@ -1,4 +1,9 @@
 CREATE TABLE institution(id BIGINT PRIMARY KEY,code VARCHAR(64),name VARCHAR(100),type VARCHAR(20),status INT);
+CREATE TABLE inventory_opening_balance(id BIGINT AUTO_INCREMENT PRIMARY KEY,institution_id BIGINT NOT NULL,
+    batch_id BIGINT NOT NULL,reagent_id BIGINT NOT NULL,batch_no VARCHAR(64) NOT NULL,warehouse_id BIGINT NOT NULL,
+    quantity DECIMAL(10,2) NOT NULL,unit_price DECIMAL(12,2) NOT NULL,amount DECIMAL(12,2),
+    effective_at DATETIME(3) NOT NULL,created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    evidence_source VARCHAR(32) NOT NULL,evidence_reference VARCHAR(500) NOT NULL,UNIQUE(institution_id,batch_id));
 CREATE TABLE purchase_order_number_sequence(institution_id BIGINT NOT NULL,order_day CHAR(8) NOT NULL,last_number INT NOT NULL,PRIMARY KEY(institution_id,order_day));
 CREATE TABLE receipt_virtual_batch_sequence(institution_id BIGINT NOT NULL,receipt_day CHAR(8) NOT NULL,last_number INT NOT NULL,PRIMARY KEY(institution_id,receipt_day));
 INSERT INTO institution VALUES(1,'QA1','虚构本院','INTERNAL',1),(2,'QA2','虚构他院','INTERNAL',1);

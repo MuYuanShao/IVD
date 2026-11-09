@@ -23,6 +23,7 @@ import com.zlth.ivd.license.mapper.ReagentSupplierRelMapper;
 import com.zlth.ivd.license.mapper.SupplierLicenseMapper;
 import com.zlth.ivd.license.mapper.SupplierMapper;
 import com.zlth.ivd.license.service.LicenseService;
+import com.zlth.ivd.license.service.LicenseExpiryPolicy;
 import com.zlth.ivd.license.vo.LicenseDetailVO;
 import com.zlth.ivd.license.vo.LicenseVO;
 import io.minio.GetObjectArgs;
@@ -94,7 +95,7 @@ public class LicenseServiceImpl implements LicenseService {
             qw.eq(SupplierLicense::getLicenseType, LicenseTypeEnum.valueOf(query.getLicenseType()));
         }
         if (StringUtils.hasText(query.getStatus())) {
-            qw.eq(SupplierLicense::getStatus, LicenseStatusEnum.valueOf(query.getStatus()));
+            applyEffectiveStatusFilter(qw, query.getStatus());
         }
         if (StringUtils.hasText(query.getKeyword())) {
             String pattern = "%" + query.getKeyword().strip()
@@ -142,6 +143,13 @@ public class LicenseServiceImpl implements LicenseService {
                         .createdAt(l.getCreatedAt())
                         .build())
                 .collect(Collectors.toList());
+        var proofReferences = renewalProofs(logs);
+        var attachments = parseAttachments(license.getAttachments());
+        attachments.forEach(attachment -> attachment.setProtectedEvidence(proofReferences.uncertain()
+                || proofReferences.keys().contains(attachment.getObjectKey())));
+        var today = LocalDate.now();
+        var effectiveStatus = LicenseExpiryPolicy.status(license.getStatus(), license.getExpireDate(), today);
+        String reminder = LicenseExpiryPolicy.reminderLevel(license.getStatus(), license.getExpireDate(), today);
 
         return LicenseDetailVO.builder()
                 .id(license.getId())
@@ -153,11 +161,13 @@ public class LicenseServiceImpl implements LicenseService {
                 .issuingAuthority(license.getIssuingAuthority())
                 .issueDate(license.getIssueDate())
                 .expireDate(license.getExpireDate())
-                .status(license.getStatus().name())
-                .statusLabel(license.getStatus().getLabel())
-                .remainingDays(ChronoUnit.DAYS.between(LocalDate.now(), license.getExpireDate()))
-                .relatedReagents(Collections.emptyList()) // TODO: 联表查询
-                .attachments(parseAttachments(license.getAttachments()))
+                .status(effectiveStatus.name())
+                .statusLabel(effectiveStatus.getLabel())
+                .remainingDays(LicenseExpiryPolicy.remainingDays(license.getExpireDate(), today))
+                .reminderLevel(reminder)
+                .reminderLabel(LicenseExpiryPolicy.reminderLabel(reminder))
+                .relatedReagents(relatedReagents(license.getSupplierId()))
+                .attachments(attachments)
                 .changeLogs(changeItems)
                 .createdAt(license.getCreatedAt())
                 .updatedAt(license.getUpdatedAt())
@@ -168,6 +178,10 @@ public class LicenseServiceImpl implements LicenseService {
     public LicenseVO create(CreateLicenseRequest request) {
         Long operatorId = com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
         validateLicenseDates(request.getIssueDate(), request.getExpireDate());
+        if (request.getSupplierId() == null || request.getSupplierId() <= 0)
+            throw new BizException(40001, "请选择当前机构的供应商");
+        if (supplierMapper.selectById(request.getSupplierId()) == null)
+            throw new BizException(40400, "供应商不存在或不属于当前机构");
         SupplierLicense license = new SupplierLicense();
         license.setSupplierId(request.getSupplierId());
         license.setLicenseType(LicenseTypeEnum.valueOf(request.getLicenseType()));
@@ -324,6 +338,7 @@ public class LicenseServiceImpl implements LicenseService {
 
     @Override
     public List<LicenseVO> getExpiryAlerts(int days) {
+        if (days < 1 || days > 365) throw new BizException(40001, "证照预警天数须为1至365");
         return licenseMapper.findExpiringWithinDays(days).stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
@@ -471,6 +486,7 @@ public class LicenseServiceImpl implements LicenseService {
         if (target == null) {
             throw new BizException(40400, "附件不存在");
         }
+        requireMutableAttachment(licenseId, objectKey);
 
         cleanupAttachmentOnCompletion(licenseId, objectKey, true);
 
@@ -509,6 +525,7 @@ public class LicenseServiceImpl implements LicenseService {
         if (oldItem == null) {
             throw new BizException(40400, "附件不存在");
         }
+        requireMutableAttachment(licenseId, oldObjectKey);
 
         String oldFileName = oldItem.getName();
 
@@ -673,7 +690,9 @@ public class LicenseServiceImpl implements LicenseService {
 
     private LicenseVO toVO(SupplierLicense license) {
         var supplier = supplierMapper.selectById(license.getSupplierId());
-        long remainingDays = ChronoUnit.DAYS.between(LocalDate.now(), license.getExpireDate());
+        var today = LocalDate.now();
+        var effectiveStatus = LicenseExpiryPolicy.status(license.getStatus(), license.getExpireDate(), today);
+        String reminder = LicenseExpiryPolicy.reminderLevel(license.getStatus(), license.getExpireDate(), today);
         return LicenseVO.builder()
                 .id(license.getId())
                 .supplierId(license.getSupplierId())
@@ -684,9 +703,11 @@ public class LicenseServiceImpl implements LicenseService {
                 .issuingAuthority(license.getIssuingAuthority())
                 .issueDate(license.getIssueDate())
                 .expireDate(license.getExpireDate())
-                .status(license.getStatus().name())
-                .statusLabel(license.getStatus().getLabel())
-                .remainingDays(remainingDays)
+                .status(effectiveStatus.name())
+                .statusLabel(effectiveStatus.getLabel())
+                .remainingDays(LicenseExpiryPolicy.remainingDays(license.getExpireDate(), today))
+                .reminderLevel(reminder)
+                .reminderLabel(LicenseExpiryPolicy.reminderLabel(reminder))
                 .attachmentCount(parseAttachments(license.getAttachments()).size())
                 .createdAt(license.getCreatedAt())
                 .build();
@@ -698,10 +719,70 @@ public class LicenseServiceImpl implements LicenseService {
     }
 
     private LicenseStatusEnum calcStatus(LocalDate expireDate) {
-        long days = ChronoUnit.DAYS.between(LocalDate.now(), expireDate);
-        if (days <= 0) return LicenseStatusEnum.EXPIRED;
-        if (days <= 90) return LicenseStatusEnum.EXPIRING;
-        return LicenseStatusEnum.ACTIVE;
+        return LicenseExpiryPolicy.status(null, expireDate, LocalDate.now());
+    }
+
+    private void applyEffectiveStatusFilter(LambdaQueryWrapper<SupplierLicense> query, String status) {
+        LocalDate today = LocalDate.now();
+        switch (status) {
+            case "FROZEN" -> query.eq(SupplierLicense::getStatus, LicenseStatusEnum.FROZEN);
+            case "EXPIRED" -> query.ne(SupplierLicense::getStatus, LicenseStatusEnum.FROZEN)
+                    .and(expiry -> expiry.eq(SupplierLicense::getStatus, LicenseStatusEnum.EXPIRED)
+                            .or().isNull(SupplierLicense::getExpireDate).or().le(SupplierLicense::getExpireDate, today));
+            case "EXPIRING" -> query.notIn(SupplierLicense::getStatus, LicenseStatusEnum.FROZEN,LicenseStatusEnum.EXPIRED)
+                    .gt(SupplierLicense::getExpireDate, today).le(SupplierLicense::getExpireDate, today.plusDays(30));
+            case "ACTIVE" -> query.notIn(SupplierLicense::getStatus, LicenseStatusEnum.FROZEN,LicenseStatusEnum.EXPIRED)
+                    .gt(SupplierLicense::getExpireDate, today.plusDays(30));
+            default -> throw new BizException(40001, "证照状态无效");
+        }
+    }
+
+    private List<LicenseDetailVO.RelReagent> relatedReagents(Long supplierId) {
+        var relations = reagentSupplierRelMapper.selectList(
+                new LambdaQueryWrapper<com.zlth.ivd.license.entity.ReagentSupplierRel>()
+                        .eq(com.zlth.ivd.license.entity.ReagentSupplierRel::getSupplierId, supplierId));
+        Map<Long, LicenseDetailVO.RelReagent> result = new LinkedHashMap<>();
+        for (var relation : relations) {
+            if (relation.getReagentId() == null) continue;
+            try {
+                var reagent = catalogService.getById(relation.getReagentId());
+                if (reagent == null) continue;
+                result.put(reagent.getId(), LicenseDetailVO.RelReagent.builder()
+                        .reagentId(reagent.getId()).hisCode(reagent.getHisCode()).genericName(reagent.getGenericName())
+                        .manufacturer(reagent.getManufacturer()).isDefault(Boolean.TRUE.equals(relation.getIsDefault())).build());
+            } catch (BizException notVisible) {
+                if (notVisible.getErrorCode() != 40400 && notVisible.getErrorCode() != 40007) throw notVisible;
+                // The relation must not expose a deleted or tenant-hidden catalog entry.
+            }
+        }
+        return new ArrayList<>(result.values());
+    }
+
+    private record RenewalProofs(Set<String> keys, boolean uncertain) {}
+
+    private RenewalProofs renewalProofs(List<LicenseChangeLog> history) {
+        Set<String> keys = new HashSet<>();
+        boolean uncertain = false;
+        for (var item : history) {
+            if (!"RENEW".equals(item.getChangeType())) continue;
+            try {
+                var note = OBJECT_MAPPER.readTree(item.getNote());
+                var key = note == null ? null : note.get("attachmentKey");
+                if (key == null || !key.isTextual() || key.asText().isBlank()) uncertain = true;
+                else keys.add(key.asText());
+            } catch (Exception malformed) {
+                uncertain = true;
+            }
+        }
+        return new RenewalProofs(keys, uncertain);
+    }
+
+    private void requireMutableAttachment(Long licenseId, String key) {
+        var proofs = renewalProofs(changeLogMapper.findByLicenseId(licenseId));
+        if (proofs.uncertain())
+            throw new BizException(40900, "续证历史证明信息不完整，不能删除或替换附件，请先人工核对");
+        if (proofs.keys().contains(key))
+            throw new BizException(40900, "该附件是已批准续证的审核依据，只能阅览，不可删除或替换");
     }
 
     private void insertChangeLog(Long licenseId, String changeType, LocalDate oldExpire,

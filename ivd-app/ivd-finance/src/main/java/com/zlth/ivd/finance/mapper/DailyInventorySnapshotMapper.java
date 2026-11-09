@@ -30,7 +30,9 @@ public interface DailyInventorySnapshotMapper extends BaseMapper<DailyInventoryS
             "movements AS (" +
             "SELECT reagent_id,warehouse_id,occurred_at,amount inbound,0 outbound FROM raw WHERE record_type='INBOUND' " +
             "UNION ALL SELECT reagent_id,warehouse_id,occurred_at,0,amount FROM raw WHERE record_type='CONSUME' " +
-            "UNION ALL SELECT reagent_id,from_warehouse_id,occurred_at,0,amount FROM raw WHERE record_type='TRANSFER' " +
+            "UNION ALL SELECT reagent_id,from_warehouse_id,occurred_at,0,amount FROM raw WHERE record_type='TRANSFER' AND stock_deduct_on_receipt=0 " +
+            "UNION ALL SELECT cr.reagent_id,cr.from_warehouse_id,r.received_at,0,cr.amount FROM raw cr " +
+            "JOIN requisition_transfer_receipt r ON r.transfer_record_id=cr.id WHERE cr.record_type='TRANSFER' AND cr.stock_deduct_on_receipt=1 " +
             "UNION ALL SELECT cr.reagent_id,cr.warehouse_id,r.received_at,cr.amount,0 FROM raw cr " +
             "JOIN requisition_transfer_receipt r ON r.transfer_record_id=cr.id WHERE cr.record_type='TRANSFER' " +
             "UNION ALL SELECT reagent_id,warehouse_id,occurred_at,amount,0 FROM raw WHERE record_type='TRANSFER' AND requisition_id IS NULL), " +
@@ -72,8 +74,10 @@ public interface DailyInventorySnapshotMapper extends BaseMapper<DailyInventoryS
     java.math.BigDecimal getTodayInbound(@Param("date") LocalDate date);
 
     /** 当日出库金额（消耗 + 调拨） */
-    @Select("SELECT COALESCE(SUM(amount), 0) FROM consumption_record " +
-            "WHERE record_type IN ('CONSUME', 'TRANSFER') AND DATE(occurred_at) = #{date}")
+    @Select("SELECT COALESCE(SUM(c.amount),0) FROM consumption_record c " +
+            "LEFT JOIN requisition_transfer_receipt r ON r.transfer_record_id=c.id AND r.institution_id=c.institution_id " +
+            "WHERE c.record_type IN ('CONSUME','TRANSFER') " +
+            "AND DATE(CASE WHEN c.stock_deduct_on_receipt=1 THEN r.received_at ELSE c.occurred_at END)=#{date}")
     java.math.BigDecimal getTodayOutbound(@Param("date") LocalDate date);
 
     /** 期初库存金额（上一日日结期末合计） */

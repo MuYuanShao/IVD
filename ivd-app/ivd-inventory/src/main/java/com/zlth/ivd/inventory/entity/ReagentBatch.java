@@ -23,6 +23,7 @@ public class ReagentBatch {
     private LocalDate openDate;
     private LocalDate openExpiryDate;
     private BigDecimal stock;
+    private BigDecimal reservedStock;
     private String unit;
     private BigDecimal unitPrice;
     private BigDecimal avgCost;
@@ -35,4 +36,12 @@ public class ReagentBatch {
     @Version private Integer version;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createdAt;
     @TableField(fill = FieldFill.INSERT_UPDATE) private LocalDateTime updatedAt;
+
+    public BigDecimal getReservedStock() {
+        return reservedStock == null ? BigDecimal.ZERO : reservedStock;
+    }
+
+    public BigDecimal getAvailableStock() {
+        return (stock == null ? BigDecimal.ZERO : stock).subtract(getReservedStock());
+    }
 }

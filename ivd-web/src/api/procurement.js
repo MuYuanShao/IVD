@@ -31,6 +31,18 @@ export function createOrderFromShortage(data) {
 export function createManualOrder(data) { return request({ url: '/procurement/orders/manual', method: 'post', data }) }
 export function getOrderStats() { return request({ url: '/procurement/orders/stats', method: 'get' }) }
 
+// ── 采购计划：批准后才转换采购订单 ──
+export const getPurchasePlans = params => request({ url: '/procurement/plans', method: 'get', params })
+export const getPurchasePlan = id => request({ url: `/procurement/plans/${id}`, method: 'get' })
+export const createPurchasePlan = data => request({ url: '/procurement/plans', method: 'post', data })
+export const updatePurchasePlan = (id, data) => request({ url: `/procurement/plans/${id}`, method: 'put', data })
+export const submitPurchasePlan = id => request({ url: `/procurement/plans/${id}/submit`, method: 'post' })
+export const approvePurchasePlan = (id, comment) => request({ url: `/procurement/plans/${id}/approve`, method: 'post', data: { comment } })
+export const rejectPurchasePlan = (id, comment) => request({ url: `/procurement/plans/${id}/reject`, method: 'post', data: { comment } })
+export const convertPurchasePlan = id => request({ url: `/procurement/plans/${id}/convert`, method: 'post' })
+export const exportOrderReport = params => request({ url: '/procurement/orders/export', method: 'get', params, responseType: 'blob' })
+export const exportShortageReport = params => request({ url: '/procurement/shortages/export', method: 'get', params, responseType: 'blob' })
+
 // ── 验收 ──
 export function receiveOrder(data) {
   return stockCommand('ORDER_RECEIVE', data?.itemId, { url: '/procurement/receive', method: 'post', data })
@@ -50,4 +62,5 @@ export function pickAndShip(requisitionId, data) {
 
 // ── 智能补货 ──
 export function getSmartReplenish(days = 30) { return request({ url: '/procurement/smart-replenish', method: 'get', params: { days } }) }
+export function recalculateSmartReplenish(days = 30) { return request({ url: '/procurement/smart-replenish/recalculate', method: 'post', params: { days } }) }
 export function createOrdersFromReplenish(items) { return request({ url: '/procurement/orders/from-replenish', method: 'post', data: items }) }

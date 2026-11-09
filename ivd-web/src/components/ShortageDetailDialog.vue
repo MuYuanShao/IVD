@@ -40,7 +40,7 @@
 
     <template #footer>
       <el-button @click="$emit('update:modelValue', false)">关闭</el-button>
-      <el-button v-if="canGeneratePO" type="primary" @click="$emit('generatePO', header.id)">生成采购单</el-button>
+      <el-button v-if="canGeneratePO" type="primary" @click="$emit('generatePO', header.id)">生成采购计划</el-button>
     </template>
   </el-dialog>
 </template>

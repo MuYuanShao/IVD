@@ -95,7 +95,7 @@ public class ProcurementInventoryServiceImpl implements ProcurementInventoryServ
             return candidate;
         }
         var created=new ReagentBatch();
-        org.springframework.beans.BeanUtils.copyProperties(source,created,"id","version","createdAt","updatedAt");
+        org.springframework.beans.BeanUtils.copyProperties(source,created,"id","version","createdAt","updatedAt","reservedStock");
         created.setInventoryGeneration(candidates.stream().map(ReagentBatch::getInventoryGeneration)
                 .filter(java.util.Objects::nonNull).max(Integer::compareTo).orElse(-1)+1);
         created.setWarehouseId(targetId);created.setStock(quantity);

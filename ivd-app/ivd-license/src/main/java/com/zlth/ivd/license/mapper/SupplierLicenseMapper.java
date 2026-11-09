@@ -12,10 +12,28 @@ import java.util.Map;
 public interface SupplierLicenseMapper extends BaseMapper<SupplierLicense> {
 
     /** 按状态统计证照数量 */
-    @Select("SELECT status, COUNT(*) as cnt FROM supplier_license GROUP BY status")
+    @Select("""
+            SELECT CASE WHEN status='FROZEN' THEN 'FROZEN'
+                        WHEN status='EXPIRED' THEN 'EXPIRED'
+                        WHEN expire_date IS NULL OR expire_date<=CURRENT_DATE THEN 'EXPIRED'
+                        WHEN expire_date<=DATE_ADD(CURRENT_DATE, INTERVAL 30 DAY) THEN 'EXPIRING'
+                        ELSE 'ACTIVE' END status,
+                   COUNT(*) cnt
+            FROM supplier_license
+            GROUP BY CASE WHEN status='FROZEN' THEN 'FROZEN'
+                          WHEN status='EXPIRED' THEN 'EXPIRED'
+                          WHEN expire_date IS NULL OR expire_date<=CURRENT_DATE THEN 'EXPIRED'
+                          WHEN expire_date<=DATE_ADD(CURRENT_DATE, INTERVAL 30 DAY) THEN 'EXPIRING'
+                          ELSE 'ACTIVE' END
+            """)
     List<Map<String, Object>> countByStatus();
 
-    /** 查询近 N 天内到期的证照 */
-    @Select("SELECT * FROM supplier_license WHERE status IN ('ACTIVE','EXPIRING') AND expire_date <= DATE_ADD(CURDATE(), INTERVAL #{days} DAY) AND expire_date >= CURDATE()")
+    /** Include overdue/frozen credentials so a polling integrator cannot miss a still-blocking certificate. */
+    @Select("""
+            SELECT * FROM supplier_license
+            WHERE expire_date IS NULL OR status IN ('FROZEN','EXPIRED')
+               OR expire_date <= DATE_ADD(CURRENT_DATE, INTERVAL #{days} DAY)
+            ORDER BY expire_date, id
+            """)
     List<SupplierLicense> findExpiringWithinDays(int days);
 }

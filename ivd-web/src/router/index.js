@@ -39,6 +39,7 @@ const routes = [
       { path: 'requisition', name: 'Requisition', component: () => import('@/views/procurement/RequisitionList.vue'), meta: { title: '申领管理', group: '采购管理' } },
       { path: 'shortage', name: 'Shortage', component: () => import('@/views/procurement/ShortageList.vue'), meta: { title: '缺货单', group: '采购管理' } },
       { path: 'purchase', name: 'Purchase', component: () => import('@/views/procurement/PurchaseList.vue'), meta: { title: '采购订单', group: '采购管理' } },
+      { path: 'purchase-plans', name: 'PurchasePlans', component: () => import('@/views/procurement/PurchasePlanView.vue'), meta: { title: '采购计划', group: '采购管理', roles: ['SYSTEM_ADMIN','PURCHASER','STOREKEEPER','LAB_DIRECTOR','FINANCE'] } },
       { path: 'inbound', name: 'Inbound', component: () => import('@/views/procurement/InboundView.vue'), meta: { title: '扫码验收', group: '采购管理' } },
       { path: 'receiving', name: 'Receiving', component: () => import('@/views/procurement/ReceivingView.vue'), meta: { title: '人工验收', group: '采购管理' } },
       { path: 'pick-and-ship', name: 'PickAndShip', component: () => import('@/views/procurement/PickAndShipView.vue'), meta: { title: '拣货发货', group: '采购管理' } },

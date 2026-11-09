@@ -66,5 +66,6 @@ public interface ProcurementService {
 
     // ── 智能补货建议 ──
     List<Map<String, Object>> getSmartReplenishSuggestions(int days);
+    List<Map<String, Object>> recalculateSmartReplenishSuggestions(int days);
     List<PurchaseOrder> createOrdersFromReplenish(List<Map<String, Object>> items);
 }

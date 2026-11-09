@@ -61,7 +61,9 @@
         <el-table-column label="剩余天数" width="85">
           <template #default="{row}"><el-tag :type="getExpiryTagType(row.expiryDate)" size="small">{{ getRemainingDays(row.expiryDate) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存量" width="75" />
+        <el-table-column prop="stock" label="实物库存" width="90" />
+        <el-table-column prop="reservedStock" label="预占" width="75" />
+        <el-table-column prop="availableStock" label="可用量" width="80" />
         <el-table-column label="金额" width="100" align="right">
           <template #default="{row}">{{ row.amount ? '¥' + row.amount.toFixed(2) : '—' }}</template>
         </el-table-column>
@@ -213,7 +215,18 @@ const targetWarehouses = computed(() => store.warehouses
   .map(w => ({ value: w.id, label: w.name })))
 
 function openTrace(row) { traceReagentId.value = row.reagentId; showTraceDialog.value = true }
-function openTransfer(row, source, urgency = 'NORMAL') { sourceName.value = source; maxQty.value = row.stock || 999; selectedUrgency.value = urgency; selectedBatchId.value = row.id; showTransferDialog.value = true }
+function openTransfer(row, source, urgency = 'NORMAL') {
+  const available = Number(row.availableStock ?? row.stock ?? 0)
+  if (available <= 0) {
+    ElMessage.warning('该批次没有可调拨的库存')
+    return
+  }
+  sourceName.value = source
+  maxQty.value = available
+  selectedUrgency.value = urgency
+  selectedBatchId.value = row.id
+  showTransferDialog.value = true
+}
 function handleTransferCmd(cmd, row) { openTransfer(row, '中心库', cmd) }
 
 async function doSubmitTransfer(form) {

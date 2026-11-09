@@ -17,6 +17,8 @@ import java.util.List;
  */
 @Data
 public class PurchaseOrderVO {
+    private Long planId;
+    private String approvalOrigin;
     private Long id;
     private String poNo;
     private Integer supplierId;

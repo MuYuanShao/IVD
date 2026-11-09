@@ -40,7 +40,8 @@ class StockCommandIntegrationTest {
         if(!migrationApplied())
             new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("stock-command-h2.sql")).execute(context.getBean(DataSource.class));
         db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,udi_status,expiry_date,version,settlement_mode) VALUES(5001,1,1,'QA-CONSUME',102,10,'box',10,'IN_STOCK','2039-01-01',0,'消耗结算'),(5003,2,3,'QA-OTHER',202,10,'box',10,'IN_STOCK','2039-01-01',0,'消耗结算')");
-        db.update("INSERT INTO purchase_order(id,institution_id,po_no,supplier_id,source_type,settlement_mode,status,received_quantity,total_amount) VALUES(6001,1,'QA-PO',1,'MANUAL','验收结算','DRAFT',0,100)");
+        OpeningEvidenceFixture.audit(db, 5001, java.time.LocalDate.now().minusDays(1).atStartOfDay());
+        db.update("INSERT INTO purchase_order(id,institution_id,po_no,supplier_id,source_type,settlement_mode,status,received_quantity,total_amount,approval_origin) VALUES(6001,1,'QA-PO',1,'MANUAL','验收结算','DRAFT',0,100,'LEGACY')");
         db.update("INSERT INTO purchase_order_item(id,institution_id,po_id,line_no,reagent_id,supplier_id,material_type,order_quantity,received_quantity,unit_price,amount,version) VALUES(6101,1,6001,1,1,1,'REAGENT',10,0,10,100,0)");
         var commands=context.getBean(com.zlth.ivd.common.service.StockCommandService.class);
         mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(

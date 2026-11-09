@@ -3,7 +3,7 @@
   表单：供应商下拉/预计到货日期/结算模式/备注
 -->
 <template>
-  <el-dialog :model-value="modelValue" title="生成采购订单" width="520px" top="8vh" @update:model-value="$emit('update:modelValue', $event)" @closed="resetForm">
+  <el-dialog :model-value="modelValue" title="从缺货生成采购计划" width="520px" top="8vh" @update:model-value="$emit('update:modelValue', $event)" @closed="resetForm">
     <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
       <el-form-item label="来源缺货单">
         <el-input :model-value="shortageNo || '—'" disabled />
@@ -30,7 +30,7 @@
     </el-form>
     <template #footer>
       <el-button @click="$emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="submitForm">确认生成</el-button>
+      <el-button type="primary" :loading="loading" @click="submitForm">保存计划草稿</el-button>
     </template>
   </el-dialog>
 </template>
@@ -43,11 +43,7 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   shortageId: { type: [Number, String], default: null },
   shortageNo: { type: String, default: '' },
-  suppliers: { type: Array, default: () => [
-    { value: 1, label: '九州通医药集团' },
-    { value: 2, label: '国药控股' },
-    { value: 3, label: '华润医药' }
-  ]}
+  suppliers: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['update:modelValue', 'created'])
@@ -83,6 +79,5 @@ async function submitForm() {
     settlementMode: form.settlementMode,
     remark: form.remark
   })
-  loading.value = false
 }
 </script>

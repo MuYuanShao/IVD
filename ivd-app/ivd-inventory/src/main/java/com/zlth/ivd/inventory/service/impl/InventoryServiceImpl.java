@@ -125,6 +125,8 @@ public class InventoryServiceImpl implements InventoryService {
             vo.setManufactureDate(batch.getManufactureDate());
             vo.setExpiryDate(batch.getExpiryDate());
             vo.setStock(batch.getStock()); vo.setUnit(batch.getUnit());
+            vo.setReservedStock(batch.getReservedStock());
+            vo.setAvailableStock(batch.getAvailableStock());
             vo.setUnitPrice(batch.getUnitPrice());
             vo.setAmount(batch.getStock() != null && batch.getUnitPrice() != null
                     ? batch.getStock().multiply(batch.getUnitPrice()) : BigDecimal.ZERO);
@@ -154,7 +156,7 @@ public class InventoryServiceImpl implements InventoryService {
         qw.eq(reagentId != null, ReagentBatch::getReagentId, reagentId)
           .eq(warehouseId != null, ReagentBatch::getWarehouseId, warehouseId)
           .eq(ReagentBatch::getUdiStatus, UdiStatusEnum.IN_STOCK)
-          .gt(ReagentBatch::getStock, BigDecimal.ZERO)
+          .apply("stock > reserved_stock")
           .and(expiry -> expiry.ge(ReagentBatch::getExpiryDate, today).or(noExpiry ->
                   noExpiry.isNull(ReagentBatch::getExpiryDate).in(ReagentBatch::getMaterialType,
                           MaterialTypeEnum.CONSUMABLE, MaterialTypeEnum.OTHER)))
@@ -192,6 +194,8 @@ public class InventoryServiceImpl implements InventoryService {
             row.put("manufactureDate", batch.getManufactureDate() != null ? batch.getManufactureDate().toString() : null);
             row.put("expiryDate", batch.getExpiryDate() != null ? batch.getExpiryDate().toString() : null);
             row.put("stock", batch.getStock());
+            row.put("reservedStock", batch.getReservedStock());
+            row.put("qtyAvailable", batch.getAvailableStock());
             row.put("unitPrice", batch.getUnitPrice());
             row.put("amount", batch.getStock() != null && batch.getUnitPrice() != null
                     ? batch.getStock().multiply(batch.getUnitPrice()) : BigDecimal.ZERO);
@@ -412,7 +416,8 @@ public class InventoryServiceImpl implements InventoryService {
             if (sourceBatch.getOpenExpiryDate() != null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now()))
                 throw new BizException(40001, "批次已超过开瓶稳定期，不能调拨");
             stockOperations.requireWarehouse(sourceBatch.getWarehouseId());
-            if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
+            if (sourceBatch.getAvailableStock().compareTo(qty) < 0)
+                throw new BizException(40001, "可用库存不足（已扣除预占）");
 
             sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
             boolean depleted = sourceBatch.getStock().compareTo(BigDecimal.ZERO) <= 0;

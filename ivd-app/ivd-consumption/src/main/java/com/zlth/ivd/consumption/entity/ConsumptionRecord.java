@@ -27,6 +27,7 @@ public class ConsumptionRecord {
     private Long warehouseId;
     private Long requisitionId;         // 关联申领单ID（拣货发货时写入）
     private Long fromWarehouseId;       // 调出仓库ID（调拨源仓库）
+    private Boolean stockDeductOnReceipt; // 老流水或即时调拨已扣源库；新申领拣配在签收时过账
     private Long operatorId;
     private String remark;
     private LocalDateTime occurredAt;

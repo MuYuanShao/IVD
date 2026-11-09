@@ -72,7 +72,7 @@ class ProcurementSafetyTest {
         var items = mock(PurchaseRequisitionItemMapper.class);
         var inventory = mock(ProcurementInventoryService.class);
         var req = new PurchaseRequisition(); req.setId(1L); req.setToWarehouseId(9L); req.setStatus(RequisitionStatusEnum.REVIEWED);
-        when(requisitions.selectById(1L)).thenReturn(req);
+        when(requisitions.selectOne(any())).thenReturn(req);
         var item = new PurchaseRequisitionItem(); item.setId(2L); item.setReagentId(3L); item.setQtyRequested(BigDecimal.TEN);
         when(items.selectList(any())).thenReturn(List.of(item));
         var batch = new com.zlth.ivd.inventory.entity.ReagentBatch(); batch.setId(4L); batch.setReagentId(99L); batch.setStock(BigDecimal.TEN);
@@ -93,7 +93,7 @@ class ProcurementSafetyTest {
         var movements = mock(com.zlth.ivd.consumption.service.ProcurementConsumptionService.class);
         var codes = mock(com.zlth.ivd.udi.service.UniqueCodeService.class);
         var req = new PurchaseRequisition(); req.setId(1L); req.setFromDeptId(11L); req.setToWarehouseId(9L); req.setStatus(RequisitionStatusEnum.PARTIAL_FULFILLED);
-        when(requisitions.selectById(1L)).thenReturn(req);
+        when(requisitions.selectOne(any())).thenReturn(req);
         var item = new PurchaseRequisitionItem(); item.setQtyRequested(new BigDecimal("5")); item.setQtyFulfilled(new BigDecimal("3"));
         when(items.selectList(any())).thenReturn(List.of(item));
         var transfer = new com.zlth.ivd.consumption.entity.ConsumptionRecord(); transfer.setId(7L); transfer.setReagentId(3L);

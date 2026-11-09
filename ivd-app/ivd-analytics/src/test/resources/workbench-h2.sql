@@ -19,3 +19,5 @@ ALTER TABLE warehouse ADD COLUMN institution_id BIGINT DEFAULT 1 NOT NULL;
 ALTER TABLE warehouse ADD COLUMN parent_id BIGINT;
 ALTER TABLE reagent_batch ADD COLUMN institution_id BIGINT DEFAULT 1 NOT NULL;
 ALTER TABLE consumption_record ADD COLUMN institution_id BIGINT DEFAULT 1 NOT NULL;
+ALTER TABLE consumption_record ADD COLUMN stock_deduct_on_receipt TINYINT DEFAULT 0 NOT NULL;
+CREATE TABLE requisition_transfer_receipt(transfer_record_id BIGINT PRIMARY KEY,institution_id BIGINT,received_at TIMESTAMP);

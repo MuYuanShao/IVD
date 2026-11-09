@@ -153,6 +153,7 @@
             >{{ row.remainingDays }} 天</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="reminderLabel" label="提醒级别" width="155" />
         <el-table-column label="附件" width="70" align="center">
           <template #default="{ row }">
             <el-icon v-if="row.attachmentCount > 0" color="#3b82f6"><Paperclip /></el-icon>
@@ -223,11 +224,12 @@
             </el-icon>
             <div class="attachment-info">
               <span class="attachment-name">{{ att.name }}</span>
+              <el-tag v-if="att.protectedEvidence" type="info" size="small">续证审批依据 · 只读</el-tag>
               <span class="attachment-meta">{{ formatFileSize(att.size) }} · {{ att.uploadedAt }}</span>
             </div>
             <el-button link type="primary" size="small" @click="previewAttachment(att)">预览</el-button>
-            <el-button link type="warning" size="small" @click="handleReplaceClick(i)">变更</el-button>
-            <el-button link type="danger" size="small" @click="handleDeleteAttachment(att, i)">删除</el-button>
+            <el-button link type="warning" size="small" :disabled="att.protectedEvidence" @click="handleReplaceClick(i)">变更</el-button>
+            <el-button link type="danger" size="small" :disabled="att.protectedEvidence" @click="handleDeleteAttachment(att, i)">删除</el-button>
           </div>
         </div>
         <el-empty v-else description="暂无附件" :image-size="40" />
@@ -746,6 +748,7 @@ async function downloadAttachment() {
 // ─── 附件操作 ───
 
 async function handleDeleteAttachment(att, index) {
+  if (att.protectedEvidence) { ElMessage.warning('审批依据附件只能阅览'); return }
   if (!detailData.value?.id || !att.objectKey) return
   try {
     await ElMessageBox.confirm(
@@ -766,6 +769,7 @@ async function handleDeleteAttachment(att, index) {
 }
 
 function handleReplaceClick(index) {
+  if (detailData.value?.attachments?.[index]?.protectedEvidence) { ElMessage.warning('审批依据附件只能阅览'); return }
   replacingIndex.value = index
   replaceFileRef.value?.click()
 }

@@ -94,9 +94,10 @@ export const useProcurementStore = defineStore('procurement', () => {
   }
 
   async function doCreateOrderFromShortage(data) {
-    await createOrderFromShortage(data)
+    const result = await createOrderFromShortage(data)
     await fetchShortages()
     await fetchShortageStats()
+    return result
   }
 
   async function fetchShortageDetail(id) {

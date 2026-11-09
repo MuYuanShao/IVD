@@ -373,6 +373,7 @@ class ResourceBoundaryIntegrationTest {
 
     @Test void certificateHistoryIgnoresClientSuppliedOperator() {
         createSupplierTable();
+        bootstrap.update("INSERT INTO supplier(id,institution_id,name,is_active) VALUES(1,1,'QA supplier',TRUE)");
         bootstrap.execute("CREATE TABLE license_change_log(id BIGINT PRIMARY KEY,institution_id BIGINT,license_id BIGINT,change_type VARCHAR(32),old_expire_date DATE,new_expire_date DATE,operator_id BIGINT,operator_name VARCHAR(64),note VARCHAR(2000),created_at TIMESTAMP)");
         as(admin, () -> {
             var create = new com.zlth.ivd.license.dto.CreateLicenseRequest();

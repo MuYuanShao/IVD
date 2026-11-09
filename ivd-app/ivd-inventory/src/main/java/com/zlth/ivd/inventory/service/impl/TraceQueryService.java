@@ -39,6 +39,9 @@ public class TraceQueryService {
         for(var r:ledger) {
             String type=String.valueOf(r.get("record_type"));
             String node="CONSUME".equals(type)?"消耗核销":"INBOUND".equals(type)?"验收入库":Objects.equals(r.get("warehouse_level"),2)?"调拨至科室":"下发至组库";
+            Object deferred = r.get("stock_deduct_on_receipt");
+            if ("TRANSFER".equals(type) && (Boolean.TRUE.equals(deferred) || "1".equals(String.valueOf(deferred))))
+                node = "中心库拣配预占";
             String detail=r.get("batch_no")+" · 数量 "+r.get("quantity")+" "+(r.get("unit")==null?"（历史单位未记录）":r.get("unit"));
             if("TRANSFER".equals(type)) detail+=" · "+r.get("from_name")+" → "+r.get("warehouse_name");
             timeline.add(event(node,"consumption_record",r.get("id"),r.get("occurred_at"),detail,r.get("operator_name"),r.get("warehouse_name")));
@@ -69,9 +72,32 @@ public class TraceQueryService {
             }
             jdbc.queryForList("SELECT * FROM settlement_record WHERE settlement_type='REQUISITION' AND source_id=?",reqId).forEach(s->timeline.add(event("结算","settlement_record",s.get("id"),s.get("settled_at"),s.get("settlement_no")+" · 原记录批号 "+s.get("batch_no")+" · "+s.get("status"),null,null)));
         }
-        Set<Object> orderIds=new HashSet<>();
-        for(Object itemId:poItems) for(var p:jdbc.queryForList("SELECT p.id,p.po_no,p.created_at FROM purchase_order p JOIN purchase_order_item i ON i.po_id=p.id WHERE i.id=?",itemId)) {
+        Set<Object> orderIds=new HashSet<>(), planIds=new HashSet<>();
+        for(Object itemId:poItems) for(var p:jdbc.queryForList("""
+                SELECT p.id,p.po_no,p.created_at,pp.id AS linked_plan_id,pp.plan_no,pp.created_at AS plan_created_at,
+                       pp.created_by AS plan_created_by
+                FROM purchase_order p
+                JOIN purchase_order_item i ON i.po_id=p.id AND i.institution_id=p.institution_id
+                LEFT JOIN purchase_plan pp ON pp.id=p.plan_id AND pp.institution_id=p.institution_id AND p.approval_origin='PLAN'
+                WHERE i.id=?
+                """, itemId)) {
             if(orderIds.add(p.get("id"))) timeline.add(event("采购订单","purchase_order",p.get("id"),p.get("created_at"),String.valueOf(p.get("po_no")),null,null));
+            Object planId = p.get("linked_plan_id");
+            if (planId == null || !planIds.add(planId)) continue;
+            String planNo = String.valueOf(p.get("plan_no"));
+            timeline.add(event("采购计划","purchase_plan",planId,p.get("plan_created_at"),planNo,p.get("plan_created_by"),null));
+            for (var decision : jdbc.queryForList("""
+                    SELECT id,to_status,operator_id,created_at FROM purchase_plan_event
+                    WHERE plan_id=? AND to_status IN ('PENDING_REVIEW','APPROVED','REJECTED') ORDER BY id
+                    """, planId)) {
+                String stage = switch (String.valueOf(decision.get("to_status"))) {
+                    case "APPROVED" -> "采购计划审批通过";
+                    case "REJECTED" -> "采购计划审批驳回";
+                    default -> "采购计划提交审批";
+                };
+                timeline.add(event(stage,"purchase_plan_event",decision.get("id"),decision.get("created_at"),
+                        planNo,decision.get("operator_id"),null));
+            }
         }
         for(var load:jdbc.queryForList("SELECT l.*,d.name device_name FROM device_batch_load l LEFT JOIN device d ON d.id=l.device_id WHERE "+predicate("l",pairs.size()),args.toArray())) {
             timeline.add(event("扫码上机","device_batch_load",load.get("id"),load.get("load_time"),load.get("batch_no")+" · "+load.get("device_name"),load.get("operator_id"),null));
@@ -90,7 +116,13 @@ public class TraceQueryService {
                     status.get("operator_name") != null ? status.get("operator_name") : status.get("operator_id"),
                     null));
         }
-        timeline.sort(Comparator.comparing(row->String.valueOf(row.getOrDefault("timestamp","9999"))));
+        timeline.sort(Comparator.<Map<String,Object>,String>comparing(row->String.valueOf(row.getOrDefault("timestamp","9999")))
+                .thenComparingInt(row->switch(String.valueOf(row.get("source"))) {
+                    case "purchase_plan" -> 0;
+                    case "purchase_plan_event" -> 1;
+                    case "purchase_order" -> 2;
+                    default -> 3;
+                }));
         Map<String,Object> result=new LinkedHashMap<>();
         if(pairs.size()==1) result.putAll(batches.get(0));
         result.put("batches",batches);result.put("timeline",timeline);

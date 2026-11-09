@@ -36,6 +36,8 @@ public class ProcurementController {
     private final ProcurementService procurementService;
     private final com.zlth.ivd.common.service.RequisitionReceiptService receiptService;
     private final StockCommandService commands;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.zlth.ivd.procurement.service.PurchasePlanService purchasePlans;
 
     // ==================== 申领单 ====================
 
@@ -171,19 +173,30 @@ public class ProcurementController {
     }
 
     @PostMapping("/orders/from-shortage")
-    @AuditLog(module = "采购管理", action = "从缺货单生成采购订单")
+    @AuditLog(module = "采购管理", action = "从缺货单生成采购计划")
     @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
-    public Result<PurchaseOrder> createFromShortage(@RequestBody com.zlth.ivd.procurement.dto.CreateOrderFromShortageRequest request) {
-        return Result.success(procurementService.createOrderFromShortage(
-                request.getShortageId(), request.getSupplierId(),
-                request.getExpectedDeliveryDate(), request.getSettlementMode(), request.getRemark()));
+    public Result<com.zlth.ivd.procurement.vo.PurchasePlanVO> createFromShortage(@Valid @RequestBody com.zlth.ivd.procurement.dto.CreateOrderFromShortageRequest request) {
+        var plan=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest();
+        plan.setSourceType("SHORTAGE");plan.setShortageId(request.getShortageId());plan.setSupplierId(request.getSupplierId());
+        plan.setExpectedDeliveryDate(parseDate(request.getExpectedDeliveryDate()));
+        plan.setSettlementMode(request.getSettlementMode());plan.setRemark(request.getRemark());
+        return Result.success(plans().create(plan));
     }
 
     @PostMapping("/orders/manual")
-    @AuditLog(module = "采购管理", action = "手动创建采购订单")
+    @AuditLog(module = "采购管理", action = "手动创建采购计划")
     @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
-    public Result<List<PurchaseOrder>> createManualOrder(@RequestBody @Valid com.zlth.ivd.procurement.dto.CreateManualOrderRequest request) {
-        return Result.success(procurementService.createManualOrder(request));
+    public Result<com.zlth.ivd.procurement.vo.PurchasePlanVO> createManualOrder(@RequestBody @Valid com.zlth.ivd.procurement.dto.CreateManualOrderRequest request) {
+        var plan=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest();
+        plan.setSourceType("MANUAL");plan.setSupplierId(request.getSupplierId());plan.setSettlementMode(request.getSettlementMode());
+        plan.setRemark(request.getRemark());plan.setOrderDate(parseDate(request.getOrderDate()));
+        plan.setExpectedDeliveryDate(parseDate(request.getExpectedDeliveryDate()));
+        if(request.getItems()!=null)plan.setItems(request.getItems().stream().map(row->{
+            if(row==null)throw new com.zlth.ivd.common.exception.BizException(40001,"采购计划明细不能为空");
+            var item=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest.Item();
+            item.setReagentId(row.getReagentId());item.setSupplierId(row.getSupplierId());item.setQuantity(row.getQuantity());return item;
+        }).toList());
+        return Result.success(plans().create(plan));
     }
 
     @GetMapping("/orders/stats")
@@ -194,10 +207,19 @@ public class ProcurementController {
     // ==================== 智能补货生成订单 ====================
 
     @PostMapping("/orders/from-replenish")
-    @AuditLog(module = "采购管理", action = "智能补货生成采购订单")
+    @AuditLog(module = "采购管理", action = "智能补货生成采购计划")
     @RequireRole({"SYSTEM_ADMIN", "PURCHASER"})
-    public Result<List<PurchaseOrder>> createFromReplenish(@RequestBody List<Map<String, Object>> items) {
-        return Result.success(procurementService.createOrdersFromReplenish(items));
+    public Result<com.zlth.ivd.procurement.vo.PurchasePlanVO> createFromReplenish(@RequestBody List<Map<String, Object>> items) {
+        if(items==null || items.isEmpty() || items.size()>500)throw new com.zlth.ivd.common.exception.BizException(40001,"请选择1至500条补货建议");
+        var plan=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest();plan.setSourceType("SMART_REPLENISH");
+        try {plan.setSuggestions(items.stream().map(row->{
+            if(row==null)throw new IllegalArgumentException("null suggestion");
+            var item=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest.Suggestion();
+            item.setId(Long.valueOf(Objects.toString(row.get("id"),"")));item.setReagentId(Long.valueOf(Objects.toString(row.get("reagentId"),"")));
+            item.setSuggestedQty(new java.math.BigDecimal(Objects.toString(row.get("suggestedQty"),"")));
+            if(row.get("supplierId")!=null)item.setSupplierId(Integer.valueOf(row.get("supplierId").toString()));return item;
+        }).toList());}catch(IllegalArgumentException error){throw new com.zlth.ivd.common.exception.BizException(40001,"补货计划参数格式无效");}
+        return Result.success(plans().create(plan));
     }
 
     // ==================== 验收 ====================
@@ -239,10 +261,12 @@ public class ProcurementController {
     );
 
     @GetMapping("/orders/export")
-    public void exportOrders(@RequestParam(defaultValue = "xlsx") String format, HttpServletResponse response) {
-        PageVO<PurchaseOrderVO> result = procurementService.listOrders(1, 10000, null, null);
+    @RequireRole({"SYSTEM_ADMIN","PURCHASER","STOREKEEPER","FINANCE"})
+    public void exportOrders(@RequestParam(defaultValue = "xlsx") String format,
+            @RequestParam(required=false) String status,@RequestParam(required=false) String keyword,HttpServletResponse response) {
+        List<PurchaseOrderVO> result=exportOrderRows(status,keyword);
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (PurchaseOrderVO po : result.getRecords()) {
+        for (PurchaseOrderVO po : result) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("订单编号", po.getPoNo() != null ? po.getPoNo() : "");
             row.put("供应商ID", po.getSupplierId() != null ? po.getSupplierId().toString() : "");
@@ -261,10 +285,73 @@ public class ProcurementController {
         }
     }
 
+    @GetMapping("/shortages/export")
+    @RequireRole({"SYSTEM_ADMIN","PURCHASER","STOREKEEPER","FINANCE"})
+    public void exportShortages(@RequestParam(defaultValue="xlsx") String format,
+            @RequestParam(required=false) String status,@RequestParam(required=false) String keyword,HttpServletResponse response) {
+        var first=procurementService.listShortages(1,1000,status,keyword);
+        requireExportSize(first.getTotal());
+        List<ShortageOrderVO> values=new ArrayList<>(first.getRecords());
+        for(int page=2;values.size()<first.getTotal();page++) {
+            var next=procurementService.listShortages(page,1000,status,keyword);
+            if(next.getTotal()!=first.getTotal() || next.getRecords().isEmpty())
+                throw new com.zlth.ivd.common.exception.BizException(40900,"导出期间数据变化，请重试");
+            values.addAll(next.getRecords());
+        }
+        if(values.stream().map(ShortageOrderVO::getId).distinct().count()!=values.size())
+            throw new com.zlth.ivd.common.exception.BizException(40900,"导出期间数据变化，请重试");
+        var headers=List.of("缺货单号","来源申领单","科室","缺货数量","预计金额","状态","创建时间");
+        List<Map<String,Object>> rows=new ArrayList<>();
+        for(var value:values) {
+            Map<String,Object> row=new LinkedHashMap<>();
+            row.put("缺货单号",value.getShortageNo());row.put("来源申领单",value.getSourceReqNo());
+            row.put("科室",value.getDeptName());row.put("缺货数量",value.getShortageQty());
+            row.put("预计金额",value.getEstimatedAmount());row.put("状态",value.getStatus()==null?"":value.getStatus().getLabel());
+            row.put("创建时间",value.getCreatedAt()==null?"":value.getCreatedAt().toString());rows.add(row);
+        }
+        if("csv".equalsIgnoreCase(format))ExportImportUtil.exportCsv(response,"缺货单",headers,rows);
+        else ExportImportUtil.exportExcel(response,"缺货单",headers,rows);
+    }
+
+    private List<PurchaseOrderVO> exportOrderRows(String status,String keyword) {
+        var first=procurementService.listOrders(1,1000,status,keyword);requireExportSize(first.getTotal());
+        List<PurchaseOrderVO> rows=new ArrayList<>(first.getRecords());
+        for(int page=2;rows.size()<first.getTotal();page++) {
+            var next=procurementService.listOrders(page,1000,status,keyword);
+            if(next.getTotal()!=first.getTotal() || next.getRecords().isEmpty())
+                throw new com.zlth.ivd.common.exception.BizException(40900,"导出期间数据变化，请重试");
+            rows.addAll(next.getRecords());
+        }
+        if(rows.stream().map(PurchaseOrderVO::getId).distinct().count()!=rows.size())
+            throw new com.zlth.ivd.common.exception.BizException(40900,"导出期间数据变化，请重试");
+        return rows;
+    }
+
+    private void requireExportSize(long total) {
+        if(total>10000)throw new com.zlth.ivd.common.exception.BizException(40001,"导出超过10000条，请缩小筛选范围");
+    }
+
     // ==================== 智能补货 ====================
 
     @GetMapping("/smart-replenish")
+    @RequireRole({"SYSTEM_ADMIN","PURCHASER","STOREKEEPER","LAB_DIRECTOR"})
     public Result<List<Map<String, Object>>> smartReplenish(@RequestParam(defaultValue = "30") int days) {
         return Result.success(procurementService.getSmartReplenishSuggestions(days));
+    }
+    @PostMapping("/smart-replenish/recalculate")
+    @RequireRole({"SYSTEM_ADMIN","PURCHASER","STOREKEEPER"})
+    @AuditLog(module="采购计划",action="重算补货建议")
+    public Result<List<Map<String,Object>>> recalculate(@RequestParam(defaultValue="30") int days){
+        return Result.success(procurementService.recalculateSmartReplenishSuggestions(days));
+    }
+
+    private com.zlth.ivd.procurement.service.PurchasePlanService plans(){
+        if(purchasePlans==null)throw new com.zlth.ivd.common.exception.BizException(40900,"采购计划服务不可用，不能绕过审批直接建单");
+        return purchasePlans;
+    }
+    private java.time.LocalDate parseDate(String value){
+        if(value==null || value.isBlank())return null;
+        try{return java.time.LocalDate.parse(value);}
+        catch(java.time.format.DateTimeParseException invalid){throw new com.zlth.ivd.common.exception.BizException(40001,"日期格式须为YYYY-MM-DD");}
     }
 }

@@ -9,6 +9,30 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 @EnabledIfEnvironmentVariable(named="IVD_STOCK_MYSQL_TEST",matches="true")
 class MySqlStockFlowSafetyIntegrationTest extends StockFlowSafetyIntegrationTest {
     private final MySqlStockFixture fixture=new MySqlStockFixture();
+    @Test void licenseReminderFeedKeepsOverdueFrozenAndAttentionRows() {
+        db.execute("CREATE TABLE supplier(id BIGINT PRIMARY KEY,institution_id BIGINT,supplier_code VARCHAR(64),name VARCHAR(100),short_name VARCHAR(100),contact_person VARCHAR(100),contact_phone VARCHAR(100),contact_email VARCHAR(100),address VARCHAR(100),is_active BOOLEAN,created_at TIMESTAMP,updated_at TIMESTAMP)");
+        db.update("INSERT INTO supplier(id,institution_id,name,is_active) VALUES(1,1,'QA owned',TRUE),(2,2,'QA foreign',TRUE)");
+        db.execute("CREATE TABLE supplier_license(id BIGINT PRIMARY KEY,institution_id BIGINT,supplier_id BIGINT,license_type VARCHAR(32),cert_no VARCHAR(128),issuing_authority VARCHAR(256),issue_date DATE,expire_date DATE,status VARCHAR(32),attachments VARCHAR(4000),created_at TIMESTAMP,updated_at TIMESTAMP)");
+        var today=java.time.LocalDate.now();
+        int[] days={-1,7,30,60,500,500};
+        String[] statuses={"ACTIVE","ACTIVE","ACTIVE","ACTIVE","FROZEN","EXPIRED"};
+        for(int i=0;i<days.length;i++)
+            db.update("INSERT INTO supplier_license(id,institution_id,supplier_id,license_type,cert_no,issue_date,expire_date,status) VALUES(?,1,1,'OPERATION',?,?,?,?)",
+                    9800+i,"QA-"+i,today.minusYears(1),today.plusDays(days[i]),statuses[i]);
+        db.update("INSERT INTO supplier_license(id,institution_id,supplier_id,license_type,cert_no,issue_date,expire_date,status) VALUES(9899,2,2,'OPERATION','QA-HIDDEN',?,?,'ACTIVE')",today.minusYears(1),today.plusDays(1));
+        var license=context.getBean(com.zlth.ivd.license.service.LicenseService.class);
+        as(keeper,()->{
+            var rows=license.getExpiryAlerts(90);
+            org.junit.jupiter.api.Assertions.assertEquals(6,rows.size());
+            var levels=rows.stream().map(com.zlth.ivd.license.vo.LicenseVO::getReminderLevel).toList();
+            org.junit.jupiter.api.Assertions.assertTrue(levels.containsAll(java.util.List.of("OVERDUE","URGENT","EXPIRING","ATTENTION","FROZEN")));
+            var stats=license.getStats();
+            org.junit.jupiter.api.Assertions.assertEquals(2L,stats.get("expiring"));
+            org.junit.jupiter.api.Assertions.assertEquals(3L,stats.get("expiredFrozen"));
+            org.junit.jupiter.api.Assertions.assertThrows(com.zlth.ivd.common.exception.BizException.class,()->license.getExpiryAlerts(0));
+            return null;
+        });
+    }
 
     @Test void periodBalanceUsesFirstAndLastSnapshotPerReagentWarehouse() {
         db.execute("CREATE TABLE daily_inventory_snapshot(id BIGINT PRIMARY KEY,institution_id BIGINT,reagent_id BIGINT,warehouse_id BIGINT,snapshot_date DATE,opening DECIMAL(12,2),inbound DECIMAL(12,2),outbound DECIMAL(12,2),adjustment DECIMAL(12,2),closing DECIMAL(12,2),is_balanced INT)");

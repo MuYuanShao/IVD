@@ -107,7 +107,76 @@ class SupplyFlowIntegrationTest {
         assertEquals(0, count("udi_status_log"));
         assertNull(raw.queryForObject("SELECT device_id FROM consumption_record WHERE batch_id=9191", Long.class));
         assertEquals("CONSUMABLE", raw.queryForObject("SELECT material_type FROM consumption_record WHERE batch_id=9191", String.class));
-        assertEquals(1, count("settlement_record"));
+        assertEquals(new BigDecimal("1.00"), batch(9191).getStock());
+        assertEquals(1, count("consumption_record"));
+        assertEquals(0, count("settlement_record"));
+        assertEquals(0, count("settlement_event"));
+    }
+    @Test void exactAuditedOpeningCanBillButSameLotAndOtherInstitutionCannot() {
+        var raw = new JdbcTemplate(context.getBean(DataSource.class));
+        raw.update("UPDATE reagent_catalog SET material_type='CONSUMABLE' WHERE id=2");
+        for (int i=0; i<3; i++) {
+            raw.update("""
+                    INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,
+                        udi_status,material_type,settlement_mode,inventory_generation)
+                    VALUES(?,1,2,'QA-AUDITED-OPENING',102,2,'支',10,'IN_STOCK','CONSUMABLE','消耗结算',?)
+                    """, 9191+i, i);
+        }
+        OpeningEvidenceFixture.audit(raw, 9191, java.time.LocalDateTime.now().minusDays(1));
+        OpeningEvidenceFixture.audit(raw, 9193, java.time.LocalDateTime.now().minusDays(1));
+        raw.update("UPDATE inventory_opening_balance SET institution_id=2 WHERE batch_id=9193");
+        for (long batchId : List.of(9191L,9192L,9193L))
+            run(tech, () -> consumption.recordConsumption(batchId,null,BigDecimal.ONE,"ROUTINE",null));
+        assertEquals(3,count("consumption_record"));
+        assertEquals(1,count("settlement_record"));
+        assertEquals(9191L, raw.queryForObject("""
+                SELECT c.batch_id FROM settlement_record s JOIN consumption_record c ON c.id=s.source_id
+                """, Long.class));
+    }
+    @Test void aPurchaseItemNumberAloneIsNotAnAcceptedReceipt() {
+        var raw = new JdbcTemplate(context.getBean(DataSource.class));
+        var purchased = receive("消耗结算",2,"QA-RECEIVED-LOT",2);
+        raw.update("""
+                INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,
+                    udi_status,expiry_date,material_type,settlement_mode,origin_purchase_order_item_id)
+                SELECT 9191,institution_id,reagent_id,'QA-UNRECEIVED-LOT',102,2,unit,unit_price,
+                    'IN_STOCK',expiry_date,material_type,settlement_mode,origin_purchase_order_item_id
+                FROM reagent_batch WHERE id=?
+                """, purchased.batchId());
+        run(tech, () -> consumption.recordConsumption(9191L,301L,BigDecimal.ONE,"ROUTINE",null));
+        assertEquals(new BigDecimal("1.00"),batch(9191).getStock());
+        assertEquals(0,count("settlement_record"));
+        assertEquals(0,count("settlement_event"));
+    }
+    @Test void openingEvidenceDoesNotAuthorizeMixedInflowOrRetroactiveEventReplay() {
+        var raw = new JdbcTemplate(context.getBean(DataSource.class));
+        raw.update("UPDATE reagent_catalog SET material_type='CONSUMABLE' WHERE id=2");
+        for (int i=0; i<2; i++) {
+            raw.update("""
+                    INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,
+                        udi_status,material_type,settlement_mode)
+                    VALUES(?,1,2,?,102,2,'支',10,'IN_STOCK','CONSUMABLE','消耗结算')
+                    """, 9191+i, "QA-OPENING-"+i);
+        }
+        OpeningEvidenceFixture.audit(raw, 9191, java.time.LocalDateTime.now().minusDays(2));
+        raw.update("""
+                INSERT INTO consumption_record(id,institution_id,record_type,batch_no,batch_id,reagent_id,
+                    warehouse_id,quantity,unit_price,amount,occurred_at)
+                VALUES(9281,1,'INBOUND','QA-OPENING-0',9191,2,102,1,10,10,CURRENT_TIMESTAMP)
+                """);
+        for (long batchId : List.of(9191L,9192L))
+            run(tech, () -> consumption.recordConsumption(batchId,null,BigDecimal.ONE,"ROUTINE",null));
+        Long historicalId=raw.queryForObject("SELECT id FROM consumption_record WHERE batch_id=9192",Long.class);
+        OpeningEvidenceFixture.audit(raw, 9192, java.time.LocalDateTime.now().minusDays(1));
+        raw.update("UPDATE inventory_opening_balance SET created_at=? WHERE batch_id=9192",
+                java.time.LocalDateTime.now().plusDays(1));
+        run(tech,()->new org.springframework.transaction.support.TransactionTemplate(
+                context.getBean(org.springframework.transaction.PlatformTransactionManager.class)).execute(status->{
+            context.publishEvent(new com.zlth.ivd.common.event.StockBusinessRecordedEvent(historicalId,"CONSUME"));
+            return null;
+        }));
+        assertEquals(0,count("settlement_record"));
+        assertEquals(0,count("settlement_event"));
     }
     @Test void consumptionDetailsFilterByDayAndReagentBeforePaging() {
         var raw = new JdbcTemplate(context.getBean(DataSource.class));
@@ -228,11 +297,15 @@ class SupplyFlowIntegrationTest {
         assertEquals(batches, count("reagent_batch"));
     }
     Received ordered(String mode,long reagent,int quantity){
-        var order=as(purchaser,()->{
-            var request=new CreateManualOrderRequest();request.setSettlementMode(mode);request.setSupplierId(1);
-            var item=new CreateManualOrderRequest.ManualOrderItem();item.setReagentId(reagent);item.setQuantity(BigDecimal.valueOf(quantity));
-            request.setItems(List.of(item));return procurement.createManualOrder(request).get(0);
-        });
+        var plans=context.getBean(com.zlth.ivd.procurement.service.PurchasePlanService.class);
+        var request=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest();
+        request.setSourceType("MANUAL");request.setSettlementMode(mode);request.setSupplierId(1);request.setOrderDate(LocalDate.now());
+        var line=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest.Item();line.setReagentId(reagent);line.setSupplierId(1);line.setQuantity(BigDecimal.valueOf(quantity));
+        request.setItems(List.of(line));
+        var plan=as(purchaser,()->plans.create(request));
+        run(purchaser,()->plans.submit(plan.getId()));
+        run(new InstitutionContext.Scope(1,11L,1006L,"LAB_DIRECTOR"),()->plans.approve(plan.getId(),"QA approved"));
+        var order=as(purchaser,()->plans.convert(plan.getId()).getOrders().get(0));
         var item=as(keeper,()->procurement.getOrderDetail(order.getId()).getItems().get(0));
         return new Received(order.getId(),item.getId(),null);
     }
@@ -417,18 +490,20 @@ class SupplyFlowIntegrationTest {
     @Configuration @EnableTransactionManagement(proxyTargetClass=true)
     @MapperScan({"com.zlth.ivd.catalog.mapper","com.zlth.ivd.procurement.mapper","com.zlth.ivd.inventory.mapper",
             "com.zlth.ivd.consumption.mapper","com.zlth.ivd.settlement.mapper","com.zlth.ivd.udi.mapper","com.zlth.ivd.system.mapper","com.zlth.ivd.common.mapper"})
-    @Import({com.zlth.ivd.common.service.StockCommandService.class,com.zlth.ivd.common.audit.OperationAuditLogWriter.class,com.zlth.ivd.catalog.service.impl.CatalogReferenceServiceImpl.class,
+        @Import({com.zlth.ivd.common.service.StockCommandService.class,com.zlth.ivd.common.audit.OperationAuditLogWriter.class,com.zlth.ivd.catalog.service.impl.CatalogReferenceServiceImpl.class,
             com.zlth.ivd.inventory.service.impl.ProcurementInventoryServiceImpl.class,com.zlth.ivd.inventory.service.impl.ConsumptionInventoryServiceImpl.class,
             com.zlth.ivd.inventory.service.impl.InstrumentUsageServiceImpl.class,com.zlth.ivd.inventory.service.impl.UdiBatchStateStoreImpl.class,
             com.zlth.ivd.system.service.impl.ProcurementOrgServiceImpl.class,
             com.zlth.ivd.udi.service.UdiStateMachine.class,com.zlth.ivd.udi.service.UniqueCodeService.class,
             com.zlth.ivd.procurement.service.impl.ProcurementServiceImpl.class,
+            com.zlth.ivd.procurement.service.impl.PurchasePlanServiceImpl.class,
             com.zlth.ivd.consumption.service.impl.ProcurementConsumptionServiceImpl.class,com.zlth.ivd.consumption.service.impl.ConsumptionServiceImpl.class,
             com.zlth.ivd.settlement.service.impl.SettlementServiceImpl.class,com.zlth.ivd.settlement.service.impl.StockBillingStatusServiceImpl.class})
     static class Config {
         @Bean com.fasterxml.jackson.databind.ObjectMapper commandJson(){return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();}
         @Bean DataSource source(){var source=new DriverManagerDataSource("jdbc:h2:mem:flow"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1","sa","");
-            new ResourceDatabasePopulator(new ClassPathResource("supply-flow-schema.sql")).execute(source);return source;}
+            new ResourceDatabasePopulator(new ClassPathResource("supply-flow-schema.sql"),
+                    new ClassPathResource("purchase-plans-h2.sql")).execute(source);return source;}
         @Bean JdbcTemplate jdbc(DataSource source){return new ScopedJdbcTemplate(source,true);}
         @Bean org.springframework.transaction.PlatformTransactionManager manager(DataSource source){return new DataSourceTransactionManager(source);}
         @Bean SqlSessionFactory factory(DataSource source)throws Exception{

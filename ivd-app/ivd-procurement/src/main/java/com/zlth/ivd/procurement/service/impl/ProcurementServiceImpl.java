@@ -74,6 +74,10 @@ public class ProcurementServiceImpl implements ProcurementService {
     private final UniqueCodeService uniqueCodeService;
     private final SupplierReferenceService supplierService;
     @org.springframework.beans.factory.annotation.Autowired
+    private SmartReplenishRunMapper replenishRuns;
+    @org.springframework.beans.factory.annotation.Autowired
+    private PurchasePlanMapper purchasePlanMapper;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.zlth.ivd.common.audit.OperationAuditLogWriter domainAudits;
 
     public ProcurementServiceImpl(ResearchProjectService researchProjectService, PurchaseRequisitionMapper reqMapper,
@@ -420,9 +424,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
                 throw new BizException(40001, "拣货明细及源批次不能为空");
             requirePositive(pick.getPickQty(), "拣货数量");
         }
-        reqMapper.lockById(requisitionId);
-        PurchaseRequisition req = reqMapper.selectById(requisitionId);
-        if (req == null) throw new BizException(40400, "申领单不存在");
+        PurchaseRequisition req = lockRequisitionState(requisitionId);
         if (req.getStatus() != RequisitionStatusEnum.REVIEWED
                 && req.getStatus() != RequisitionStatusEnum.PICKING
                 && req.getStatus() != RequisitionStatusEnum.PARTIAL_FULFILLED
@@ -449,7 +451,9 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         Map<Long, PurchaseRequisitionItem> itemMap = allItems.stream()
                 .collect(Collectors.toMap(PurchaseRequisitionItem::getId, i -> i));
 
-        for (PickAndShipRequest.PickItem pickItem : request.getItems()) {
+        // Use the same source-lock ordering for picking and receipt across different requisitions.
+        for (PickAndShipRequest.PickItem pickItem : request.getItems().stream()
+                .sorted(Comparator.comparing(PickAndShipRequest.PickItem::getSourceBatchId)).toList()) {
             PurchaseRequisitionItem reqItem = itemMap.get(pickItem.getReqItemId());
             if (reqItem == null) {
                 throw new BizException(40001, "拣货明细不属于当前申领单");
@@ -463,13 +467,8 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
                 throw new BizException(40000, "拣货数量超过申领未满足量: reqItemId=" + pickItem.getReqItemId());
             }
 
-            // 1. 扣减源仓库库存（乐观锁重试）— 一级库出库
-            ReagentBatch sourceBatch = deductSourceBatchStock(pickItem.getSourceBatchId(), reqItem.getReagentId(), pickQty);
-
-            // 2. 目标仓库不在此处入库！拣货发货后物品处于"在途"状态，
-            //    待科室签收（receiveRequisition）时才真正增加二级库库存
-
-            // 3. 写入 TRANSFER consumption_record 审计追踪
+            // 拣配仅占用可用量，实物和唯一码仍留在中心库。
+            ReagentBatch sourceBatch = reserveSourceBatch(pickItem.getSourceBatchId(), reqItem.getReagentId(), pickQty);
             writeTransferRecord(sourceBatch, pickQty, targetWarehouseId, requisitionId,reqItem.getId());
 
             // 4. 更新申领明细 fulfillment
@@ -504,9 +503,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
 
     @Override
     public PurchaseRequisitionVO receiveRequisition(Long id) {
-        reqMapper.lockById(id);
-        PurchaseRequisition req = reqMapper.selectById(id);
-        if (req == null) throw new BizException(40400, "申领单不存在");
+        PurchaseRequisition req = lockRequisitionState(id);
         authorizeDepartment(req.getFromDeptId());
         if (req.getStatus() != RequisitionStatusEnum.SHIPPED
                 && req.getStatus() != RequisitionStatusEnum.PARTIAL_FULFILLED) {
@@ -523,7 +520,9 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
             if (transferRecords == null || transferRecords.isEmpty())
                 throw new BizException(40900, "没有待签收的发货流水");
             if (transferRecords != null && !transferRecords.isEmpty()) {
-                for (ConsumptionRecord tr : transferRecords) {
+                for (ConsumptionRecord tr : transferRecords.stream()
+                        .sorted(Comparator.comparing(ConsumptionRecord::getBatchId, Comparator.nullsLast(Comparator.naturalOrder()))
+                                .thenComparing(ConsumptionRecord::getId)).toList()) {
                     requirePositive(tr.getQuantity(), "发货流水数量");
                     // 每笔 transfer record 可能有不同的目标仓库，逐笔解析
                     Long trTargetWarehouseId = tr.getWarehouseId() != null
@@ -537,17 +536,21 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
                         throw new BizException(40001, "签收入库源批次不存在，请核对发货流水");
                     }
                     if(!Objects.equals(sourceBatch.getReagentId(),tr.getReagentId())
+                            || !Objects.equals(sourceBatch.getBatchNo(),tr.getBatchNo())
                             || !Objects.equals(sourceBatch.getWarehouseId(),tr.getFromWarehouseId()))
                         throw new BizException(40900,"签收来源批次与发货证据不一致");
                     inventoryService.requireWarehouse(sourceBatch.getWarehouseId());
                     if (sourceBatch.getUdiStatus() == null || !Set.of(UdiStatusEnum.IN_STOCK, UdiStatusEnum.IN_USE, UdiStatusEnum.TRANSFERRED).contains(sourceBatch.getUdiStatus())
-                            || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(),sourceBatch.getExpiryDate(),LocalDate.now()))
+                            || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(),sourceBatch.getExpiryDate(),LocalDate.now())
+                            || (sourceBatch.getOpenExpiryDate()!=null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now())))
                         throw new BizException(40001, "发货来源已受限或过期，请先核对在途物料");
                     var receiptCatalog = catalogService.findById(sourceBatch.getReagentId());
                     if (receiptCatalog == null) throw new BizException(40400, "试剂目录不存在");
                     boolean managed = Integer.valueOf(1).equals(receiptCatalog.getEnableUniqueCode());
                     if (managed && tr.getQuantity().stripTrailingZeros().scale() > 0)
                         throw new BizException(40001, "唯一码管控物料签收数量必须为整数");
+                    if (Boolean.TRUE.equals(tr.getStockDeductOnReceipt()))
+                        postReservedSourceBatch(tr, sourceBatch);
                     Long targetBatchId = upsertTargetBatch(sourceBatch, trTargetWarehouseId, tr.getQuantity());
                     consumptionService.confirmTransferReceipt(tr.getId(), targetBatchId);
                     log.info("签收入库: batchNo={}, qty={}, targetWarehouseId={}, targetBatchId={}",
@@ -581,46 +584,40 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         return getRequisitionDetail(id);
     }
 
-    /**
-     * 扣减源仓库库存（乐观锁重试，最多 3 次）
-     */
-    private ReagentBatch deductSourceBatchStock(Long batchId, Long reagentId, BigDecimal qty) {
-        requirePositive(qty, "拣货数量");
-        int maxRetries = 3;
-        for (int i = 0; i < maxRetries; i++) {
-            ReagentBatch sourceBatch = inventoryService.lockBatch(batchId);
-            if (sourceBatch == null) throw new BizException(40400, "批次不存在");
-            if (!Objects.equals(reagentId, sourceBatch.getReagentId()))
-                throw new BizException(40001, "源批次试剂与申领明细不一致");
-            var pickingCatalog = catalogService.findById(reagentId);
-            if (pickingCatalog == null) throw new BizException(40400, "试剂目录不存在");
-            if (Integer.valueOf(1).equals(pickingCatalog.getEnableUniqueCode()) && qty.stripTrailingZeros().scale() > 0)
-                throw new BizException(40001, "唯一码管控物料必须按完整单位拣货");
-            if(!Integer.valueOf(1).equals(inventoryService.requireWarehouse(sourceBatch.getWarehouseId()).getLevel()))
-                throw new BizException(40001,"申领拣货必须来自本机构中心库");
-            if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK
-                    || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(),sourceBatch.getExpiryDate(),LocalDate.now()))
-                throw new BizException(40001, "源批次不可用或已过期");
-            if (sourceBatch.getOpenExpiryDate() != null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now()))
-                throw new BizException(40001, "源批次已超过开瓶稳定期，不能拣货");
-            if (sourceBatch.getStock().compareTo(qty) < 0) throw new BizException(40001, "库存不足");
-
-            sourceBatch.setStock(sourceBatch.getStock().subtract(qty));
-            if (sourceBatch.getStock().compareTo(BigDecimal.ZERO) <= 0) {
-                sourceBatch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
-            }
-
-            boolean updated = inventoryService.updateBatch(sourceBatch);
-            if (updated) return sourceBatch;
-            if (i == maxRetries - 1) throw new BizException(50000, "拣货扣减失败：超过最大重试次数");
-            log.warn("拣货扣减乐观锁冲突，重试 ({}/{})", i + 1, maxRetries);
-        }
-        throw new BizException(50000, "拣货扣减失败：超过最大重试次数");
+    private ReagentBatch reserveSourceBatch(Long batchId, Long reagentId, BigDecimal qty) {
+        ReagentBatch sourceBatch = inventoryService.lockBatch(batchId);
+        if (sourceBatch == null) throw new BizException(40400, "批次不存在");
+        if (!Objects.equals(reagentId, sourceBatch.getReagentId()))
+            throw new BizException(40001, "源批次试剂与申领明细不一致");
+        var pickingCatalog = catalogService.findById(reagentId);
+        if (pickingCatalog == null) throw new BizException(40400, "试剂目录不存在");
+        if (Integer.valueOf(1).equals(pickingCatalog.getEnableUniqueCode()) && qty.stripTrailingZeros().scale() > 0)
+            throw new BizException(40001, "唯一码管控物料必须按完整单位拣货");
+        if (!Integer.valueOf(1).equals(inventoryService.requireWarehouse(sourceBatch.getWarehouseId()).getLevel()))
+            throw new BizException(40001, "申领拣货必须来自本机构中心库");
+        if (sourceBatch.getUdiStatus() != UdiStatusEnum.IN_STOCK
+                || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(sourceBatch.getMaterialType(), sourceBatch.getExpiryDate(), LocalDate.now()))
+            throw new BizException(40001, "源批次不可用或已过期");
+        if (sourceBatch.getOpenExpiryDate() != null && sourceBatch.getOpenExpiryDate().isBefore(LocalDate.now()))
+            throw new BizException(40001, "源批次已超过开瓶稳定期，不能拣货");
+        if (sourceBatch.getAvailableStock().compareTo(qty) < 0)
+            throw new BizException(40001, "中心库可用量不足（已扣除预占）");
+        sourceBatch.setReservedStock(sourceBatch.getReservedStock().add(qty));
+        if (!inventoryService.updateBatch(sourceBatch)) throw new BizException(40900, "库存预占发生并发修改");
+        return sourceBatch;
     }
 
-    /**
-     * 目标仓库累加/新建批次（乐观锁重试累加分支，最多 3 次）
-     */
+    private void postReservedSourceBatch(ConsumptionRecord transfer, ReagentBatch batch) {
+        BigDecimal quantity = transfer.getQuantity();
+        if (transfer.getBatchId()==null || batch.getUdiStatus()!=UdiStatusEnum.IN_STOCK
+                || batch.getReservedStock().compareTo(quantity)<0 || batch.getAvailableStock().signum()<0)
+            throw new BizException(40900, "发货流水的中心库预占不足或库存状态已变化，请核对后签收");
+        batch.setReservedStock(batch.getReservedStock().subtract(quantity));
+        batch.setStock(batch.getStock().subtract(quantity));
+        if (batch.getStock().signum()==0) batch.setUdiStatus(UdiStatusEnum.TRANSFERRED);
+        if (!inventoryService.updateBatch(batch)) throw new BizException(40900, "签收扣减库存发生并发修改");
+    }
+
     /**
      * 签收入库：将源批次库存拷贝/合并到目标仓库，返回目标批次 ID（供唯一码转移）
      */
@@ -649,6 +646,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         record.setWarehouseId(targetWarehouseId);
         record.setFromWarehouseId(sourceBatch.getWarehouseId());
         record.setRequisitionId(requisitionId);
+        record.setStockDeductOnReceipt(true);
         record.setOperatorId(SecurityUtils.getCurrentOperatorIdOrNull());
         record.setOccurredAt(LocalDateTime.now());
         record.setCreatedAt(LocalDateTime.now());
@@ -661,7 +659,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         LambdaQueryWrapper<ShortageOrder> qw = new LambdaQueryWrapper<>();
         if (status != null && !status.isEmpty()) qw.eq(ShortageOrder::getStatus, ShortageStatusEnum.valueOf(status));
         if (keyword != null && !keyword.isEmpty()) qw.and(w -> w.like(ShortageOrder::getShortageNo, keyword));
-        qw.orderByDesc(ShortageOrder::getCreatedAt);
+        qw.orderByDesc(ShortageOrder::getCreatedAt,ShortageOrder::getId);
         Page<ShortageOrder> p = shortageMapper.selectPage(new Page<>(page, pageSize), qw);
 
         Set<Long> reqIds = p.getRecords().stream().map(ShortageOrder::getReqId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -719,7 +717,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
                 ReagentCatalog cat = catalogMap.get(Long.valueOf(first.getReagentId()));
                 vo.setReagentName(cat != null ? cat.getGenericName() : "试剂#" + first.getReagentId());
                 vo.setSpec(cat != null ? cat.getSpecification() : "-");
-                int totalShortage = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+                BigDecimal totalShortage = items.stream().map(ShortageOrderItem::getQtyShortage).filter(Objects::nonNull).reduce(BigDecimal.ZERO,BigDecimal::add);
                 vo.setShortageQty(totalShortage);
                 BigDecimal estAmount = items.stream().map(i -> {
                 BigDecimal qty = i.getQtyShortage() != null ? i.getQtyShortage() : BigDecimal.ZERO;
@@ -815,7 +813,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
             ReagentCatalog cat = catalogMap.get(Long.valueOf(first.getReagentId()));
             vo.setReagentName(cat != null ? cat.getGenericName() : "试剂#" + first.getReagentId());
             vo.setSpec(cat != null ? cat.getSpecification() : "-");
-            int totalShortage = items.stream().mapToInt(i -> i.getQtyShortage() != null ? i.getQtyShortage().intValue() : 0).sum();
+            BigDecimal totalShortage = items.stream().map(ShortageOrderItem::getQtyShortage).filter(Objects::nonNull).reduce(BigDecimal.ZERO,BigDecimal::add);
             vo.setShortageQty(totalShortage);
             BigDecimal estAmount = items.stream().map(i -> {
                 BigDecimal qty = i.getQtyShortage() != null ? i.getQtyShortage() : BigDecimal.ZERO;
@@ -851,7 +849,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
                         item.getReagentId().longValue(), targetWarehouseId);
                 if (batches != null && !batches.isEmpty()) {
                     stock = batches.stream()
-                        .map(b -> b.getStock() != null ? b.getStock() : BigDecimal.ZERO)
+                        .map(ReagentBatch::getAvailableStock)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
                 }
             }
@@ -902,7 +900,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         LambdaQueryWrapper<PurchaseOrder> qw = new LambdaQueryWrapper<>();
         if (status != null && !status.isEmpty()) qw.eq(PurchaseOrder::getStatus, PurchaseOrderStatusEnum.valueOf(status));
         if (keyword != null) qw.like(PurchaseOrder::getPoNo, keyword);
-        qw.orderByDesc(PurchaseOrder::getCreatedAt);
+        qw.orderByDesc(PurchaseOrder::getCreatedAt,PurchaseOrder::getId);
         Page<PurchaseOrder> p = orderMapper.selectPage(new Page<>(page, pageSize), qw);
 
         Set<Long> poIds = p.getRecords().stream().map(PurchaseOrder::getId).collect(Collectors.toSet());
@@ -932,6 +930,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
             vo.setSupplierName(supplierNameMap.getOrDefault(po.getSupplierId(),
                     po.getSupplierId() != null ? "供应商#" + po.getSupplierId() : "-"));
             vo.setSourceType(po.getSourceType());
+            vo.setPlanId(po.getPlanId());vo.setApprovalOrigin(po.getApprovalOrigin());
             vo.setShortageOrderId(po.getShortageOrderId()); vo.setReqId(po.getReqId());
             vo.setAcceptanceMethod(po.getAcceptanceMethod());
             vo.setTotalAmount(po.getTotalAmount()); vo.setStatus(po.getStatus());
@@ -978,6 +977,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
             vo.setSupplierName("-");
         }
         vo.setSourceType(po.getSourceType());
+        vo.setPlanId(po.getPlanId());vo.setApprovalOrigin(po.getApprovalOrigin());
         vo.setShortageOrderId(po.getShortageOrderId()); vo.setReqId(po.getReqId());
         vo.setTotalAmount(po.getTotalAmount()); vo.setStatus(po.getStatus());
         vo.setOrderDate(po.getOrderDate());
@@ -1040,6 +1040,9 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         po.setPoNo(no);
         po.setSupplierId(supplierId);
         po.setSourceType("SHORTAGE");
+        po.setApprovalOrigin("PLAN_REQUIRED");
+        var methods=sourceCatalogs.values().stream().map(c->c.getMaterialType().entersUdiStateMachine()?"SCAN":"MANUAL").distinct().toList();
+        po.setAcceptanceMethod(methods.size()==1?methods.get(0):"MIXED");
         po.setSettlementMode(com.zlth.ivd.common.enums.SettlementModeEnum.normalizeNewOrder(settlementMode));
         po.setSourceId(shortageId);
         po.setShortageOrderId(shortageId);
@@ -1109,7 +1112,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         }
         for(var item:allItems){var catalog=catalogService.lockForBusiness(item.getReagentId());
             if(catalog!=null)allCatalogMap.put(item.getReagentId(),catalog);
-            if(catalog==null || catalog.getApprovalStatus()!=com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
+            if(catalog==null || catalog.getMaterialType()==null || catalog.getApprovalStatus()!=com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
                     || catalog.getPricePerUnit()==null || catalog.getPricePerUnit().signum()<0)
                 throw new BizException(40001,"采购试剂目录须已批准并维护非负单价");
             if(item.getSupplierId()==null && request.getSupplierId()!=null)item.setSupplierId(request.getSupplierId());
@@ -1123,17 +1126,22 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         }
 
         // 2. 按已验证的供应商分组
-        Map<Integer, List<CreateManualOrderRequest.ManualOrderItem>> grouped = new LinkedHashMap<>();
+        record OrderGroup(Integer supplierId,String method) {}
+        Map<OrderGroup, List<CreateManualOrderRequest.ManualOrderItem>> grouped = new LinkedHashMap<>();
         for (CreateManualOrderRequest.ManualOrderItem item : allItems) {
-            grouped.computeIfAbsent(item.getSupplierId(), k -> new ArrayList<>()).add(item);
+            String method=allCatalogMap.get(item.getReagentId()).getMaterialType().entersUdiStateMachine()?"SCAN":"MANUAL";
+            grouped.computeIfAbsent(new OrderGroup(item.getSupplierId(),method), k -> new ArrayList<>()).add(item);
         }
 
         List<PurchaseOrder> results = new ArrayList<>();
-        LocalDate orderDate = LocalDate.now();
+        LocalDate orderDate = parsePurchaseDate(request.getOrderDate(),LocalDate.now());
+        LocalDate expectedDate = parsePurchaseDate(request.getExpectedDeliveryDate(),null);
+        if(orderDate.isAfter(LocalDate.now()) || (expectedDate!=null && expectedDate.isBefore(orderDate)))
+            throw new BizException(40001,"下单日期不能为未来日期，预计到货不能早于下单日期");
         var numbers = reservePurchaseNumbers(orderDate, grouped.size());
 
-        for (Map.Entry<Integer, List<CreateManualOrderRequest.ManualOrderItem>> entry : grouped.entrySet()) {
-            Integer supplierId = entry.getKey();
+        for (Map.Entry<OrderGroup, List<CreateManualOrderRequest.ManualOrderItem>> entry : grouped.entrySet()) {
+            Integer supplierId = entry.getKey().supplierId();
             List<CreateManualOrderRequest.ManualOrderItem> groupItems = entry.getValue();
 
             // 1. 先插入 PO 头（获取雪花 ID）
@@ -1141,10 +1149,13 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
             PurchaseOrder po = new PurchaseOrder();
             po.setPoNo(no);
             po.setSourceType("MANUAL");
+            po.setApprovalOrigin("PLAN_REQUIRED");
+            po.setAcceptanceMethod(entry.getKey().method());
             po.setSupplierId(supplierId);
             po.setSettlementMode(com.zlth.ivd.common.enums.SettlementModeEnum.normalizeNewOrder(request.getSettlementMode()));
             po.setStatus(PurchaseOrderStatusEnum.DRAFT);
             po.setOrderDate(orderDate);
+            po.setExpectedDeliveryDate(expectedDate);
             po.setTotalAmount(BigDecimal.ZERO);
             po.setReceivedQuantity(BigDecimal.ZERO);
             po.setCreatedAt(LocalDateTime.now());
@@ -1204,6 +1215,14 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         if(order==null)throw new BizException(40400,"采购订单不存在");
         if(order.getStatus()==PurchaseOrderStatusEnum.CANCELLED || order.getStatus()==PurchaseOrderStatusEnum.COMPLETED)
             throw new BizException(40001,"已取消或已完成的订单不能继续验收");
+        if(!"LEGACY".equals(order.getApprovalOrigin()) && !"DIRECT_RECEIPT".equals(order.getApprovalOrigin())) {
+            if(!"PLAN".equals(order.getApprovalOrigin()) || order.getPlanId()==null
+                    || !Set.of(PurchaseOrderStatusEnum.SENT,PurchaseOrderStatusEnum.PARTIAL_RECEIVED).contains(order.getStatus()))
+                throw new BizException(40900,"采购订单未完成计划审批转单，不能验收");
+            var approvedPlan=purchasePlanMapper.selectById(order.getPlanId());
+            if(approvedPlan==null || !"ORDERED".equals(approvedPlan.getStatus()) || approvedPlan.getReviewedBy()==null)
+                throw new BizException(40900,"采购计划批准依据不完整，不能验收");
+        }
         requireActiveSupplier(order.getSupplierId());
         ReagentCatalog receivedCatalog = requireApprovedReceiptCatalog(item.getReagentId());
         String receiptUdiDi = resolveReceiptUdiDi(receivedCatalog, request.getUdiDi());
@@ -1325,12 +1344,17 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         if (allReceived && po.getShortageOrderId() != null) {
             ShortageOrder source = shortageMapper.selectOne(new LambdaQueryWrapper<ShortageOrder>()
                     .eq(ShortageOrder::getId, po.getShortageOrderId()).last("FOR UPDATE"));
-            if (source == null || !Objects.equals(source.getPoId(), po.getId())
+            if (source == null || (!"PLAN".equals(po.getApprovalOrigin()) && !Objects.equals(source.getPoId(), po.getId()))
                     || source.getStatus() != ShortageStatusEnum.PURCHASING)
                 throw new BizException(40900, "采购与缺货来源关联不一致，请先核对");
-            source.setStatus(ShortageStatusEnum.COMPLETED);
-            shortageMapper.updateById(source);
-            appendShortageTransition("SHORTAGE_COMPLETED",source.getId(),po.getId(),"PURCHASING","COMPLETED");
+            var related=orderMapper.selectList(new LambdaQueryWrapper<PurchaseOrder>()
+                    .eq(PurchaseOrder::getShortageOrderId,source.getId()).last("FOR UPDATE"));
+            if(related.stream().allMatch(order->order.getStatus()==PurchaseOrderStatusEnum.COMPLETED
+                    || order.getStatus()==PurchaseOrderStatusEnum.CANCELLED)) {
+                source.setStatus(ShortageStatusEnum.COMPLETED);
+                shortageMapper.updateById(source);
+                appendShortageTransition("SHORTAGE_COMPLETED",source.getId(),po.getId(),"PURCHASING","COMPLETED");
+            }
         }
     }
 
@@ -1367,6 +1391,7 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         po.setId(IdGenerator.nextId());
         po.setSupplierId(supplierId);
         po.setSourceType("MANUAL");
+        po.setApprovalOrigin("DIRECT_RECEIPT");
         po.setAcceptanceMethod("MANUAL");
         po.setSettlementMode(com.zlth.ivd.common.enums.SettlementModeEnum.normalizeNewOrder(request.getSettlementMode()));
         po.setStatus(PurchaseOrderStatusEnum.PARTIAL_RECEIVED);
@@ -1535,202 +1560,150 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
     }
 
     @Override
+    @Transactional(readOnly=true)
     public List<Map<String, Object>> getSmartReplenishSuggestions(int days) {
-        // 1. 当前库存：按试剂汇总 reagent_batch.stock
-        Map<Long, BigDecimal> stockMap = new HashMap<>();
-        List<ReagentBatch> batches = inventoryService.listAllBatches();
-        for (ReagentBatch b : batches) {
-            if (b.getUdiStatus() != UdiStatusEnum.PENDING_UDI && b.getReagentId() != null && b.getStock() != null) {
-                stockMap.merge(b.getReagentId(), b.getStock(), BigDecimal::add);
-            }
+        validateAnalysisDays(days);
+        var runs=replenishRuns.selectList(new LambdaQueryWrapper<SmartReplenishRun>()
+                .eq(SmartReplenishRun::getAnalysisDays,days).orderByDesc(SmartReplenishRun::getId).last("LIMIT 1"));
+        if(runs.isEmpty())return List.of();
+        var persisted=suggestionMapper.selectList(new LambdaQueryWrapper<SmartReplenishSuggestion>()
+                .eq(SmartReplenishSuggestion::getBatchNo,runs.get(0).getBatchNo())
+                .eq(SmartReplenishSuggestion::getStatus,"PENDING")
+                .orderByDesc(SmartReplenishSuggestion::getSuggestedQty).orderByAsc(SmartReplenishSuggestion::getId));
+        return suggestionViews(persisted);
+    }
+
+    @Override
+    public List<Map<String, Object>> recalculateSmartReplenishSuggestions(int days) {
+        validateAnalysisDays(days);
+        var scope=com.zlth.ivd.common.security.InstitutionContext.require();
+        com.zlth.ivd.common.security.InstitutionContext.requireUserActor();
+        if(!Set.of("SYSTEM_ADMIN","PURCHASER","STOREKEEPER").contains(scope.role()))
+            throw new BizException(40300,"无补货重算权限");
+        LocalDateTime until=LocalDateTime.now();
+        LocalDateTime since=until.minusDays(days);
+        Long centralId=inventoryService.findActiveCentralWarehouse().getId();
+        Map<Long,BigDecimal> stockMap=new HashMap<>();
+        for(var batch:inventoryService.listAllBatches()) {
+            if(batch.getReagentId()==null || batch.getStock()==null || batch.getStock().signum()<=0
+                    || !Objects.equals(batch.getWarehouseId(),centralId) || batch.getUdiStatus()!=UdiStatusEnum.IN_STOCK
+                    || !com.zlth.ivd.common.utils.MaterialExpiryPolicy.usable(batch.getMaterialType(),batch.getExpiryDate(),until.toLocalDate())
+                    || (batch.getOpenExpiryDate()!=null && batch.getOpenExpiryDate().isBefore(until.toLocalDate())))continue;
+            stockMap.merge(batch.getReagentId(),batch.getAvailableStock(),BigDecimal::add);
         }
-
-        // 2. 历史消耗：最近 N 天 + 全量
-        Map<Long, BigDecimal> consumptionMap = new HashMap<>();
-        Map<Long, BigDecimal> recentMap = new HashMap<>();
-        LocalDateTime since = LocalDateTime.now().minusDays(days);
-        List<ConsumptionRecord> records = consumptionService.findConsumptionRecords();
-        for (ConsumptionRecord r : records) {
-            if (r.getReagentId() != null && r.getQuantity() != null) {
-                consumptionMap.merge(r.getReagentId(), r.getQuantity(), BigDecimal::add);
-                if (r.getOccurredAt() != null && !r.getOccurredAt().isBefore(since)) {
-                    recentMap.merge(r.getReagentId(), r.getQuantity(), BigDecimal::add);
-                }
-            }
+        Map<Long,BigDecimal> consumed=new HashMap<>();
+        for(var record:consumptionService.findConsumptionRecords()) {
+            if(!"CONSUME".equals(record.getRecordType()) || record.getReagentId()==null
+                    || record.getQuantity()==null || record.getQuantity().signum()<=0
+                    || record.getOccurredAt()==null || record.getOccurredAt().isBefore(since)
+                    || !record.getOccurredAt().isBefore(until))continue;
+            consumed.merge(record.getReagentId(),record.getQuantity(),BigDecimal::add);
         }
-
-        // 3. 先删除旧的 PENDING 建议（每次重新计算）
-        suggestionMapper.delete(new LambdaQueryWrapper<SmartReplenishSuggestion>()
-                .eq(SmartReplenishSuggestion::getStatus, "PENDING"));
-
-        // 4. 计算补货建议 → 持久化到 smart_replenish_suggestion 表
-        //    算法：目标库存 = max(历史总消耗, 最低库存阈值10)，建议补货量 = 目标 - 当前库存
-        String batchNo = "SR-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-" +
-                String.format("%04d", System.currentTimeMillis() % 10000);
-        List<SmartReplenishSuggestion> entities = new ArrayList<>();
-
-        for (Long reagentId : consumptionMap.keySet()) {
-            BigDecimal currentStock = stockMap.getOrDefault(reagentId, BigDecimal.ZERO);
-            BigDecimal totalConsumed = consumptionMap.get(reagentId);
-            BigDecimal recentConsumed = recentMap.getOrDefault(reagentId, BigDecimal.ZERO);
-
-            BigDecimal minPar = BigDecimal.TEN;
-            BigDecimal targetStock = totalConsumed.compareTo(minPar) > 0 ? totalConsumed : minPar;
-            BigDecimal suggestedQty = targetStock.subtract(currentStock);
-            if (suggestedQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-
-            BigDecimal dailyRate = recentConsumed.compareTo(BigDecimal.ZERO) > 0
-                    ? recentConsumed.divide(BigDecimal.valueOf(days), 2, java.math.RoundingMode.HALF_UP)
-                    : totalConsumed.divide(BigDecimal.valueOf(Math.max(days, 1)), 2, java.math.RoundingMode.HALF_UP);
-            BigDecimal safetyStock = dailyRate.multiply(BigDecimal.TEN);
-
-            ReagentCatalog cat = catalogService.findById(reagentId);
-            if (cat == null) continue;
-
-            SmartReplenishSuggestion s = new SmartReplenishSuggestion();
-            s.setReagentId(reagentId);
-            s.setReagentName(cat.getGenericName());
-            s.setSpecification(cat.getSpecification() != null ? cat.getSpecification() : "");
-            s.setManufacturer(cat.getManufacturer() != null ? cat.getManufacturer() : "");
-            s.setCurrentStock(currentStock);
-            s.setDailyConsumption(dailyRate);
-            s.setSafetyStock(safetyStock.setScale(0, java.math.RoundingMode.UP));
-            s.setSuggestedQty(suggestedQty.setScale(0, java.math.RoundingMode.UP));
-            s.setUnit(cat.getUnit() != null ? cat.getUnit() : "");
-            s.setSupplier(cat.getDistributor() != null ? cat.getDistributor()
-                    : cat.getManufacturer() != null ? cat.getManufacturer() : "—");
-            s.setAnalysisDays(days);
-            s.setBatchNo(batchNo);
-            s.setStatus("PENDING");
-            s.setCreatedAt(LocalDateTime.now());
-            s.setUpdatedAt(LocalDateTime.now());
-            entities.add(s);
+        Map<Long,BigDecimal> committed=new HashMap<>();
+        addOutstanding(committed,orderMapper.outstandingQuantities());
+        addOutstanding(committed,purchasePlanMapper.committedQuantities());
+        var run=new SmartReplenishRun();run.setAnalysisDays(days);run.setCreatedAt(until);run.setUpdatedAt(until);
+        replenishRuns.insert(run);
+        String batchNo="SR-"+until.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE)+"-"+String.format(Locale.ROOT,"%04d",run.getId());
+        run.setBatchNo(batchNo);replenishRuns.updateById(run);
+        List<SmartReplenishSuggestion> persisted=new ArrayList<>();
+        for(Long reagentId:new TreeSet<>(consumed.keySet())) {
+            var catalog=catalogService.findById(reagentId);
+            if(catalog==null || catalog.getApprovalStatus()!=com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED)continue;
+            BigDecimal daily=consumed.get(reagentId).divide(BigDecimal.valueOf(days),8,java.math.RoundingMode.HALF_UP);
+            BigDecimal target=daily.multiply(BigDecimal.valueOf(30)).max(BigDecimal.TEN);
+            BigDecimal current=stockMap.getOrDefault(reagentId,BigDecimal.ZERO);
+            BigDecimal outstanding=committed.getOrDefault(reagentId,BigDecimal.ZERO);
+            BigDecimal quantity=target.subtract(current).subtract(outstanding).setScale(0,java.math.RoundingMode.CEILING);
+            if(quantity.signum()<=0)continue;
+            if(quantity.compareTo(new BigDecimal("100000000"))>=0)throw new BizException(40001,"补货需求超出数量范围，请核对消耗证据");
+            var item=new SmartReplenishSuggestion();item.setReagentId(reagentId);
+            item.setReagentName(catalog.getGenericName());item.setSpecification(catalog.getSpecification());
+            item.setManufacturer(catalog.getManufacturer());item.setUnit(catalog.getUnit());
+            item.setSupplier(catalog.getDistributor());item.setAnalysisDays(days);item.setBatchNo(batchNo);
+            item.setCurrentStock(current);item.setDailyConsumption(daily.setScale(2,java.math.RoundingMode.HALF_UP));
+            item.setSafetyStock(daily.multiply(BigDecimal.TEN).setScale(0,java.math.RoundingMode.CEILING));
+            item.setSuggestedQty(quantity);item.setStatus("PENDING");item.setCreatedAt(until);item.setUpdatedAt(until);
+            suggestionMapper.insert(item);persisted.add(item);
         }
+        persisted.sort(Comparator.comparing(SmartReplenishSuggestion::getSuggestedQty).reversed());
+        log.info("补货重算完成: days={}, suggestions={}, batch={}",days,persisted.size(),batchNo);
+        return suggestionViews(persisted);
+    }
 
-        if (!entities.isEmpty()) {
-            suggestionMapper.insert(entities);
+    private void validateAnalysisDays(int days) {
+        if(days<1 || days>365)throw new BizException(40001,"分析天数须为1至365");
+    }
+
+    private void addOutstanding(Map<Long,BigDecimal> totals,List<Map<String,Object>> rows) {
+        if(rows==null)return;
+        for(var row:rows) {
+            Object id=row.get("reagentId");Object quantity=row.get("quantity");
+            if(id instanceof Number number && quantity!=null)
+                totals.merge(number.longValue(),new BigDecimal(quantity.toString()),BigDecimal::add);
         }
+    }
 
-        // 5. 读回持久化后的记录（带 ID），转为 Map 供前端展示
-        List<SmartReplenishSuggestion> persisted = suggestionMapper.selectList(
-                new LambdaQueryWrapper<SmartReplenishSuggestion>().eq(SmartReplenishSuggestion::getBatchNo, batchNo));
-        persisted.sort((a, b) -> b.getSuggestedQty().compareTo(a.getSuggestedQty()));
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (SmartReplenishSuggestion s : persisted) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", s.getId().toString());
-            item.put("reagentId", s.getReagentId());
-            item.put("reagentName", s.getReagentName());
-            item.put("specification", s.getSpecification());
-            item.put("manufacturer", s.getManufacturer());
-            item.put("currentStock", s.getCurrentStock());
-            item.put("safetyStock", s.getSafetyStock());
-            item.put("dailyConsumption", s.getDailyConsumption());
-            item.put("suggestedQty", s.getSuggestedQty());
-            item.put("unit", s.getUnit());
-            item.put("supplier", s.getSupplier());
+    private List<Map<String,Object>> suggestionViews(List<SmartReplenishSuggestion> rows) {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var row:rows) {
+            Map<String,Object> item=new LinkedHashMap<>();
+            item.put("id",row.getId().toString());item.put("reagentId",row.getReagentId());
+            item.put("reagentName",row.getReagentName());item.put("specification",row.getSpecification());
+            item.put("manufacturer",row.getManufacturer());item.put("currentStock",row.getCurrentStock());
+            item.put("safetyStock",row.getSafetyStock());item.put("dailyConsumption",row.getDailyConsumption());
+            item.put("suggestedQty",row.getSuggestedQty());item.put("unit",row.getUnit());item.put("supplier",row.getSupplier());
+            item.put("analysisDays",row.getAnalysisDays());item.put("batchNo",row.getBatchNo());item.put("status",row.getStatus());
             result.add(item);
         }
-
-        log.info("智能补货计算完成: days={}, 分析试剂={}, 建议补货={}, batchNo={}", days, consumptionMap.size(), result.size(), batchNo);
         return result;
     }
 
     @Override
-    public List<PurchaseOrder> createOrdersFromReplenish(List<Map<String, Object>> items) {
-        List<PurchaseOrder> orders = new ArrayList<>();
-        record Conversion(long reagentId, BigDecimal quantity, Integer supplierId) {}
-        Map<Long, Conversion> conversions = new TreeMap<>();
-        if (items == null || items.isEmpty() || items.size() > 10000)
-            throw new BizException(40001, "请选择 1 至 10000 条补货建议");
-        for (Map<String, Object> item : items) {
-            if (item == null) throw new BizException(40001, "补货明细不能为空");
+    public List<PurchaseOrder> createOrdersFromReplenish(List<Map<String, Object>> input) {
+        // Compatibility service path creates non-receivable PLAN_REQUIRED drafts only.
+        // Public callers use PurchasePlanService and approved plan conversion.
+        if(input==null || input.isEmpty() || input.size()>500)throw new BizException(40001,"请选择1至500条补货建议");
+        record Conversion(Long reagentId,Integer supplierId,BigDecimal quantity){}
+        Map<Long,Conversion> conversions=new TreeMap<>();
+        for(var row:input) {
+            if(row==null)throw new BizException(40001,"补货明细不能为空");
             try {
-                long suggestionId = Long.parseLong(Objects.toString(item.get("id"), ""));
-                long reagentId = Long.parseLong(Objects.toString(item.get("reagentId"), ""));
-                BigDecimal quantity = new BigDecimal(Objects.toString(item.get("suggestedQty"), ""));
-                Integer supplierId = item.get("supplierId") == null ? null
-                        : Integer.valueOf(item.get("supplierId").toString());
-                if (suggestionId <= 0 || reagentId <= 0 || (supplierId != null && supplierId <= 0)
-                        || quantity.signum() <= 0 || quantity.stripTrailingZeros().scale() > 2
-                        || quantity.compareTo(new BigDecimal("100000000")) >= 0)
-                    throw new BizException(40001, "补货数量或引用编号不合法");
-                if (conversions.putIfAbsent(suggestionId, new Conversion(reagentId, quantity, supplierId)) != null)
-                    throw new BizException(40001, "同一补货建议不能重复选择");
-            } catch (NumberFormatException ex) {
-                throw new BizException(40001, "补货明细格式错误");
-            }
+                Long id=Long.valueOf(Objects.toString(row.get("id"),""));
+                Long reagent=Long.valueOf(Objects.toString(row.get("reagentId"),""));
+                var quantity=new BigDecimal(Objects.toString(row.get("suggestedQty"),""));
+                requirePositive(quantity,"补货数量");
+                if(id<=0 || reagent<=0 || quantity.compareTo(new BigDecimal("100000000"))>=0)
+                    throw new BizException(40001,"补货编号或数量无效");
+                Integer supplier=row.get("supplierId")==null?null:Integer.valueOf(row.get("supplierId").toString());
+                if(conversions.putIfAbsent(id,new Conversion(reagent,supplier,quantity))!=null)
+                    throw new BizException(40001,"同一补货建议不能重复选择");
+            }catch(NumberFormatException invalid){throw new BizException(40001,"补货参数格式无效");}
         }
-
-        // 按固定顺序锁定机构内建议；状态变更与采购单写入同事务提交。
-        LocalDate orderDate = LocalDate.now();
-        var numbers = reservePurchaseNumbers(orderDate, conversions.size());
-        for (var entry : conversions.entrySet()) {
-            Long suggestionId = entry.getKey();
-            Conversion conversion = entry.getValue();
-            SmartReplenishSuggestion suggestion = suggestionMapper.selectOne(new LambdaQueryWrapper<SmartReplenishSuggestion>()
-                    .eq(SmartReplenishSuggestion::getId, suggestionId).last("FOR UPDATE"));
-            if (suggestion == null) throw new BizException(40400, "补货建议不存在或已失效");
-            if (!"PENDING".equals(suggestion.getStatus()))
-                throw new BizException(40900, "补货建议已处理，请刷新后重试");
-            if (!Objects.equals(suggestion.getReagentId(), conversion.reagentId()))
-                throw new BizException(40001, "试剂与补货建议不匹配");
-            Long reagentId = suggestion.getReagentId();
-            BigDecimal orderQty = conversion.quantity();
-            ReagentCatalog cat = catalogService.lockForBusiness(reagentId);
-            if (cat == null || cat.getApprovalStatus() != com.zlth.ivd.common.enums.ApprovalStatusEnum.APPROVED
-                    || cat.getMaterialType() == null || cat.getPricePerUnit() == null || cat.getPricePerUnit().signum() < 0)
-                throw new BizException(40001, "采购目录须已批准并维护类型和非负单价");
-            Supplier supplier = resolvePurchaseSupplier(conversion.supplierId(), cat.getDistributor());
-            String no = numbers.next();
-            PurchaseOrder po = new PurchaseOrder();
-            po.setPoNo(no);
-            po.setSourceType("SMART_REPLENISH");
-            po.setSettlementMode("调拨结算");
-            po.setStatus(PurchaseOrderStatusEnum.DRAFT);
-            po.setOrderDate(orderDate);
-            po.setSupplierId(Math.toIntExact(supplier.getId()));
-
-            po.setCreatedAt(LocalDateTime.now());
-            po.setUpdatedAt(LocalDateTime.now());
-
-            orderMapper.insert(po);
-
-            // 写入订单明细
-            PurchaseOrderItem poi = new PurchaseOrderItem();
-            poi.setPoId(po.getId());
-            poi.setLineNo(1);
-            poi.setReagentId(reagentId);
-            poi.setSupplierId(po.getSupplierId());
-            poi.setMaterialType(cat.getMaterialType().name());
-            poi.setQtyOrdered(orderQty);
-
-            BigDecimal unitPrice = cat.getPricePerUnit();
-            poi.setUnitPrice(unitPrice);
-            poi.setAmount(unitPrice.multiply(orderQty));
-            poi.setQtyReceived(BigDecimal.ZERO);
-            poi.setVersion(0);
-            poi.setCreatedAt(LocalDateTime.now());
-            orderItemMapper.insert(poi);
-
-            // 回写 PO 总金额（与 createManualOrder / createOrderFromShortage 对齐）
-            po.setTotalAmount(poi.getAmount());
-            po.setReceivedQuantity(BigDecimal.ZERO);
-            orderMapper.updateById(po);
-
-            orders.add(po);
-            SmartReplenishSuggestion update = new SmartReplenishSuggestion();
-            update.setStatus("GENERATED");
-            update.setUpdatedAt(LocalDateTime.now());
-            if (suggestionMapper.update(update, new LambdaQueryWrapper<SmartReplenishSuggestion>()
-                    .eq(SmartReplenishSuggestion::getId, suggestionId)
-                    .eq(SmartReplenishSuggestion::getStatus, "PENDING")) != 1)
-                throw new BizException(40900, "补货建议状态已变化，请刷新后重试");
+        List<CreateManualOrderRequest.ManualOrderItem> rows=new ArrayList<>();
+        for(var entry:conversions.entrySet()) {
+            var suggestion=suggestionMapper.selectOne(new LambdaQueryWrapper<SmartReplenishSuggestion>()
+                    .eq(SmartReplenishSuggestion::getId,entry.getKey()).last("FOR UPDATE"));
+            if(suggestion==null)throw new BizException(40400,"补货建议不存在或不可访问");
+            if(!"PENDING".equals(suggestion.getStatus()) || !Objects.equals(suggestion.getReagentId(),entry.getValue().reagentId()))
+                throw new BizException(40900,"补货来源已变化或试剂不匹配");
+            var catalog=requireApprovedReceiptCatalog(suggestion.getReagentId());
+            if(catalog.getPricePerUnit()==null || catalog.getPricePerUnit().signum()<0)
+                throw new BizException(40001,"补货目录未维护非负单价");
+            var supplier=resolvePurchaseSupplier(entry.getValue().supplierId(),catalog.getDistributor());
+            var item=new CreateManualOrderRequest.ManualOrderItem();item.setReagentId(suggestion.getReagentId());
+            item.setSupplierId(Math.toIntExact(supplier.getId()));item.setQuantity(entry.getValue().quantity());rows.add(item);
         }
-
-        log.info("智能补货生成采购单: count={}, suggestionIds={}", orders.size(), conversions.keySet());
-        return orders;
+        var request=new CreateManualOrderRequest();request.setItems(rows);request.setSettlementMode("调拨结算");
+        var result=createManualOrder(request);
+        for(var order:result){order.setSourceType("SMART_REPLENISH");orderMapper.updateById(order);}
+        for(Long id:conversions.keySet()) {
+            var changed=new SmartReplenishSuggestion();changed.setStatus("GENERATED");changed.setUpdatedAt(LocalDateTime.now());
+            if(suggestionMapper.update(changed,new LambdaQueryWrapper<SmartReplenishSuggestion>()
+                    .eq(SmartReplenishSuggestion::getId,id).eq(SmartReplenishSuggestion::getStatus,"PENDING"))!=1)
+                throw new BizException(40900,"补货状态转换冲突");
+        }
+        return result;
     }
 
     private Iterator<String> reservePurchaseNumbers(LocalDate orderDate, int count) {
@@ -1741,6 +1714,12 @@ BigDecimal totalQty = items.stream().map(i -> i.getQtyRequested()).filter(Object
         if (last > 9999) throw new BizException(40900, "当前机构今日采购单号已用尽");
         return java.util.stream.IntStream.rangeClosed(last - count + 1, last)
                 .mapToObj(number -> String.format(Locale.ROOT, "PO-%s-%04d", day, number)).iterator();
+    }
+
+    private LocalDate parsePurchaseDate(String value,LocalDate fallback) {
+        if(value==null || value.isBlank())return fallback;
+        try{return LocalDate.parse(value);}
+        catch(java.time.format.DateTimeParseException invalid){throw new BizException(40001,"采购日期格式须为YYYY-MM-DD");}
     }
 
     private Supplier requireActiveSupplier(Integer supplierId) {

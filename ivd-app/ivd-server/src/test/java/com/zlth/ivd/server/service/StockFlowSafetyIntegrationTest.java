@@ -38,6 +38,7 @@ class StockFlowSafetyIntegrationTest {
         db=new JdbcTemplate(context.getBean(DataSource.class));procurement=context.getBean(ProcurementService.class);
         inventory=context.getBean(InventoryService.class);billing=context.getBean(SettlementService.class);
         db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,udi_status,expiry_date,version,settlement_mode) VALUES(5001,1,1,'QA-LOT',101,10,'box',10,'IN_STOCK','2039-01-01',0,'领用结算')");
+        OpeningEvidenceFixture.audit(db, 5001, java.time.LocalDateTime.now().minusDays(1));
         db.update("INSERT INTO purchase_requisition(id,institution_id,req_no,from_dept_id,to_warehouse_id,status,urgency) VALUES(6001,1,'QA-SHIP-1',11,102,'REVIEWED','NORMAL'),(6002,1,'QA-SHIP-2',12,103,'REVIEWED','NORMAL')");
         db.update("INSERT INTO purchase_requisition_item(id,institution_id,req_id,line_no,reagent_id,qty_requested,qty_fulfilled,unit_price,amount) VALUES(6101,1,6001,1,1,2,0,10,20),(6102,1,6002,1,1,2,0,10,20)");
         db.execute("CREATE TABLE shortage_order(id BIGINT PRIMARY KEY,institution_id BIGINT,shortage_no VARCHAR(64),req_id BIGINT,from_dept_id BIGINT,status VARCHAR(32),urgency VARCHAR(32),suggested_supplier_id BIGINT,po_id BIGINT,created_by BIGINT,created_at TIMESTAMP,updated_at TIMESTAMP)");
@@ -54,6 +55,61 @@ class StockFlowSafetyIntegrationTest {
     void run(InstitutionContext.Scope scope,Runnable operation){as(scope,()->{operation.run();return null;});}
     long count(String table){return db.queryForObject("SELECT COUNT(*) FROM "+table,Long.class);}
     BigDecimal stock(){return db.queryForObject("SELECT stock FROM reagent_batch WHERE id=5001",BigDecimal.class);}
+    @Test void pickingLeavesPhysicalStockUntilDepartmentSigns() {
+        ship(6001,6101,"2");
+        assertEquals(new BigDecimal("10.00"),stock());
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
+        assertEquals(new BigDecimal("8.00"),as(keeper,()->inventory.getFefoRecommendations(1L,101L).get(0).get("qtyAvailable")));
+        assertEquals(0,count("requisition_transfer_receipt"));
+        assertEquals(0,count("settlement_record"));
+        receipt();
+        assertEquals(new BigDecimal("8.00"),stock());
+        assertEquals(new BigDecimal("0.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("""
+                SELECT b.stock FROM reagent_batch b JOIN requisition_transfer_receipt r ON r.target_batch_id=b.id
+                """, BigDecimal.class));
+    }
+    @Test void parallelPicksCannotReserveTheSameAvailableStockTwice() throws Exception {
+        db.update("UPDATE reagent_batch SET stock=3 WHERE id=5001");
+        var start=new CountDownLatch(1);
+        var pool=Executors.newFixedThreadPool(2);
+        try {
+            Callable<Boolean> first=()->{start.await();try{ship(6001,6101,"2");return true;}catch(BizException denied){return false;}};
+            Callable<Boolean> second=()->{start.await();try{ship(6002,6102,"2");return true;}catch(BizException denied){return false;}};
+            var a=pool.submit(first);var b=pool.submit(second);start.countDown();
+            assertNotEquals(a.get(15,TimeUnit.SECONDS),b.get(15,TimeUnit.SECONDS));
+        } finally { pool.shutdownNow(); }
+        assertEquals(new BigDecimal("3.00"),stock());
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
+        assertThrows(BizException.class,()->run(keeper,()->inventory.transferBatch(5001L,102L,new BigDecimal("2"),"NORMAL",null)));
+        assertEquals(1,count("consumption_record"));
+    }
+    @Test void oldShipmentAlreadyDeductedStockIsNotDeductedAgain() {
+        // Represent a real pre-migration shipment, not a second reservation.
+        db.update("UPDATE reagent_batch SET stock=8 WHERE id=5001");
+        db.update("UPDATE purchase_requisition SET status='SHIPPED' WHERE id=6001");
+        db.update("UPDATE purchase_requisition_item SET qty_fulfilled=2 WHERE id=6101");
+        db.update("""
+                INSERT INTO consumption_record(id,institution_id,record_type,batch_no,batch_id,requisition_id,
+                  requisition_item_id,reagent_id,warehouse_id,from_warehouse_id,quantity,unit,unit_price,amount,settlement_mode,occurred_at)
+                VALUES(9388,1,'TRANSFER','QA-LOT',5001,6001,6101,1,102,101,2,'box',10,20,'领用结算',CURRENT_TIMESTAMP)
+                """);
+        receipt();
+        assertEquals(new BigDecimal("8.00"),stock());
+        assertEquals(new BigDecimal("0.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
+        assertEquals(1,count("requisition_transfer_receipt"));
+        assertEquals(1,count("settlement_record"));
+    }
+    @Test void failedBillingRestoresSourceTargetAndReservationTogether() {
+        ship(6001,6101,"2");
+        db.execute("ALTER TABLE settlement_event ADD CONSTRAINT qa_deny_bill CHECK(to_status<>'ACTIVE')");
+        assertThrows(RuntimeException.class,this::receipt);
+        assertEquals(new BigDecimal("10.00"),stock());
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
+        assertEquals(1,count("reagent_batch"));
+        assertEquals(0,count("requisition_transfer_receipt"));
+        assertEquals(0,count("settlement_record"));
+    }
     void managedCodes(int number){
         db.update("UPDATE reagent_catalog SET enable_unique_code=1 WHERE id=1");
         for(int i=0;i<number;i++)db.update("INSERT INTO udi_unique_code(id,institution_id,unique_code,batch_id,reagent_id,batch_no,status) VALUES(?,1,?,5001,1,'QA-LOT','IN_STOCK')",8000+i,"QA-CODE-"+i);
@@ -201,7 +257,9 @@ class StockFlowSafetyIntegrationTest {
     }
     @Test void automaticReceiptRunsAndSettlesEachInstitutionWithoutLeakingContext() {
         ship(6001L, 6101L, "2");
-        db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,udi_status,expiry_date,settlement_mode) VALUES(5099,2,3,'QA-LOT',201,8,'box',15,'IN_STOCK','2039-01-01','领用结算')");
+        db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit,unit_price,udi_status,expiry_date,settlement_mode) VALUES(5099,2,3,'QA-LOT',201,10,'box',15,'IN_STOCK','2039-01-01','领用结算')");
+        OpeningEvidenceFixture.audit(db, 5099, java.time.LocalDateTime.now().minusDays(1));
+        db.update("UPDATE reagent_batch SET stock=8 WHERE id=5099");
         db.update("INSERT INTO purchase_requisition(id,institution_id,req_no,from_dept_id,to_warehouse_id,status,urgency) VALUES(6099,2,'QA-AUTO-2',21,202,'SHIPPED','NORMAL')");
         db.update("INSERT INTO purchase_requisition_item(id,institution_id,req_id,line_no,reagent_id,qty_requested,qty_fulfilled,unit_price,amount) VALUES(6199,2,6099,1,3,2,2,15,30)");
         db.update("""
@@ -326,7 +384,7 @@ class StockFlowSafetyIntegrationTest {
             run(keeper, () -> assertThrows(BizException.class,
                     () -> procurement.reviewRequisition(6001L, "REJECT", "stale")));
             assertEquals("SHIPPED", requisitionStatus());
-            assertEquals(new BigDecimal("8.00"), stock());
+            assertEquals(new BigDecimal("10.00"), stock());
         }
     }
 
@@ -404,7 +462,8 @@ class StockFlowSafetyIntegrationTest {
     }
     @Test void codeShortageOnReceiptRollsBackTargetReceiptAndBill(){
         managedCodes(1);ship(6001,6101,"2");assertThrows(BizException.class,this::receipt);
-        assertEquals(new BigDecimal("8.00"),stock());assertEquals(1,count("reagent_batch"));assertEquals(0,count("requisition_transfer_receipt"));assertEquals(0,count("settlement_record"));
+        assertEquals(new BigDecimal("10.00"),stock());assertEquals(1,count("reagent_batch"));assertEquals(0,count("requisition_transfer_receipt"));assertEquals(0,count("settlement_record"));
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT reserved_stock FROM reagent_batch WHERE id=5001",BigDecimal.class));
         assertEquals(1L,db.queryForObject("SELECT COUNT(*) FROM udi_unique_code WHERE batch_id=5001",Long.class));
     }
     @Test void recalledSourceCannotBeRevivedThroughReceipt(){
@@ -454,13 +513,24 @@ class StockFlowSafetyIntegrationTest {
             var a=pool.submit(first);var b=pool.submit(second);start.countDown();
             assertNotEquals(a.get(15,TimeUnit.SECONDS),b.get(15,TimeUnit.SECONDS));
         }finally{pool.shutdownNow();}
-        assertEquals(new BigDecimal("18.00"),db.queryForObject("SELECT SUM(stock) FROM reagent_batch",BigDecimal.class));
+        assertEquals(new BigDecimal("20.00"),db.queryForObject("SELECT SUM(stock) FROM reagent_batch",BigDecimal.class));
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT SUM(reserved_stock) FROM reagent_batch",BigDecimal.class));
         assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT qty_fulfilled FROM purchase_requisition_item WHERE id=6101",BigDecimal.class));
         assertEquals(1,count("consumption_record"));
     }
     @Test void legacyReceiptEndpointCannotBypassBilling(){
         ship(6001,6101,"2");var controller=new com.zlth.ivd.procurement.controller.ProcurementController(procurement,billing,context.getBean(com.zlth.ivd.common.service.StockCommandService.class));
         run(keeper,()->controller.receiveRequisition(6001L));assertEquals(1,count("settlement_record"));
+    }
+    @Test void receiptWithoutVerifiedInboundSourceKeepsStockPostingButDoesNotBill() {
+        db.update("DELETE FROM inventory_opening_balance WHERE batch_id=5001");
+        ship(6001,6101,"2");
+        receipt();
+        assertEquals(1,count("requisition_transfer_receipt"));
+        Long target=db.queryForObject("SELECT target_batch_id FROM requisition_transfer_receipt",Long.class);
+        assertEquals(new BigDecimal("2.00"),db.queryForObject("SELECT stock FROM reagent_batch WHERE id=?",BigDecimal.class,target));
+        assertEquals(0,count("settlement_record"));
+        assertEquals(0,count("settlement_event"));
     }
     @Test void unknownShortageCannotCreateOrphanOrder(){
         run(keeper,()->assertThrows(BizException.class,()->procurement.createOrderFromShortage(99999L,1,null,"领用结算",null)));
@@ -501,11 +571,19 @@ class StockFlowSafetyIntegrationTest {
         assertNull(db.queryForObject("SELECT po_id FROM shortage_order WHERE id=7001",Long.class));
     }
     @Test void completedShortagePurchaseClosesItsSource(){
-        var po=as(keeper,()->procurement.createOrderFromShortage(7001L,1,null,"领用结算",null));
+        var plans=context.getBean(com.zlth.ivd.procurement.service.PurchasePlanService.class);
+        var planRequest=new com.zlth.ivd.procurement.dto.CreatePurchasePlanRequest();
+        planRequest.setSourceType("SHORTAGE");planRequest.setShortageId(7001L);planRequest.setSupplierId(1);
+        planRequest.setOrderDate(LocalDate.now());planRequest.setSettlementMode("领用结算");
+        var plan=as(keeper,()->plans.create(planRequest));
+        run(keeper,()->plans.submit(plan.getId()));
+        run(new InstitutionContext.Scope(1,11L,1006L,"LAB_DIRECTOR"),()->plans.approve(plan.getId(),"QA approval"));
+        var po=as(keeper,()->plans.convert(plan.getId()).getOrders().get(0));
         long item=db.queryForObject("SELECT id FROM purchase_order_item WHERE po_id=?",Long.class,po.getId());
         var receipt=new ReceiveItemRequest();receipt.setOrderId(po.getId());receipt.setItemId(item);receipt.setQtyReceived(BigDecimal.ONE);receipt.setBatchNo("QA-PURCHASE");receipt.setExpiryDate(LocalDate.now().plusYears(1));receipt.setWarehouseId(101L);
         run(keeper,()->procurement.receiveOrder(receipt));assertEquals("PURCHASING",db.queryForObject("SELECT status FROM shortage_order WHERE id=7001",String.class));
         run(keeper,()->procurement.receiveOrder(receipt));assertEquals("COMPLETED",db.queryForObject("SELECT status FROM shortage_order WHERE id=7001",String.class));
-        assertEquals(List.of("SHORTAGE_CONVERTED","SHORTAGE_COMPLETED"),db.queryForList("SELECT action FROM operation_audit_log ORDER BY id",String.class));
+        assertEquals(List.of("SHORTAGE_COMPLETED"),db.queryForList("SELECT action FROM operation_audit_log ORDER BY id",String.class));
+        assertEquals(1L,db.queryForObject("SELECT COUNT(*) FROM purchase_plan_event WHERE plan_id=? AND to_status='ORDERED'",Long.class,plan.getId()));
     }
 }

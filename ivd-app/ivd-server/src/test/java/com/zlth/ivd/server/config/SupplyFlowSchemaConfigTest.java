@@ -9,6 +9,10 @@ class SupplyFlowSchemaConfigTest {
         jdbc.execute("CREATE TABLE reagent_batch(inventory_generation INT,origin_purchase_order_item_id BIGINT,settlement_mode VARCHAR)");
         jdbc.execute("CREATE TABLE consumption_record(settlement_mode VARCHAR)");
         assertThrows(IllegalStateException.class,guard::afterSingletonsInstantiated);
-        jdbc.execute("CREATE TABLE settlement_event(settlement_id BIGINT)");assertDoesNotThrow(guard::afterSingletonsInstantiated);
+        jdbc.execute("CREATE TABLE settlement_event(settlement_id BIGINT)");
+        assertThrows(IllegalStateException.class,guard::afterSingletonsInstantiated);
+        jdbc.execute("ALTER TABLE reagent_batch ADD reserved_stock DECIMAL(10,2)");
+        jdbc.execute("ALTER TABLE consumption_record ADD stock_deduct_on_receipt TINYINT");
+        assertDoesNotThrow(guard::afterSingletonsInstantiated);
     }
 }

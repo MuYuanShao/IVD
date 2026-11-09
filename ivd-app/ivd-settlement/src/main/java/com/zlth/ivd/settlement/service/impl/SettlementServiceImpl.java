@@ -119,6 +119,7 @@ public class SettlementServiceImpl implements SettlementService {
             var mode=com.zlth.ivd.common.enums.SettlementModeEnum.resolve(move.getSettlementMode());
             if(mode!=com.zlth.ivd.common.enums.SettlementModeEnum.REQUISITION
                     && (manualRequisitionOnly || mode!=com.zlth.ivd.common.enums.SettlementModeEnum.TRANSFER)) continue;
+            if (!manualRequisitionOnly && !eligibleForAutomaticBilling(move)) continue;
             String type=mode.name();Long sourceId=mode==com.zlth.ivd.common.enums.SettlementModeEnum.REQUISITION?requisitionId:move.getId();
             if(recordMapper.selectCount(new LambdaQueryWrapper<SettlementRecord>().eq(SettlementRecord::getSettlementType,"REQUISITION")
                     .eq(SettlementRecord::getSourceId,requisitionId).eq(SettlementRecord::getSourceItemKind,"LEGACY"))>0)
@@ -237,8 +238,16 @@ public class SettlementServiceImpl implements SettlementService {
                 com.zlth.ivd.common.enums.SettlementModeEnum.CONSUMPTION;
         if(mode!=expected)return;
         if(settlementExists(mode.name(),source.getId(),source.getId()))return;
+        if(!eligibleForAutomaticBilling(source))return;
         insertFromEvidence(source,mode.name(),source.getId(),"INBOUND".equals(event.recordType())?"INBOUND_RECORD":"CONSUMPTION_RECORD",
                 event.recordType()+"-"+source.getId(), "CONSUME".equals(event.recordType()) ? consumptionDepartment(source) : null);
+    }
+
+    private boolean eligibleForAutomaticBilling(ConsumptionRecord source) {
+        if (consumption.hasVerifiedInboundSource(source)) return true;
+        log.info("自动结算跳过：缺少可核验入库来源，业务流水保留。recordId={}, type={}",
+                source.getId(), source.getRecordType());
+        return false;
     }
 
     private void requireMode(ConsumptionRecord source,com.zlth.ivd.common.enums.SettlementModeEnum expected) {

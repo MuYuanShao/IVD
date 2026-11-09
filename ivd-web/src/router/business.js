@@ -7,6 +7,7 @@ const navigationGroups = {
   Requisition: '采购申领',
   Shortage: '采购申领',
   Purchase: '采购申领',
+  PurchasePlans: '采购申领',
   Inbound: '采购申领',
   Receiving: '采购申领',
   PickAndShip: '采购申领',

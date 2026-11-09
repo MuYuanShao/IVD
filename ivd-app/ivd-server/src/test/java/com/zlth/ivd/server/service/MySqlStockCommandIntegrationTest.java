@@ -13,23 +13,28 @@ class MySqlStockCommandIntegrationTest extends StockCommandIntegrationTest {
     @Override protected boolean migrationApplied(){return true;}
     @Override @AfterEach void close(){try{super.close();}finally{fixture.close();}}
 
-    @Test void dailyBalanceRecognizesCrossDayTransferOnlyAtActualReceipt() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void dailyBalanceRecognizesCrossDayTransferAtCorrectPostingTime(boolean deferred) {
         db.execute("CREATE TABLE daily_inventory_snapshot(institution_id BIGINT,reagent_id BIGINT,warehouse_id BIGINT,snapshot_date DATE,closing DECIMAL(12,2))");
-        db.execute("CREATE TABLE inventory_opening_balance(institution_id BIGINT,reagent_id BIGINT,batch_no VARCHAR(64),warehouse_id BIGINT,amount DECIMAL(12,2),effective_at DATETIME(3))");
         var shipped = java.time.LocalDate.of(2026, 10, 30);
         var signed = shipped.plusDays(1);
         db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit_price,udi_status) VALUES(5011,1,1,'QA-CROSS-DAY',101,7,10,'IN_STOCK'),(5012,1,1,'QA-CROSS-DAY',103,3,10,'IN_STOCK')");
-        db.update("INSERT INTO inventory_opening_balance VALUES(1,1,'QA-CROSS-DAY',101,100,?)", shipped.minusDays(1).atStartOfDay());
-        db.update("INSERT INTO consumption_record(id,institution_id,record_type,reagent_id,batch_no,warehouse_id,from_warehouse_id,requisition_id,amount,occurred_at) VALUES(9301,1,'TRANSFER',1,'QA-CROSS-DAY',103,101,9300,30,?)", shipped.atTime(23, 59));
+        db.update("""
+                INSERT INTO inventory_opening_balance(institution_id,batch_id,reagent_id,batch_no,warehouse_id,
+                    quantity,unit_price,amount,effective_at,evidence_source,evidence_reference)
+                VALUES(1,5011,1,'QA-CROSS-DAY',101,10,10,100,?,'QA_AUDITED_IMPORT','QA original opening')
+                """, shipped.minusDays(1).atStartOfDay());
+        db.update("INSERT INTO consumption_record(id,institution_id,record_type,reagent_id,batch_no,warehouse_id,from_warehouse_id,requisition_id,amount,occurred_at,stock_deduct_on_receipt) VALUES(9301,1,'TRANSFER',1,'QA-CROSS-DAY',103,101,9300,30,?,?)", shipped.atTime(23, 59), deferred);
         db.update("INSERT INTO requisition_transfer_receipt(transfer_record_id,institution_id,target_batch_id,received_at) VALUES(9301,1,5012,?)", signed.atTime(0, 1));
         var mapper = context.getBean(com.zlth.ivd.finance.mapper.DailyInventorySnapshotMapper.class);
         var scope = new com.zlth.ivd.common.security.InstitutionContext.Scope(1, null, 1003L, "FINANCE");
         com.zlth.ivd.common.security.InstitutionContext.within(scope, () -> {
             var shipmentDay = mapper.getDailyBalances(shipped);
             var receiptDay = mapper.getDailyBalances(signed);
-            assertBalance(shipmentDay, 101, 100, 0, 30, 70);
+            assertBalance(shipmentDay, 101, 100, 0, deferred ? 0 : 30, deferred ? 100 : 70);
             assertBalance(shipmentDay, 103, 0, 0, 0, 0);
-            assertBalance(receiptDay, 101, 70, 0, 0, 70);
+            assertBalance(receiptDay, 101, deferred ? 100 : 70, 0, deferred ? 30 : 0, 70);
             assertBalance(receiptDay, 103, 0, 30, 0, 30);
             return null;
         });
@@ -52,11 +57,9 @@ class MySqlStockCommandIntegrationTest extends StockCommandIntegrationTest {
                   closing DECIMAL(12,2),difference DECIMAL(12,2),difference_ratio DECIMAL(12,4),is_balanced INT,
                   created_at DATETIME(3),UNIQUE KEY uk_qa_snapshot(institution_id,snapshot_date,reagent_id,warehouse_id))
                 """);
-        db.execute("CREATE TABLE inventory_opening_balance(institution_id BIGINT,reagent_id BIGINT,batch_no VARCHAR(64),warehouse_id BIGINT,amount DECIMAL(12,2),effective_at DATETIME(3))");
         var day = java.time.LocalDate.now().minusDays(1);
         db.update("INSERT INTO reagent_batch(id,institution_id,reagent_id,batch_no,warehouse_id,stock,unit_price,udi_status) VALUES(5010,1,2,'QA-DAY-CLOSE',101,2,20,'IN_STOCK')");
-        db.update("INSERT INTO inventory_opening_balance VALUES(1,1,'QA-CONSUME',102,100,?),(1,2,'QA-DAY-CLOSE',101,40,?)",
-                day.atStartOfDay(), day.atStartOfDay());
+        OpeningEvidenceFixture.audit(db, 5010, day.atStartOfDay());
         db.execute("""
                 CREATE TRIGGER qa_fail_second_snapshot BEFORE INSERT ON daily_inventory_snapshot FOR EACH ROW
                 BEGIN

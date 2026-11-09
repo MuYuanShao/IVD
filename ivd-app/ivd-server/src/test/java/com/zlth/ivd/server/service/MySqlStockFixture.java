@@ -44,14 +44,14 @@ final class MySqlStockFixture implements AutoCloseable {
                     + "(99003,2,'PO-20261031-0003','2026-10-31')");
             var flyway=Flyway.configure().dataSource(source).locations("classpath:db/migration")
                     .baselineOnMigrate(true).baselineVersion("20261011007").validateOnMigrate(true).cleanDisabled(true).load();
-            assertEquals(8,flyway.migrate().migrationsExecuted);assertEquals("20261105002",flyway.info().current().getVersion().getVersion());
+            assertEquals(10,flyway.migrate().migrationsExecuted);assertEquals("20261109001",flyway.info().current().getVersion().getVersion());
             flyway.validate();
             assertEquals(12, fixtureDb.queryForObject("SELECT last_number FROM purchase_order_number_sequence "
                     + "WHERE institution_id=1 AND order_day='20261031'", Integer.class));
             assertEquals(3, fixtureDb.queryForObject("SELECT last_number FROM purchase_order_number_sequence "
                     + "WHERE institution_id=2 AND order_day='20261031'", Integer.class));
             assertEquals(3, fixtureDb.update("DELETE FROM purchase_order WHERE id IN (99001,99002,99003)"));
-        }
+        } else new ResourceDatabasePopulator(new ClassPathResource("purchase-plans-h2.sql")).execute(source);
         var context=new AnnotationConfigApplicationContext();
         context.register(ResourceBoundaryIntegrationTest.Config.class);
         if(withCommandMigration)context.register(com.zlth.ivd.server.config.StockCommandSchemaConfig.class);

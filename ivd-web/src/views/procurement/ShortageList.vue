@@ -25,7 +25,7 @@
           <el-option label="采购中" value="PURCHASING" />
           <el-option label="已完成" value="COMPLETED" />
         </el-select>
-        <el-button :icon="Download" @click="handleExport">导出报表</el-button>
+        <el-button :icon="Download" :loading="exporting" @click="handleExport">导出报表</el-button>
       </div>
     </el-card>
 
@@ -49,7 +49,7 @@
           <template #default="{row}">
             <el-button link type="primary" size="small" @click="viewShortageDetail(row)">详情</el-button>
             <el-button v-if="row.reqId" link type="warning" size="small" @click="goViewRequisition(row.reqId)">查看申领单</el-button>
-            <el-button v-if="row.status==='PENDING_PROCUREMENT'" link type="primary" size="small" @click="openGeneratePO(row)">生成采购单</el-button>
+            <el-button v-if="row.status==='PENDING_PROCUREMENT'" link type="primary" size="small" @click="openGeneratePO(row)">生成采购计划</el-button>
             <el-button v-if="row.poId" link type="success" size="small" @click="$router.push('/purchase')">查看订单</el-button>
           </template>
         </el-table-column>
@@ -99,8 +99,12 @@ import RequisitionDetailDialog from '@/components/RequisitionDetailDialog.vue'
 import ShortageDetailDialog from '@/components/ShortageDetailDialog.vue'
 import CreatePOFromShortageDialog from '@/components/CreatePOFromShortageDialog.vue'
 import { getSuppliers } from '@/api/license'
+import { exportShortageReport } from '@/api/procurement'
+import { saveBusinessFile } from '@/utils/businessDownload.mjs'
+import { useRouter } from 'vue-router'
 
 const store = useProcurementStore()
+const router = useRouter(), exporting = ref(false)
 const page = ref(1), pageSize = ref(10)
 const statusFilter = ref(''), search = ref('')
 
@@ -153,14 +157,24 @@ function openGeneratePOFromDetail(id) {
 
 async function handleCreatePO(data) {
   try {
-    await store.doCreateOrderFromShortage(data)
-    ElMessage.success('采购订单已生成')
+    const plan = await store.doCreateOrderFromShortage(data)
+    if (!plan?.id) throw new Error('未返回采购计划')
+    ElMessage.success('采购计划草稿已生成，请提交审批')
     showCreatePODialog.value = false
     fetchData()
+    router.push({path:'/purchase-plans',query:{planId:String(plan.id)}})
   } catch { showCreatePODialog.value = false }
 }
 
-function handleExport() { ElMessage.success('缺货报表生成中，即将下载...') }
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    saveBusinessFile(await exportShortageReport({format:'xlsx',keyword:search.value || undefined,status:statusFilter.value || undefined}), '缺货单.xlsx')
+    ElMessage.success('缺货单已导出')
+  } catch { ElMessage.error('缺货单导出失败，未生成文件') }
+  finally { exporting.value = false }
+}
 
 function fetchData() {
   store.fetchShortages({ page: page.value, pageSize: pageSize.value, status: statusFilter.value || undefined, keyword: search.value || undefined })

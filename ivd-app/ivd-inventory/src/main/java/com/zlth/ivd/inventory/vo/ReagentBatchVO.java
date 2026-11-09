@@ -36,6 +36,8 @@ public class ReagentBatchVO {
     private LocalDate manufactureDate;
     private LocalDate expiryDate;
     private BigDecimal stock;
+    private BigDecimal reservedStock;
+    private BigDecimal availableStock;
     private String unit;
     private BigDecimal unitPrice;
     private BigDecimal amount;

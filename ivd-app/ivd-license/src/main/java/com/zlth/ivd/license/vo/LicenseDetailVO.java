@@ -31,6 +31,8 @@ public class LicenseDetailVO {
     private String status;
     private String statusLabel;
     private Long remainingDays;
+    private String reminderLevel;
+    private String reminderLabel;
 
     // 关联试剂列表
     private List<RelReagent> relatedReagents;
@@ -69,6 +71,8 @@ public class LicenseDetailVO {
         private String type;
         private String uploadedAt;
         private String uploadedBy;
+        /** Approved renewal evidence remains listed and readable, but cannot be removed or replaced. */
+        private Boolean protectedEvidence;
     }
 
     /** 变更记录项 */

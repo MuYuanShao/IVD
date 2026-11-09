@@ -28,6 +28,8 @@ public class LicenseVO {
     private String status;
     private String statusLabel;
     private Long remainingDays;
+    private String reminderLevel;
+    private String reminderLabel;
     private Integer attachmentCount;
     private String relatedReagents; // 关联试剂名称，逗号分隔
     private LocalDateTime createdAt;

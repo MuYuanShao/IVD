@@ -20,13 +20,14 @@
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <el-input v-model="search" placeholder="搜索订单号/供应商/试剂" :prefix-icon="Search" clearable style="width:260px" @keyup.enter="fetchData" />
         <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width:140px" @change="fetchData">
-          <el-option label="待收货" value="DRAFT" /><el-option label="部分收货" value="PARTIAL_RECEIVED" />
+          <el-option label="草稿（不可验收）" value="DRAFT" /><el-option label="待收货" value="SENT" /><el-option label="部分收货" value="PARTIAL_RECEIVED" />
           <el-option label="已完成" value="COMPLETED" /><el-option label="已取消" value="CANCELLED" />
         </el-select>
         <el-button type="primary" :icon="MagicStick" @click="showSmartReplenishDialog = true">智能补货建议</el-button>
-        <el-button type="success" :icon="Plus" @click="showManualPODialog = true">新建采购单</el-button>
+        <el-button type="success" :icon="Plus" @click="showManualPODialog = true">新建采购计划</el-button>
+        <el-button @click="$router.push('/purchase-plans')">计划审批与转单</el-button>
         <el-button @click="$router.push('/shortage')">查看缺货单</el-button>
-        <el-button :icon="Download" @click="handleExport">导出报表</el-button>
+        <el-button :icon="Download" :loading="exporting" @click="handleExport">导出报表</el-button>
       </div>
     </el-card>
 
@@ -35,7 +36,7 @@
         <el-table-column prop="poNo" label="订单号" width="180" />
         <el-table-column label="来源" width="100">
           <template #default="{row}">
-            <el-tag v-if="row.sourceType==='SMART'" type="warning" size="small">智能补货</el-tag>
+            <el-tag v-if="['SMART','SMART_REPLENISH'].includes(row.sourceType)" type="warning" size="small">智能补货</el-tag>
             <el-tag v-else-if="row.sourceType==='MANUAL'" type="success" size="small">人工采购</el-tag>
             <el-button v-else link type="primary" size="small" @click="$router.push('/shortage')">缺货单</el-button>
           </template>
@@ -56,8 +57,9 @@
         </el-table-column>
         <el-table-column label="操作" width="180">
           <template #default="{row}">
-            <el-button link type="primary" size="small" @click="goInbound(row)">扫码验收</el-button>
-            <el-button link type="success" size="small" @click="goReceiving(row)">人工验收</el-button>
+            <el-button v-if="canReceive(row)" link type="primary" size="small" @click="goInbound(row)">扫码验收</el-button>
+            <el-button v-if="canReceive(row)" link type="success" size="small" @click="goReceiving(row)">人工验收</el-button>
+            <span v-else>不可验收</span>
           </template>
         </el-table-column>
       </el-table>
@@ -75,7 +77,8 @@
         <el-select v-model="replenishForm.period" style="width:130px" @change="loadSmartReplenish">
           <el-option label="近7天" value="7" /><el-option label="近14天" value="14" /><el-option label="近30天" value="30" /><el-option label="近90天" value="90" />
         </el-select>
-        <el-button :icon="Refresh" size="small" @click="loadSmartReplenish">刷新数据</el-button>
+        <el-button :icon="Refresh" size="small" @click="loadSmartReplenish">读取建议</el-button>
+        <el-button type="primary" size="small" :loading="recalculating" @click="recalculateSuggestions">生成新批建议</el-button>
       </div>
       <el-table :data="store.replenishSuggestions" stripe v-loading="store.replenishLoading" @selection-change="sel => selectedReplenish = sel" max-height="400">
         <el-table-column type="selection" width="45" />
@@ -103,17 +106,22 @@
       </el-table>
       <template #footer>
         <el-button @click="showSmartReplenishDialog = false">取消</el-button>
-        <el-button type="primary" :loading="replenishCreating" @click="doBatchCreatePO" :disabled="!selectedReplenish.length">批量生成采购单 ({{ selectedReplenish.length }})</el-button>
+        <el-button type="primary" :loading="replenishCreating" @click="doBatchCreatePO" :disabled="!selectedReplenish.length">生成待审批计划 ({{ selectedReplenish.length }})</el-button>
       </template>
     </el-dialog>
 
     <!-- 手动创建采购单弹窗 -->
-    <el-dialog v-model="showManualPODialog" title="新建采购单" width="1100px" top="4vh" @closed="resetManualPO" @open="loadReagentsAndSuppliers">
+    <el-dialog v-model="showManualPODialog" title="新建采购计划（批准后转订单）" width="1100px" top="4vh" @closed="resetManualPO" @open="loadReagentsAndSuppliers">
       <el-form ref="manualPOFormRef" :model="manualPOForm" :rules="manualPORules" label-width="90px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="下单日期" prop="orderDate">
               <el-date-picker v-model="manualPOForm.orderDate" type="date" placeholder="选择日期" style="width:100%" value-format="YYYY-MM-DD" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="预计到货">
+              <el-date-picker v-model="manualPOForm.expectedDeliveryDate" type="date" placeholder="选填" style="width:100%" value-format="YYYY-MM-DD" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -155,7 +163,7 @@
           </el-table-column>
           <el-table-column label="采购数量" width="110" align="center">
             <template #default="{row}">
-              <el-input-number v-model="row.quantity" :min="1" :max="999" size="small" style="width:90px" />
+              <el-input-number v-model="row.quantity" :min="0.01" :precision="2" :max="999" size="small" style="width:90px" />
             </template>
           </el-table-column>
           <el-table-column label="采购金额" width="110" align="right">
@@ -174,7 +182,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showManualPODialog = false">取消</el-button>
-        <el-button type="primary" :loading="manualPOLoading" @click="submitManualPO" :disabled="!canSubmitPO">确认创建</el-button>
+        <el-button type="primary" :loading="manualPOLoading" @click="submitManualPO" :disabled="!canSubmitPO">保存计划草稿</el-button>
       </template>
     </el-dialog>
 
@@ -198,17 +206,22 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Plus, Download, MagicStick, Refresh, Delete } from '@element-plus/icons-vue'
 import { useProcurementStore } from '@/stores/procurement'
 import { getPoStatusType, getReceivePct } from '@/utils/procurement'
 import { getSuppliers } from '@/api/license'
 import { getCatalogList } from '@/api/catalog'
-import { createOrdersFromReplenish } from '@/api/procurement'
+import { createOrdersFromReplenish, recalculateSmartReplenish, exportOrderReport } from '@/api/procurement'
+import { saveBusinessFile } from '@/utils/businessDownload.mjs'
 
 const store = useProcurementStore()
 const router = useRouter()
+const route = useRoute()
+const exporting = ref(false)
+const canReceive = row => ['SENT','PARTIAL_RECEIVED'].includes(row.status)
+  || (row.status === 'DRAFT' && row.approvalOrigin === 'LEGACY')
 const page = ref(1), pageSize = ref(10)
 const search = ref(''), statusFilter = ref('')
 
@@ -225,7 +238,7 @@ function fetchData() {
   store.fetchOrderStats()
 }
 
-onMounted(() => { fetchData(); loadSuppliers() })
+onMounted(() => { fetchData(); loadSuppliers(); if (route.query.createPlan === '1') showManualPODialog.value = true })
 
 // ── 搜索防抖 ──
 let searchTimer = null
@@ -252,17 +265,37 @@ async function loadSuppliers() {
   }
 }
 
-function handleExport() { ElMessage.success('采购报表生成中，即将下载...') }
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    saveBusinessFile(await exportOrderReport({ format:'xlsx',keyword:search.value || undefined,status:statusFilter.value || undefined }), '采购订单.xlsx')
+    ElMessage.success('采购订单已导出')
+  } catch { ElMessage.error('采购订单导出失败，未生成文件') }
+  finally { exporting.value = false }
+}
 
 // ── 智能补货 ──
 const showSmartReplenishDialog = ref(false)
 const selectedReplenish = ref([])
 const replenishCreating = ref(false)
+const recalculating = ref(false)
 const replenishForm = reactive({ period: '30' })
 
 // 点击"智能补货建议"按钮 → 触发运算事件 → 加载补货数据
 async function loadSmartReplenish() {
+  selectedReplenish.value = []
   await store.fetchSmartReplenish(replenishForm.period)
+}
+async function recalculateSuggestions() {
+  if (recalculating.value) return
+  recalculating.value = true
+  try {
+    await recalculateSmartReplenish(Number(replenishForm.period))
+    await loadSmartReplenish()
+    ElMessage.success('新批次补货建议已生成，原建议保留')
+  } catch { ElMessage.error('补货重算失败') }
+  finally { recalculating.value = false }
 }
 
 // 批量生成采购单
@@ -275,11 +308,13 @@ async function doBatchCreatePO() {
       reagentId: s.reagentId,
       suggestedQty: s.suggestedQty            // 用户可能已修改
     }))
-    await createOrdersFromReplenish(items)
-    ElMessage.success(`已批量生成 ${items.length} 张采购单`)
+    const plan = await createOrdersFromReplenish(items)
+    if (!plan?.id) throw new Error('未收到采购计划编号')
+    ElMessage.success('采购计划草稿已生成，请提交审批')
     showSmartReplenishDialog.value = false
     selectedReplenish.value = []
     fetchData()
+    router.push({ path:'/purchase-plans', query:{ planId:String(plan.id) } })
   } catch (e) {
     console.error('批量生成采购单失败:', e)
   } finally { replenishCreating.value = false }
@@ -290,7 +325,10 @@ const showManualPODialog = ref(false), manualPOLoading = ref(false)
 const showPOResultDialog = ref(false)
 const createdPOs = ref([])
 const manualPOFormRef = ref(null)
-const getToday = () => new Date().toISOString().slice(0, 10)
+const getToday = () => {
+  const date = new Date()
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-')
+}
 const createEmptyItem = () => ({
   reagentId: null,
   reagentName: '',
@@ -303,6 +341,7 @@ const createEmptyItem = () => ({
 })
 const manualPOForm = reactive({
   orderDate: getToday(),
+  expectedDeliveryDate: '',
   settlementMode: '调拨结算',
   remark: '',
   items: [createEmptyItem()]
@@ -346,11 +385,9 @@ function onReagentChange(idx, reagentId) {
     item.unitPrice = found.pricePerUnit
     // 自动匹配试剂目录中的配送商到供应商列表
     if (!item.supplierId && found.distributor) {
-      const matchedSupplier = suppliers.value.find(s =>
-        s.label === found.distributor || s.label.includes(found.distributor) || found.distributor.includes(s.label)
-      )
-      if (matchedSupplier) {
-        item.supplierId = matchedSupplier.value
+      const matches = suppliers.value.filter(s => s.label.trim() === found.distributor.trim())
+      if (matches.length === 1) {
+        item.supplierId = matches[0].value
       }
     }
     // 选择试剂后自动追加一行空行
@@ -363,13 +400,14 @@ function onReagentChange(idx, reagentId) {
 
 // 至少有一个试剂被选中且采购数量 > 1 时允许创建
 const canSubmitPO = computed(() => {
-  return manualPOForm.items.some(i => i.reagentId && i.quantity >= 1)
+  return manualPOForm.items.some(i => i.reagentId && i.quantity > 0)
 })
 
 function addManualItem() { manualPOForm.items.push(createEmptyItem()) }
 function removeManualItem(idx) { if (manualPOForm.items.length > 1) manualPOForm.items.splice(idx, 1) }
 
 async function submitManualPO() {
+  if (manualPOLoading.value) return
   const valid = await manualPOFormRef.value?.validate().catch(() => false)
   if (!valid) return
   // Ensure at least one item has reagent selected
@@ -379,6 +417,7 @@ async function submitManualPO() {
   try {
     const payload = {
       orderDate: manualPOForm.orderDate,
+      expectedDeliveryDate: manualPOForm.expectedDeliveryDate || null,
       settlementMode: manualPOForm.settlementMode,
       remark: manualPOForm.remark,
       items: manualPOForm.items.filter(i => i.reagentId).map(i => ({
@@ -388,16 +427,13 @@ async function submitManualPO() {
       }))
     }
     const result = await store.doCreateManualOrder(payload)
-    createdPOs.value = Array.isArray(result) ? result : []
+    if (!result?.id) throw new Error('未收到采购计划编号')
     showManualPODialog.value = false
-    if (createdPOs.value.length > 0) {
-      showPOResultDialog.value = true
-    } else {
-      ElMessage.warning('未生成采购单，请检查供应商设置')
-    }
+    ElMessage.success('采购计划草稿已保存，请提交审批')
+    router.push({ path:'/purchase-plans',query:{planId:String(result.id)} })
   } catch (e) {
     console.error('创建采购单失败:', e)
-    ElMessage.error('创建采购单失败，请检查明细数据或联系管理员')
+    ElMessage.error('创建采购计划失败，请检查明细数据')
   } finally { manualPOLoading.value = false }
 }
 
@@ -411,6 +447,7 @@ function resetManualPO() {
   manualPOFormRef.value?.resetFields()
   Object.assign(manualPOForm, {
     orderDate: getToday(),
+    expectedDeliveryDate: '',
     settlementMode: '调拨结算',
     remark: '',
     items: [createEmptyItem()]

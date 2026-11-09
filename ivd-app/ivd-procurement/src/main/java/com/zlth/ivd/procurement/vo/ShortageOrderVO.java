@@ -24,7 +24,7 @@ public class ShortageOrderVO {
     private String deptName;
     private String reagentName;
     private String spec;
-    private Integer shortageQty;
+    private java.math.BigDecimal shortageQty;
     private java.math.BigDecimal estimatedAmount;
     private ShortageStatusEnum status;
     private UrgencyEnum urgency;

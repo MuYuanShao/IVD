@@ -177,10 +177,12 @@ const { enabled: canReadLegacyPatients } = useClinicalAccess()
 // ── 水平管线图节点 ──
 const pipelineNodes = computed(() => {
   const baseNodes = [
+    { label: '计划审批', key: '采购计划审批通过' },
     { label: '采购', key: '采购订单' },
     { label: '验收入库', key: '验收入库' },
     { label: '申领', key: '申领单' },
-    { label: '调拨', key: '调拨至科室' },
+    { label: '拣配', key: '中心库拣配预占' },
+    { label: '签收', key: '科室签收' },
     { label: '上机', key: '扫码上机' },
     { label: '核销', key: '消耗核销' }
   ]
@@ -189,7 +191,8 @@ const pipelineNodes = computed(() => {
   const currentIdx = traceResult.value.timeline.findIndex(t => t.status === 'current')
   return baseNodes.map((n, idx) => ({
     ...n,
-    completed: completedKeys.has(n.key),
+    completed: completedKeys.has(n.key) || (n.key === '中心库拣配预占' &&
+      (completedKeys.has('调拨至科室') || completedKeys.has('下发至组库'))),
     active: idx === currentIdx
   }))
 })

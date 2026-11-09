@@ -13,6 +13,7 @@ public final class InstitutionSqlInterceptor extends TenantLineInnerInterceptor 
     private static final Set<String> TABLES = Set.of(
             "institution","sys_user","sys_dept","warehouse","device","device_batch_load","reagent_batch","reagent_catalog","inventory_remaining_batch",
             "consumption_record","purchase_requisition","purchase_requisition_item","purchase_order","purchase_order_item","purchase_order_number_sequence","receipt_virtual_batch_sequence",
+            "purchase_plan","purchase_plan_item","purchase_plan_event","smart_replenish_run",
             "shortage_order","shortage_order_item","settlement_record","supplier","supplier_license","manufacturer","distributor",
             "reagent_supplier_rel","audit_rule","audit_decision_log","operation_audit_log","udi_unique_code","udi_unique_code_seq",
             "udi_status_log","udi_backlog","patient_association","inventory_opening_balance","requisition_transfer_receipt",

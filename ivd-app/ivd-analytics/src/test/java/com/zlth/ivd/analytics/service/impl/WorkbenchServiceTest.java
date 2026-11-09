@@ -36,6 +36,19 @@ class WorkbenchServiceTest {
         assertEquals("12.34",dept.getTrend().get(29).getInbound().toPlainString());
         assertEquals("5.25",dept.getTrend().get(29).getOutbound().toPlainString());
     }
+    @Test void reservationIsNotCountedAsOutboundBeforeSignature() throws Exception {
+        try (var sql=session.getConnection().createStatement()) {
+            sql.executeUpdate("UPDATE consumption_record SET stock_deduct_on_receipt=1 WHERE id=3");
+        }
+        assertEquals(0,service.overview(2L).getMetrics().getTransferRecords());
+        assertEquals(0,service.overview(2L).getTrend().get(29).getOutbound().signum());
+        try (var sql=session.getConnection().createStatement()) {
+            sql.executeUpdate("INSERT INTO requisition_transfer_receipt VALUES(3,1,'2026-09-08 14:00:00')");
+        }
+        session.clearCache();
+        assertEquals(1,service.overview(2L).getMetrics().getTransferRecords());
+        assertEquals("5.25",service.overview(2L).getTrend().get(29).getOutbound().toPlainString());
+    }
     @Test void missingDaysAreZeroButMissingPricesAreNull() {
         var result=service.overview(2L);
         assertEquals(30,result.getTrend().size()); assertEquals(LocalDate.of(2026,8,10),result.getTrend().get(0).getDate());

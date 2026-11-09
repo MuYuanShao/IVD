@@ -24,6 +24,7 @@ class HistoricalBalanceSqlTest {
                 s.execute("INSERT INTO fixture_batches VALUES (1,1,'LOT',1,119,1200,1200),(2,1,'LOT',5,1,1200,1200),(3,7,'CRP',1,7,3200,3200),(4,7,'CRP',2,15,3200,3200)");
                 s.execute("INSERT INTO fixture_opening VALUES (1,1,'LOT',1,120,144000,'2026-08-07 15:36:12.203'),(3,7,'CRP',1,22,70400,'2026-08-07 15:36:12.203')");
                 s.execute("INSERT INTO fixture_ledger VALUES (8003,'INBOUND',1,'LOT',1,NULL,NULL,'2026-07-06 16:00:00',30,36000),(10,'TRANSFER',1,'LOT',5,1,NULL,'2026-08-08 22:06:13',1,1200),(11,'TRANSFER',7,'CRP',2,1,2003,'2026-08-08 22:41:04',15,48000)");
+                s.execute("ALTER TABLE fixture_ledger ADD COLUMN stock_deduct_on_receipt TINYINT NOT NULL DEFAULT 0");
                 s.execute("INSERT INTO fixture_receipts VALUES (11,'2026-08-08 22:42:11.788')");
             }
             return connection;

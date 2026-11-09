@@ -16,6 +16,8 @@ public class PurchaseOrder {
     private String poNo;
     private Integer supplierId;
     private String sourceType;
+    private Long planId;
+    private String approvalOrigin;
     @TableField("shortage_order_id")
     private Long shortageOrderId;
     @TableField("req_id")

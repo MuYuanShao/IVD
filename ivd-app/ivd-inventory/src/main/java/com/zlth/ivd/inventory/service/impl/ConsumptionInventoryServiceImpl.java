@@ -48,7 +48,7 @@ public class ConsumptionInventoryServiceImpl implements ConsumptionInventoryServ
             throw new BizException(40001,"批次过期或效期未维护");
         if(batch.getOpenExpiryDate()!=null && batch.getOpenExpiryDate().isBefore(LocalDate.now())) throw new BizException(40001,"批次已超过开瓶稳定期");
         if(batch.getUdiStatus()!=UdiStatusEnum.IN_STOCK && batch.getUdiStatus()!=UdiStatusEnum.IN_USE) throw new BizException(40001,"批次状态不允许消耗");
-        if(batch.getStock().compareTo(quantity)<0) throw new BizException(40001,"库存不足");
+        if(batch.getAvailableStock().compareTo(quantity)<0) throw new BizException(40001,"可用库存不足（已扣除预占）");
         batch.setStock(batch.getStock().subtract(quantity));
         if(batches.updateById(batch)!=1) throw new BizException(40900,"库存发生并发变化");
         if(batch.getStock().signum()==0){

@@ -18,6 +18,10 @@ public interface WorkbenchMapper {
     String LEDGER_SCOPE = " (#{deptId} IS NULL OR EXISTS (" + WAREHOUSE_OWNER_FROM
             + " AND scope_w.institution_id=r.institution_id"
             + " AND scope_w.id=CASE WHEN r.record_type='TRANSFER' THEN r.from_warehouse_id ELSE r.warehouse_id END)) ";
+    String POSTING_TIME = "CASE WHEN r.stock_deduct_on_receipt=1 THEN receipt.received_at ELSE r.occurred_at END";
+    String POSTED_LEDGER = " FROM consumption_record r LEFT JOIN requisition_transfer_receipt receipt"
+            + " ON receipt.transfer_record_id=r.id AND receipt.institution_id=r.institution_id AND r.stock_deduct_on_receipt=1 ";
+    String POSTED_WINDOW = POSTING_TIME + ">=#{start} AND " + POSTING_TIME + "<#{end} AND " + LEDGER_SCOPE;
     String BATCH_SCOPE = " (#{deptId} IS NULL OR EXISTS (" + WAREHOUSE_OWNER_FROM
             + " AND scope_w.institution_id=b.institution_id AND scope_w.id=b.warehouse_id)) ";
     String TODO_FILTER = " r.status IN ('PENDING_REVIEW','REVIEWED','PICKING','PARTIAL_FULFILLED','SHIPPED','SHORTAGE_PENDING') AND (#{deptId} IS NULL OR r.from_dept_id=#{deptId}) ";
@@ -29,13 +33,15 @@ public interface WorkbenchMapper {
 
     @Select("SELECT CASE WHEN SUM(CASE WHEN r.record_type='CONSUME' AND r.amount IS NULL THEN 1 ELSE 0 END)>0 THEN NULL ELSE COALESCE(SUM(CASE WHEN r.record_type='CONSUME' THEN r.amount ELSE 0 END),0) END consumption_amount, "
             + "COALESCE(SUM(CASE WHEN r.record_type='CONSUME' THEN 1 ELSE 0 END),0) consumed_records, COALESCE(SUM(CASE WHEN r.record_type='INBOUND' THEN 1 ELSE 0 END),0) inbound_records, COALESCE(SUM(CASE WHEN r.record_type='TRANSFER' THEN 1 ELSE 0 END),0) transfer_records, COALESCE(SUM(CASE WHEN r.amount IS NULL THEN 1 ELSE 0 END),0) unpriced_records "
-            + "FROM consumption_record r WHERE r.occurred_at>=#{start} AND r.occurred_at<#{end} AND " + LEDGER_SCOPE)
+            + POSTED_LEDGER + " WHERE " + POSTED_WINDOW)
     Metrics metrics(@Param("deptId") Long deptId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Select("SELECT CAST(r.occurred_at AS DATE) date, "
+    @Select("SELECT CAST(" + POSTING_TIME + " AS DATE) date, "
             + "CASE WHEN SUM(CASE WHEN r.record_type='INBOUND' AND r.amount IS NULL THEN 1 ELSE 0 END)>0 THEN NULL ELSE COALESCE(SUM(CASE WHEN r.record_type='INBOUND' THEN r.amount ELSE 0 END),0) END inbound, "
             + "CASE WHEN SUM(CASE WHEN r.record_type='TRANSFER' AND r.amount IS NULL THEN 1 ELSE 0 END)>0 THEN NULL ELSE COALESCE(SUM(CASE WHEN r.record_type='TRANSFER' THEN r.amount ELSE 0 END),0) END outbound, "
-            + "SUM(CASE WHEN r.amount IS NULL THEN 1 ELSE 0 END) unpriced_records FROM consumption_record r WHERE r.record_type IN ('INBOUND','TRANSFER') AND r.occurred_at>=#{start} AND r.occurred_at<#{end} AND " + LEDGER_SCOPE + " GROUP BY CAST(r.occurred_at AS DATE) ORDER BY date")
+            + "SUM(CASE WHEN r.amount IS NULL THEN 1 ELSE 0 END) unpriced_records "
+            + POSTED_LEDGER + " WHERE r.record_type IN ('INBOUND','TRANSFER') AND " + POSTED_WINDOW
+            + " GROUP BY CAST(" + POSTING_TIME + " AS DATE) ORDER BY date")
     List<Trend> trend(@Param("deptId") Long deptId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     @Select("SELECT COALESCE(SUM(CASE WHEN b.expiry_date<#{today} THEN 1 ELSE 0 END),0) expired_batches, COALESCE(SUM(CASE WHEN b.expiry_date>=#{today} AND b.expiry_date<=#{until} THEN 1 ELSE 0 END),0) expiring_batches, COALESCE(SUM(CASE WHEN b.udi_status='PENDING_UDI' THEN 1 ELSE 0 END),0) pending_udi_batches FROM reagent_batch b WHERE b.stock>0 AND " + BATCH_SCOPE)

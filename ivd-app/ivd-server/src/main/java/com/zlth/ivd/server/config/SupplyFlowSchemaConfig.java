@@ -14,6 +14,8 @@ public class SupplyFlowSchemaConfig {
             if(!fields.containsAll(Set.of("reagent_batch.inventory_generation","reagent_batch.origin_purchase_order_item_id",
                     "reagent_batch.settlement_mode","consumption_record.settlement_mode","settlement_event.settlement_id")))
                 throw new IllegalStateException("进销存来源与结算审计迁移 V20261011006 未完成，已拒绝启动");
+            if(!fields.containsAll(Set.of("reagent_batch.reserved_stock","consumption_record.stock_deduct_on_receipt")))
+                throw new IllegalStateException("拣配预占迁移 V20261109001 未完成，已拒绝启动");
             if(connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("MySQL")){
                 var triggers=new HashSet<String>();
                 try(var statement=connection.prepareStatement("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=? AND EVENT_OBJECT_TABLE='settlement_event'")){
